@@ -13,26 +13,26 @@ Web Tool{% endblock %} {% block page_title_text %}
 {% endblock %} {% block page_specific_actions %}
 <div class="d-flex gap-2 align-items-center">
     <span class="usm-save-status" id="usmSaveStatus" aria-live="polite"></span>
-    <button type="button" class="btn btn-secondary" id="mapListBtn">
-        <i class="fas fa-list me-2"></i
+    <button type="button" class="btn btn-secondary btn-sm" id="mapListBtn">
+        <i class="fas fa-list me-1"></i
         ><span data-i18n="usm.mapList">地圖列表</span>
     </button>
     <button
         type="button"
-        class="btn btn-info"
+        class="btn btn-info btn-sm"
         id="calcTicketsBtn"
         data-i18n-title="usm.calcTicketsTooltip"
         title="重新計算所有節點的聚合票證"
     >
-        <i class="fas fa-calculator me-2"></i
+        <i class="fas fa-calculator me-1"></i
         ><span data-i18n="usm.calcTickets">計算票證</span>
     </button>
-    <button type="button" class="btn btn-success" id="saveMapBtn">
-        <i class="fas fa-save me-2"></i><span data-i18n="usm.save">儲存</span>
+    <button type="button" class="btn btn-success btn-sm" id="saveMapBtn">
+        <i class="fas fa-save me-1"></i><span data-i18n="usm.save">儲存</span>
     </button>
-    <a href="/" class="btn btn-secondary">
-        <i class="fas fa-arrow-left me-2"></i
-        ><span data-i18n="common.back">返回</span>
+    <a href="/" class="btn btn-secondary btn-sm">
+        <i class="fas fa-home me-1"></i
+        ><span data-i18n="navigation.backToHome">首頁</span>
     </a>
 </div>
 {% endblock %} {% block content %}

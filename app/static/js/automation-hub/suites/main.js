@@ -166,14 +166,17 @@
   }
 
   async function loadSettingsDashboard() {
-    // Fire all three in parallel; each is best-effort and may 401/403 silently.
+    // Both are best-effort and may 401/403 silently.
     const [providers, webhooks] = await Promise.all([
       apiFetch(`/api/teams/${state.teamId}/automation-providers`).catch(() => null),
       apiFetch(`/api/teams/${state.teamId}/automation-webhooks`).catch(() => null),
     ]);
     renderSettingsProviders(providers);
     renderSettingsWebhooks(webhooks);
-    renderSettingsSystem();
+    // Automation environments (shared variable catalog) — owns its own card.
+    if (window.AutomationEnvironments && window.AutomationEnvironments.load) {
+      window.AutomationEnvironments.load(state.teamId);
+    }
     if (window.i18n) window.i18n.retranslate(document.getElementById('settings-pane'));
   }
 
@@ -231,29 +234,6 @@
     apply(outbound, 'settingsWebhookOutboundCount', 'settingsWebhookOutboundActive', 'automationHub.webhooks.active', 'Active');
     const empty = document.getElementById('settingsWebhookEmpty');
     empty.classList.toggle('d-none', list.length > 0);
-  }
-
-  function renderSettingsSystem() {
-    const cfg = window.automationResultConfig;
-    const statusEl = document.getElementById('settingsEncryptionStatus');
-    // Encryption key status is inferred: if any provider with credentials_set
-    // returned successfully OR provider list call succeeded, the key works.
-    // We default to OK because failure would have raised before this point.
-    if (statusEl) {
-      statusEl.textContent = t('automationHub.settings.encryptionOk', 'Configured');
-      statusEl.className = 'badge bg-success';
-      statusEl.removeAttribute('data-i18n');
-    }
-    const link = document.getElementById('settingsDashboardLink');
-    const empty = document.getElementById('settingsDashboardEmpty');
-    if (cfg && cfg.configured && cfg.dashboard_url) {
-      link.href = cfg.dashboard_url;
-      link.classList.remove('d-none');
-      empty.classList.add('d-none');
-    } else {
-      link.classList.add('d-none');
-      empty.classList.remove('d-none');
-    }
   }
 
   async function loadDashboardLink() {
@@ -402,6 +382,13 @@
           // Historical "Run Now" trigger has been removed (move-automation-execution-to-test-run-set).
           // Fall through — no-op. The button itself was removed from the markup; this
           // is a defensive guard in case an old cached bundle still renders it.
+          return;
+        }
+        const varsButton = event.target.closest('[data-script-vars]');
+        if (varsButton) {
+          if (window.AutomationScriptVars && window.AutomationScriptVars.open) {
+            window.AutomationScriptVars.open(state.teamId, Number(varsButton.dataset.scriptVars));
+          }
           return;
         }
         const previewButton = event.target.closest('[data-script-preview]');
@@ -847,6 +834,15 @@
       ? `<span class="badge bg-light text-dark border ms-1" title="${escapeAttr(t('automationHub.scripts.testCountHint', 'Declared tests in this file'))}">${testCount} <i class="fas fa-vial"></i></span>`
       : '';
     const caret = previewOpen ? 'fa-chevron-down' : 'fa-chevron-right';
+    // "Configure variables (N)" — only when the script declares env vars.
+    const declaredVars = Array.isArray(script.declared_vars) ? script.declared_vars : [];
+    const varWarnings = Array.isArray(script.var_warnings) ? script.var_warnings : [];
+    const varBtn = declaredVars.length
+      ? `<button type="button" class="btn btn-outline-secondary btn-sm flex-shrink-0" data-script-vars="${script.id}"
+                title="${escapeAttr(t('automationHub.environments.varsButton', 'Configure variables'))}">
+           <i class="fas fa-sliders-h me-1"></i>${escapeHtml(t('automationHub.environments.varsButton', 'Configure variables'))} (${declaredVars.length})${varWarnings.length ? ` <i class="fas fa-exclamation-triangle text-warning ms-1" title="${escapeAttr(varWarnings.join('; '))}"></i>` : ''}
+         </button>`
+      : '';
     return `
       <article class="automation-script-item">
         <div class="automation-script-row"${indent}>
@@ -861,6 +857,7 @@
               </div>
             </div>
           </button>
+          ${varBtn}
           <!-- Historical "Run Now" button removed (move-automation-execution-to-test-run-set).
                Execution is now triggered from the Test Run Set detail page. -->
         </div>
@@ -1203,13 +1200,14 @@
   }
 
   function showTeamBadge() {
+    if (window.TeamNav) { window.TeamNav.refresh(); return; }
     const team = window.AppUtils && window.AppUtils.getCurrentTeam ? window.AppUtils.getCurrentTeam() : null;
     if (!team || !team.name) return;
-    const badge = document.getElementById('team-name-badge');
+    const wrapper = document.getElementById('team-nav-badge-wrapper');
     const text = document.getElementById('team-name-text');
-    if (badge && text) {
+    if (wrapper && text) {
       text.textContent = team.name;
-      badge.classList.remove('d-none');
+      wrapper.classList.remove('d-none');
     }
   }
 

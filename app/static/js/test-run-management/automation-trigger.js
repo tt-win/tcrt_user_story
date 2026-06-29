@@ -113,16 +113,26 @@
     const btn = options.button || document.getElementById('setDetailRunAutomationBtn');
     if (btn) btn.disabled = true;
     try {
+      // Environment selector (a dropdown button) lives in the set detail
+      // automation actions row; the chosen value is on its data-env-value.
+      // "" → omit (team default applies server-side).
+      const envSelect = document.getElementById('setDetailEnvironmentSelector');
+      const environment = envSelect && envSelect.dataset.envValue ? envSelect.dataset.envValue : null;
+      const body = single ? { suite_id: suiteIds[0] } : {};
+      if (environment) body.environment = environment;
+
       const response = await window.AuthClient.fetch(
         `/api/teams/${teamId}/test-run-sets/${_currentSetId}/run-automation`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(single ? { suite_id: suiteIds[0] } : {}),
+          body: JSON.stringify(body),
         }
       );
       if (!response.ok) {
         const payload = await response.json().catch(() => ({ detail: null }));
+        // Surface the two structured environment errors with clear guidance.
+        if (handleEnvironmentError(response.status, payload)) return;
         throw new Error(errorMessageFromPayload(payload, 'Trigger 失敗'));
       }
       const result = await response.json();
@@ -150,6 +160,47 @@
       updateButtonState();
       if (options.button) options.button.disabled = false;
     }
+  }
+
+  // Handle the structured 422 environment errors from run-automation:
+  //   ENVIRONMENT_REQUIRED   → no environment chosen but the team requires one
+  //   ENVIRONMENT_INCOMPLETE → chosen env is missing required vars per script
+  // Returns true when the error was handled (caller should stop).
+  function handleEnvironmentError(status, payload) {
+    if (status !== 422) return false;
+    const detail = payload && payload.detail;
+    if (!detail || typeof detail !== 'object') return false;
+    const code = detail.code;
+
+    if (code === 'ENVIRONMENT_REQUIRED') {
+      const msg = (window.i18n && window.i18n.t)
+        ? window.i18n.t('testRun.sets.detail.runAutomationEnvRequired')
+        : 'Select an environment before running automation.';
+      showToast('error', detail.message ? `${msg} (${detail.message})` : msg);
+      const selector = document.getElementById('setDetailEnvironmentSelector');
+      if (selector && typeof selector.focus === 'function') selector.focus();
+      return true;
+    }
+
+    if (code === 'ENVIRONMENT_INCOMPLETE') {
+      const intro = (window.i18n && window.i18n.t)
+        ? window.i18n.t('testRun.sets.detail.runAutomationEnvIncomplete')
+        : 'The selected environment is missing required variables for some scripts. Open the Script view to configure them.';
+      const missing = (detail.missing && typeof detail.missing === 'object') ? detail.missing : {};
+      const lines = Object.keys(missing).map((refPath) => {
+        const keys = Array.isArray(missing[refPath]) ? missing[refPath].join(', ') : String(missing[refPath]);
+        const tmpl = (window.i18n && window.i18n.t)
+          ? window.i18n.t('testRun.sets.detail.runAutomationEnvIncompleteScript', { ref: refPath, keys })
+          : `${refPath}: missing ${keys}`;
+        // i18n template may not interpolate (depends on helper); fall back to manual.
+        return (tmpl && tmpl.indexOf('{ref}') === -1) ? tmpl : `${refPath}: ${keys}`;
+      });
+      const message = lines.length ? `${intro}\n${lines.join('\n')}` : intro;
+      showToast('error', message);
+      return true;
+    }
+
+    return false;
   }
 
   function resolveTeamId() {

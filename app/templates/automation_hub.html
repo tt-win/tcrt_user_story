@@ -11,7 +11,9 @@
 <span data-i18n="automationHub.title">Automation Hub</span>
 {% endblock %}
 
-{% block page_subtitle_text %}{% endblock %}
+{% block page_subtitle_text %}
+<span data-i18n="automationHub.subtitle">Manage suites, runs, coverage, and provider settings</span>
+{% endblock %}
 
 {% block page_specific_actions %}
 <div class="automation-toolbar">
@@ -32,8 +34,8 @@
     <i class="fas fa-chart-line me-1"></i><span data-i18n="automationHub.dashboard.openDashboard">Team Dashboard</span>
   </a>
   <span class="automation-toolbar-divider"></span>
-  <a href="/team-management" class="btn btn-secondary btn-sm">
-    <i class="fas fa-users me-1"></i><span data-i18n="navigation.teamManagement">Team Management</span>
+  <a href="/" class="btn btn-secondary btn-sm">
+    <i class="fas fa-home me-1"></i><span data-i18n="navigation.backToHome">Home</span>
   </a>
 </div>
 {% endblock %}
@@ -297,31 +299,28 @@
             </div>
           </div>
 
-          <div class="card automation-panel">
-            <div class="card-header">
-              <div class="fw-semibold" data-i18n="automationHub.settings.systemTitle">System</div>
+          <div class="card automation-panel automation-panel-wide">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+              <div class="fw-semibold">
+                <i class="fas fa-layer-group text-primary me-1"></i><span data-i18n="automationHub.environments.cardTitle">Automation Environments</span>
+                <span class="badge bg-light text-dark border ms-1" id="environmentCount">0</span>
+              </div>
+              <button type="button" class="btn btn-primary btn-sm" id="environmentAddBtn">
+                <i class="fas fa-plus me-1"></i><span data-i18n="automationHub.environments.addEnvironment">Add Environment</span>
+              </button>
             </div>
             <div class="card-body">
-              <ul class="automation-settings-system list-unstyled mb-0">
-                <li class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
-                  <div>
-                    <i class="fas fa-key text-muted me-2"></i>
-                    <span data-i18n="automationHub.settings.encryptionKey">Provider encryption key</span>
-                  </div>
-                  <span id="settingsEncryptionStatus" class="badge bg-secondary" data-i18n="common.notSet">Not set</span>
-                </li>
-                <li class="d-flex justify-content-between align-items-center gap-2 flex-wrap mt-2">
-                  <div>
-                    <i class="fas fa-chart-line text-muted me-2"></i>
-                    <span data-i18n="automationHub.settings.resultDashboard">Result dashboard</span>
-                  </div>
-                  <a id="settingsDashboardLink" href="#" target="_blank" rel="noopener" class="btn btn-link btn-sm py-0 px-2 d-none">
-                    <span data-i18n="automationHub.dashboard.openDashboard">Team Dashboard</span>
-                    <i class="fas fa-external-link-alt ms-1"></i>
-                  </a>
-                  <span id="settingsDashboardEmpty" class="text-muted small d-none" data-i18n="automationHub.settings.dashboardNotConfigured">Configure a Result provider to enable.</span>
-                </li>
-              </ul>
+              <div class="text-muted small mb-3">
+                <i class="fas fa-lock me-1"></i><span data-i18n="automationHub.environments.cardHint">Shared variables (URLs, credentials) reused across automation scripts. Values are stored encrypted in TCRT and are never committed to git.</span>
+              </div>
+              <div id="environmentEmpty" class="text-center py-3 d-none">
+                <i class="fas fa-layer-group text-muted automation-state-icon"></i>
+                <div class="text-muted small mt-2 mb-2" data-i18n="automationHub.environments.empty">No environments yet. Add one to share variables across your automation scripts.</div>
+                <button type="button" class="btn btn-primary btn-sm" id="environmentEmptyAddBtn">
+                  <i class="fas fa-plus me-1"></i><span data-i18n="automationHub.environments.addEnvironment">Add Environment</span>
+                </button>
+              </div>
+              <div id="environmentList" class="automation-env-list d-none"></div>
             </div>
           </div>
         </div>
@@ -372,10 +371,224 @@
     </div>
   </div>
 </div>
+
+<!-- Automation Environment: manage variables -->
+<div class="modal fade" id="environmentVarsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="fas fa-layer-group text-primary me-2"></i><span id="environmentVarsModalTitle">Environment</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="environmentVarsBody"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Automation Environment: add / edit -->
+<div class="modal fade" id="environmentModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="environmentModalTitle" data-i18n="automationHub.environments.createTitle">Add Environment</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="environmentForm" onsubmit="return false;">
+          <input type="hidden" id="environmentId">
+          <div class="mb-3">
+            <label class="form-label" for="environmentName" data-i18n="automationHub.environments.name">Name</label>
+            <input type="text" class="form-control" id="environmentName" maxlength="60" data-i18n-placeholder="automationHub.environments.namePlaceholder" placeholder="e.g. staging">
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="environmentIsDefault">
+            <label class="form-check-label" for="environmentIsDefault" data-i18n="automationHub.environments.isDefault">Use as team default</label>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="environmentSaveBtn">
+          <i class="fas fa-save me-1"></i><span data-i18n="common.save">Save</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Automation Environment: add / edit shared variable -->
+<div class="modal fade" id="environmentParamModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="environmentParamModalTitle" data-i18n="automationHub.environments.addParam">Add variable</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="environmentParamForm" onsubmit="return false;">
+          <input type="hidden" id="environmentParamEnvId">
+          <input type="hidden" id="environmentParamOriginalKey">
+          <div class="mb-3">
+            <label class="form-label" for="environmentParamKey" data-i18n="automationHub.environments.paramKey">Key</label>
+            <input type="text" class="form-control font-monospace" id="environmentParamKey" maxlength="200" list="environmentParamKeyDatalist" autocomplete="off" data-i18n-placeholder="automationHub.environments.paramKeyPlaceholder" placeholder="e.g. BASE_URL">
+            <datalist id="environmentParamKeyDatalist"></datalist>
+            <div class="form-text text-muted d-none" id="environmentParamDeclaredHint"></div>
+          </div>
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="environmentParamIsSecret">
+            <label class="form-check-label" for="environmentParamIsSecret" data-i18n="automationHub.environments.paramIsSecret">Secret</label>
+            <div class="form-text text-muted" data-i18n="automationHub.environments.paramIsSecretHint">Secret values are masked and never shown again after saving.</div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label" for="environmentParamValue" data-i18n="automationHub.environments.paramValue">Value</label>
+            <input type="text" class="form-control" id="environmentParamValue" autocomplete="off">
+            <div class="form-text text-muted d-none" id="environmentParamValueHint" data-i18n="automationHub.environments.paramValueSecretKeep">Leave blank to keep the stored secret value.</div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="environmentParamSaveBtn">
+          <i class="fas fa-save me-1"></i><span data-i18n="common.save">Save</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Automation Environment: import YAML -->
+<div class="modal fade" id="environmentImportModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <span data-i18n="automationHub.environments.importTitle">Import variables from YAML</span>
+          <span class="text-muted font-monospace small ms-1" id="environmentImportEnvName"></span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="environmentImportEnvId">
+        <div class="text-muted small mb-2" data-i18n="automationHub.environments.importHint">Paste YAML key/value pairs. Existing keys are overwritten; secrets keep their stored value when the YAML value is masked (***).</div>
+        <textarea class="form-control font-monospace" id="environmentImportText" rows="10" data-i18n-placeholder="automationHub.environments.importPlaceholder"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="environmentImportConfirmBtn">
+          <i class="fas fa-file-import me-1"></i><span data-i18n="automationHub.environments.import">Import YAML</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Automation Environment: export YAML -->
+<div class="modal fade" id="environmentExportModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <span data-i18n="automationHub.environments.exportTitle">Export variables as YAML</span>
+          <span class="text-muted font-monospace small ms-1" id="environmentExportEnvName"></span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-muted small mb-2" data-i18n="automationHub.environments.exportHint">Secret values are masked as *** in the export.</div>
+        <textarea class="form-control font-monospace" id="environmentExportText" rows="10" readonly></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">Close</button>
+        <button type="button" class="btn btn-primary" id="environmentExportCopyBtn">
+          <i class="fas fa-copy me-1"></i><span data-i18n="automationHub.environments.copy">Copy</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Per-script variable matrix ("Configure variables") -->
+<div class="modal fade" id="scriptVarsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="fas fa-sliders-h text-primary me-1"></i><span data-i18n="automationHub.environments.varsModalTitle">Configure script variables</span>
+          <span class="text-muted font-monospace small ms-1" id="scriptVarsRefPath"></span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="scriptVarsLoading" class="text-center py-4 d-none">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden" data-i18n="common.loading">Loading...</span>
+          </div>
+        </div>
+        <div id="scriptVarsContent" class="d-none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Per-script variable cell editor (set / clear an override) -->
+<div class="modal fade" id="scriptVarsCellModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" data-i18n="automationHub.environments.varsCellModalTitle">Set variable value</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="scriptVarsCellEnvId">
+        <input type="hidden" id="scriptVarsCellVarName">
+        <input type="hidden" id="scriptVarsCellIsSecret">
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <div class="text-muted small" data-i18n="automationHub.environments.varsCellEnvironment">Environment</div>
+            <div class="fw-semibold" id="scriptVarsCellEnvLabel"></div>
+          </div>
+          <div class="col-6">
+            <div class="text-muted small" data-i18n="automationHub.environments.varsCellVariable">Variable</div>
+            <div class="fw-semibold font-monospace" id="scriptVarsCellVarLabel"></div>
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label" for="scriptVarsCellValue" data-i18n="automationHub.environments.varsCellValue">Value</label>
+          <input type="text" class="form-control" id="scriptVarsCellValue" autocomplete="off">
+          <div class="form-text text-muted d-none" id="scriptVarsCellValueHint" data-i18n="automationHub.environments.varsCellValueSecretKeep">Leave blank to keep the stored secret value.</div>
+        </div>
+        <div class="text-muted small">
+          <i class="fas fa-info-circle me-1"></i><span data-i18n="automationHub.environments.varsCellOverrideNote">Saving creates a per-script override for this environment.</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-danger me-auto d-none" id="scriptVarsCellClearBtn">
+          <i class="fas fa-undo me-1"></i><span data-i18n="automationHub.environments.varsCellClear">Clear override</span>
+        </button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="scriptVarsCellSaveBtn">
+          <i class="fas fa-save me-1"></i><span data-i18n="common.save">Save</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="{{ asset_url('js/automation-hub/suites/main.js') }}"></script>
+<script src="{{ asset_url('js/automation-hub/environments/settings.js') }}"></script>
+<script src="{{ asset_url('js/automation-hub/environments/script-vars.js') }}"></script>
 <script src="{{ asset_url('js/automation-hub/coverage/main.js') }}"></script>
 {% endblock %}

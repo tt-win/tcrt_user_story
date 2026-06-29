@@ -19,35 +19,35 @@
 
 {% block page_specific_actions %}
 <div class="d-flex gap-2">
-    <button type="button" class="btn btn-success" id="startBtn" style="display: none;">
-        <i class="fas fa-play me-2"></i><span data-i18n="testRun.startExecution">開始執行</span>
+    <button type="button" class="btn btn-success btn-sm" id="startBtn" style="display: none;">
+        <i class="fas fa-play me-1"></i><span data-i18n="testRun.startExecution">開始執行</span>
     </button>
-    <button type="button" class="btn btn-warning" id="completeBtn" style="display: none;">
-        <i class="fas fa-stop me-2"></i><span data-i18n="testRun.completeExecution">結束執行</span>
+    <button type="button" class="btn btn-warning btn-sm" id="completeBtn" style="display: none;">
+        <i class="fas fa-stop me-1"></i><span data-i18n="testRun.completeExecution">結束執行</span>
     </button>
-    <button type="button" class="btn btn-info" id="restartBtn" style="display: none;">
-        <i class="fas fa-redo me-2"></i><span data-i18n="testRun.restartExecution">重新執行</span>
+    <button type="button" class="btn btn-info btn-sm" id="restartBtn" style="display: none;">
+        <i class="fas fa-redo me-1"></i><span data-i18n="testRun.restartExecution">重新執行</span>
     </button>
     <div class="ms-auto d-flex gap-2">
-        <button type="button" class="btn btn-primary" id="exportBtn">
-            <i class="fas fa-chart-pie me-2"></i><span data-i18n="testRun.chartsReports">Charts & Reports</span>
+        <button type="button" class="btn btn-info btn-sm" id="exportBtn">
+            <i class="fas fa-chart-pie me-1"></i><span data-i18n="testRun.chartsReports">Charts & Reports</span>
         </button>
-        <button type="button" class="btn btn-secondary" id="refreshBtn">
-            <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
+        <button type="button" class="btn btn-secondary btn-sm" id="refreshBtn">
+            <i class="fas fa-sync-alt me-1"></i><span data-i18n="common.refresh">重新整理</span>
         </button>
         <div class="btn-group" role="group" id="jumpToTestRunGroup" style="display: none;">
-            <button type="button" class="btn btn-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="fas fa-arrow-right me-2"></i><span data-i18n="common.jumpTo">跳至</span>
+            <button type="button" class="btn btn-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fas fa-arrow-right me-1"></i><span data-i18n="common.jumpTo">跳至</span>
             </button>
             <ul class="dropdown-menu dropdown-menu-end" id="jumpToTestRunDropdown">
                 <!-- 其他 Test Runs 會在此動態列出 -->
             </ul>
         </div>
-        <a href="/test-run-management" class="btn btn-secondary">
-            <i class="fas fa-arrow-left me-2"></i><span data-i18n="navigation.backToManagement">回到管理</span>
+        <a href="/test-run-management" class="btn btn-secondary btn-sm">
+            <i class="fas fa-arrow-left me-1"></i><span data-i18n="navigation.backToManagement">回到管理</span>
         </a>
-        <a href="/" class="btn btn-secondary">
-            <i class="fas fa-home me-2"></i><span data-i18n="navigation.backToHome">首頁</span>
+        <a href="/" class="btn btn-secondary btn-sm">
+            <i class="fas fa-home me-1"></i><span data-i18n="navigation.backToHome">首頁</span>
         </a>
     </div>
 </div>

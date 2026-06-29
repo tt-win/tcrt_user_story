@@ -417,6 +417,72 @@ async def test_trigger_group_run_creates_suite_level_run(automation_script_group
 
 
 @pytest.mark.asyncio
+async def test_trigger_group_run_injects_env_bundle_and_masks_inputs(
+    automation_script_group_db, monkeypatch
+):
+    """A suite whose scripts declare TCRT_VARS, triggered with an environment,
+    injects a decrypted namespaced TCRT_ENV_BUNDLE into the CI inputs, records
+    the environment NAME on the run, and masks the bundle in stored inputs_json."""
+    import base64 as _b64
+    import secrets as _secrets
+
+    from app.config import get_settings
+    from app.models.automation_environment import EnvParamInput
+    from app.services.automation.environment_service import EnvironmentService
+
+    monkeypatch.setattr(
+        get_settings().automation_provider,
+        "encryption_key",
+        _b64.b64encode(_secrets.token_bytes(32)).decode(),
+    )
+    ids = automation_script_group_db["ids"]
+    fake_ci = FakeCIProvider()
+
+    async with automation_script_group_db["async_sessionmaker"]() as session:
+        env_svc = EnvironmentService(session)
+        await env_svc.create_environment(
+            team_id=ids["team_id"], name="sit", is_default=True,
+            params=[
+                EnvParamInput(key="BASE_URL", value="https://sit", is_secret=False),
+                EnvParamInput(key="API_TOKEN", value="tok_secret", is_secret=True),
+            ],
+            actor="1",
+        )
+        script_a = (
+            await session.execute(
+                select(AutomationScript).where(AutomationScript.id == ids["script_a_id"])
+            )
+        ).scalar_one()
+        script_a.declared_vars_json = json.dumps([
+            {"name": "BASE_URL", "secret": False, "required": True},
+            {"name": "API_TOKEN", "secret": True, "required": True},
+        ])
+        await session.flush()
+
+        service = AutomationScriptGroupService(session)
+        group = await service.create_group(
+            team_id=ids["team_id"], name="Env Suite", description=None,
+            script_ids=[ids["script_a_id"]], ci_provider=fake_ci,
+        )
+        run = await service.trigger_group_run(
+            team_id=ids["team_id"], group_id=group.id, actor="1",
+            environment="sit", ci_provider=fake_ci,
+        )
+        persisted = (
+            await session.execute(select(AutomationRun).where(AutomationRun.id == run.id))
+        ).scalar_one()
+
+    # CI inputs carry the decrypted, per-script-namespaced bundle.
+    injected = json.loads(fake_ci.trigger_calls[-1][2]["TCRT_ENV_BUNDLE"])
+    assert injected == {
+        "tests/test_login.py": {"BASE_URL": "https://sit", "API_TOKEN": "tok_secret"}
+    }
+    # Run records the environment NAME only; stored inputs_json masks the bundle.
+    assert persisted.environment == "sit"
+    assert json.loads(persisted.inputs_json)["TCRT_ENV_BUNDLE"] == "***"
+
+
+@pytest.mark.asyncio
 async def test_update_group_rename_reclaims_allure_and_warns(automation_script_group_db, monkeypatch):
     """Renaming a suite strands its Allure project (id embeds the name slug);
     update_group must reclaim it and surface a user-facing warning."""

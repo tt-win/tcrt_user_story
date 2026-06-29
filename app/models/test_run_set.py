@@ -37,6 +37,15 @@ class TestRunSetBase(BaseModel):
             "See move-automation-execution-to-test-run-set."
         ),
     )
+    default_automation_environment: Optional[str] = Field(
+        default=None,
+        max_length=60,
+        description=(
+            "預設 automation 環境名（對應 team 的 automation_environments.name）；"
+            "觸發 run-automation 時預選。None 表示無預設。"
+            "See manage-automation-environment-configs."
+        ),
+    )
 
     @validator("name")
     def validate_name(cls, value: str) -> str:
@@ -143,6 +152,11 @@ class TestRunSetUpdate(BaseModel):
         default=None,
         description="Automation Suites（automation_script_groups.id）to associate",
     )
+    default_automation_environment: Optional[str] = Field(
+        default=None,
+        max_length=60,
+        description="預設 automation 環境名；送空字串清除、None 表示不變更",
+    )
 
     @validator("name")
     def validate_name(cls, value: Optional[str]) -> Optional[str]:
@@ -176,6 +190,10 @@ class TestRunSet(BaseModel):
     automation_suite_ids: List[int] = Field(
         default_factory=list,
         description="Automation Suites associated with this set",
+    )
+    default_automation_environment: Optional[str] = Field(
+        default=None,
+        description="預設 automation 環境名（None 表示無預設）",
     )
     created_at: datetime = Field(..., description="建立時間")
     updated_at: datetime = Field(..., description="更新時間")

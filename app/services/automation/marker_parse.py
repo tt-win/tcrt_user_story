@@ -190,3 +190,107 @@ def _is_pytest_tcrt_call(node: Any) -> bool:
 def _extract_test_metadata(ref_path: str, content: str) -> list[str]:
     entries, _ = _extract_test_entries(ref_path, content)
     return sorted({entry.name for entry in entries})
+
+
+# --- Per-script declared variables (module-level TCRT_VARS) ---
+
+_VAR_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _parse_var_dict(
+    node: ast.Dict, line: int, warnings: list[dict[str, Any]]
+) -> tuple[str, dict[str, Any]] | None:
+    """Parse a {name, secret?, required?, description?} dict literal element."""
+    data: dict[str, Any] = {}
+    for key_node, val_node in zip(node.keys, node.values):
+        if not (isinstance(key_node, ast.Constant) and isinstance(key_node.value, str)):
+            warnings.append({"type": "non_literal_var", "line": line})
+            return None
+        if not isinstance(val_node, ast.Constant):
+            warnings.append({"type": "non_literal_var", "line": line})
+            return None
+        data[key_node.value] = val_node.value
+    name = data.get("name")
+    if not isinstance(name, str):
+        warnings.append({"type": "invalid_var_name", "line": line, "name": str(name)})
+        return None
+    spec = {
+        "secret": bool(data.get("secret", False)),
+        "required": bool(data.get("required", True)),
+        "description": data["description"] if isinstance(data.get("description"), str) else None,
+    }
+    return name, spec
+
+
+def _extract_declared_vars(
+    content: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Discover a script's declared variables from a module-level ``TCRT_VARS``.
+
+    ``TCRT_VARS`` is a list/tuple whose elements are either string literals
+    (name only ⇒ secret=False, required=True) or dict literals
+    ``{name, secret?, required?, description?}``. Names only — no values.
+
+    Python-only, fail-open: a non-literal ``TCRT_VARS`` or bad element flows
+    into warnings (``non_literal_var`` / ``invalid_var_name``) and is skipped;
+    never raises. Returns ``(declared, warnings)``.
+    """
+    warnings: list[dict[str, Any]] = []
+    try:
+        tree = ast.parse(content)
+    except SyntaxError as exc:
+        warnings.append(
+            {
+                "type": "parse_error",
+                "line": getattr(exc, "lineno", 0) or 0,
+                "detail": "python_syntax_error",
+            }
+        )
+        return [], warnings
+
+    value_node: Any = None
+    decl_line = 0
+    for node in tree.body:  # module-level only
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+            candidate = node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            targets = [node.target]
+            candidate = node.value
+        else:
+            continue
+        if any(isinstance(t, ast.Name) and t.id == "TCRT_VARS" for t in targets):
+            value_node = candidate
+            decl_line = node.lineno
+            break
+
+    if value_node is None:
+        return [], warnings
+
+    if not isinstance(value_node, (ast.List, ast.Tuple)):
+        warnings.append({"type": "non_literal_var", "line": decl_line})
+        return [], warnings
+
+    declared: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for elt in value_node.elts:
+        line = getattr(elt, "lineno", decl_line)
+        if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+            name = elt.value
+            spec = {"secret": False, "required": True, "description": None}
+        elif isinstance(elt, ast.Dict):
+            parsed = _parse_var_dict(elt, line, warnings)
+            if parsed is None:
+                continue
+            name, spec = parsed
+        else:
+            warnings.append({"type": "non_literal_var", "line": line})
+            continue
+        if not _VAR_NAME_PATTERN.match(name):
+            warnings.append({"type": "invalid_var_name", "line": line, "name": name})
+            continue
+        if name in seen:
+            continue
+        seen.add(name)
+        declared.append({"name": name, **spec})
+    return declared, warnings

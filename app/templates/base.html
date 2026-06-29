@@ -30,11 +30,14 @@
                 {% block page_title %}
                 <div class="d-flex align-items-center gap-2">
                     <h1 class="h5 mb-0">{% block page_title_text %}頁面標題{% endblock %}</h1>
-                    <!-- 團隊名稱標籤 -->
-                    <span id="team-name-badge" class="badge bg-primary d-none" style="font-size: 0.75rem;">
-                        <i class="fas fa-users me-1"></i>
-                        <span id="team-name-text"></span>
-                    </span>
+                    <!-- 團隊名稱標籤（可點擊，展開 team-scoped 頁面導覽） -->
+                    <div id="team-nav-badge-wrapper" class="dropdown d-none">
+                        <span id="team-name-badge" class="badge bg-primary dropdown-toggle" style="font-size: 0.75rem; cursor: pointer;" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-users me-1"></i>
+                            <span id="team-name-text"></span>
+                        </span>
+                        <ul id="team-nav-dropdown-menu" class="dropdown-menu dropdown-menu-start shadow-sm" style="min-width: 180px;"></ul>
+                    </div>
                 </div>
                 {% endblock %}
                 {% block page_subtitle %}
@@ -135,6 +138,8 @@
     <script src="{{ asset_url('js/app.js') }}"></script>
     <script src="{{ asset_url('js/trcache.js') }}"></script>
     <script src="{{ asset_url('js/version-checker.js') }}"></script>
+    <script src="{{ asset_url('js/team-nav-config.js') }}"></script>
+    <script src="{{ asset_url('js/team-nav.js') }}"></script>
     {% block scripts %}{% endblock %}
 
     <!-- Language Switcher Script -->

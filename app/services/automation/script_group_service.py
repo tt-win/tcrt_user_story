@@ -11,6 +11,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.database_models import (
+    AutomationEnvironment,
     AutomationProviderSlot,
     AutomationRun,
     AutomationRunStatus,
@@ -52,6 +53,22 @@ class AutomationScriptGroupCIJobMissingError(AutomationScriptGroupServiceError):
 
 class AutomationScriptGroupCIApiError(AutomationScriptGroupServiceError):
     """Raised when the upstream CI (Jenkins / GH Actions) rejects a request."""
+
+
+class AutomationEnvironmentRequiredError(AutomationScriptGroupServiceError):
+    """Suite scripts declare required variables but no environment could be resolved."""
+
+    def __init__(self, message: str, available: list[str] | None = None) -> None:
+        super().__init__(message)
+        self.available = available or []
+
+
+class AutomationEnvironmentIncompleteError(AutomationScriptGroupServiceError):
+    """Resolved environment is missing required variable values for some scripts."""
+
+    def __init__(self, message: str, missing: dict[str, list[str]] | None = None) -> None:
+        super().__init__(message)
+        self.missing = missing or {}
 
 
 logger = logging.getLogger(__name__)
@@ -491,6 +508,60 @@ class AutomationScriptGroupService:
         scripts_by_path = {script.ref_path: script for script in result.scalars().all()}
         return [scripts_by_path[path] for path in script_paths if path in scripts_by_path]
 
+    async def resolve_env_bundle(
+        self,
+        *,
+        team_id: int,
+        scripts: list[AutomationScript],
+        environment: str | None,
+    ) -> tuple[str | None, dict[str, dict[str, str]] | None]:
+        """Resolve the automation environment for a suite run + build its bundle.
+
+        - If no script declares a *required* variable → ``(None, None)``: env not
+          needed, nothing injected (backward compatible).
+        - Else resolve the environment by ``environment`` name, falling back to
+          the team catalog default. Unresolved → ``AutomationEnvironmentRequiredError``.
+        - Validate required coverage; unmet → ``AutomationEnvironmentIncompleteError``.
+
+        Returns ``(env_name, bundle)`` where ``bundle = {ref_path: {KEY: value}}``
+        (secret values already decrypted, ready to inject into the CI run).
+        """
+        from app.services.automation.environment_service import EnvironmentService
+
+        svc = EnvironmentService(self.session)
+        has_required = any(
+            dv.get("required", True)
+            for script in scripts
+            for dv in svc._declared_vars(script)
+        )
+        if not has_required:
+            return None, None
+
+        envs = (
+            await self.session.execute(
+                select(AutomationEnvironment).where(AutomationEnvironment.team_id == team_id)
+            )
+        ).scalars().all()
+        if environment:
+            env = next((e for e in envs if e.name == environment), None)
+        else:
+            env = next((e for e in envs if e.is_default), None)
+        if env is None:
+            raise AutomationEnvironmentRequiredError(
+                "此 suite 的腳本宣告了必填變數，請先選擇一個已設定的環境",
+                available=[e.name for e in envs],
+            )
+
+        bundle, missing = await svc.resolve_effective_bundle(
+            team_id=team_id, env_id=env.id, scripts=scripts
+        )
+        if missing:
+            raise AutomationEnvironmentIncompleteError(
+                f"環境 {env.name} 缺少必填變數值，請至 Script view 變數設定補齊",
+                missing=missing,
+            )
+        return env.name, (bundle or None)
+
     async def trigger_group_run(
         self,
         *,
@@ -500,6 +571,7 @@ class AutomationScriptGroupService:
         branch: str | None = None,
         runner_label: str | None = None,
         inputs: dict[str, str] | None = None,
+        environment: str | None = None,
         ci_provider: CIProvider | None = None,
         triggered_by: AutomationRunTrigger = AutomationRunTrigger.USER,
         triggered_by_webhook_id: int | None = None,
@@ -523,6 +595,13 @@ class AutomationScriptGroupService:
         resolved_branch = branch or str(provider_config.get("default_branch") or "main")
         resolved_runner_label = runner_label or _default_runner_label(provider_config, group.ci_job_type)
         scripts = await self.load_group_scripts(group=group)
+        # Resolve the automation environment (if the suite's scripts declare
+        # variables) and build the per-script effective-value bundle. Raises
+        # AutomationEnvironment{Required,Incomplete}Error → mapped to 422 by the
+        # API. Returns (None, None) when no env is needed (backward compatible).
+        env_name, env_bundle = await self.resolve_env_bundle(
+            team_id=team_id, scripts=scripts, environment=environment,
+        )
         git_context = await _build_git_context_for_group(
             self.session, scripts, override_branch=resolved_branch
         )
@@ -589,11 +668,20 @@ class AutomationScriptGroupService:
                 run_inputs["git_branch"] = git_context["branch"]
             if git_context.get("token"):
                 run_inputs["git_token"] = git_context["token"]
+        # Inject the selected environment's per-script effective values as a
+        # single namespaced bundle. The CIProvider marshals this as a masked
+        # parameter (see automation-hub-provider-framework).
+        if env_bundle:
+            run_inputs["TCRT_ENV_BUNDLE"] = json.dumps(env_bundle, ensure_ascii=False)
         try:
             external_run = await provider.trigger_run(resolved_job_name, resolved_branch, run_inputs)
         except httpx.HTTPStatusError as exc:
             raise _wrap_ci_http_error(exc, action="trigger suite run on CI") from exc
         now = _utcnow()
+        # Never persist the decrypted env bundle: mask it in the stored inputs.
+        persisted_inputs = dict(run_inputs)
+        if "TCRT_ENV_BUNDLE" in persisted_inputs:
+            persisted_inputs["TCRT_ENV_BUNDLE"] = "***"
         run = AutomationRun(
             team_id=team_id,
             automation_script_id=None,
@@ -609,8 +697,9 @@ class AutomationScriptGroupService:
             tcrt_correlation_id=tcrt_correlation_id,
             workflow_id=resolved_job_name,
             branch=resolved_branch,
-            inputs_json=json.dumps(run_inputs, ensure_ascii=False),
+            inputs_json=json.dumps(persisted_inputs, ensure_ascii=False),
             runner_label=resolved_runner_label,
+            environment=env_name,
             started_at=now,
             created_at=now,
             updated_at=now,
@@ -695,6 +784,7 @@ def automation_run_to_dict(run: AutomationRun) -> dict[str, Any]:
         "branch": run.branch,
         "inputs": _load_json_object(run.inputs_json),
         "runner_label": run.runner_label,
+        "environment": run.environment,
         "report_url": run.report_url,
         "started_at": run.started_at,
         "finished_at": run.finished_at,

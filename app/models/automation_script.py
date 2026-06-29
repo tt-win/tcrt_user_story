@@ -44,6 +44,11 @@ class AutomationScriptResponse(AutomationScriptBase):
     # Per-test entries + tcrt markers, parsed from cached_content on read.
     test_entries: list[dict[str, Any]] = Field(default_factory=list)
     marker_warnings: list[dict[str, Any]] = Field(default_factory=list)
+    # Per-script declared variables (module-level TCRT_VARS) + parse warnings,
+    # parsed from cached_content on read. Drives the Script view "Configure
+    # variables" entry. See manage-automation-environment-configs.
+    declared_vars: list[dict[str, Any]] = Field(default_factory=list)
+    var_warnings: list[dict[str, Any]] = Field(default_factory=list)
     created_by: Optional[str] = None
     updated_by: Optional[str] = None
     created_at: datetime

@@ -80,6 +80,7 @@ class TestRunSetAutomationService:
         set_id: int,
         suite_id: int | None = None,
         actor: str | None = None,
+        environment: str | None = None,
     ) -> dict[str, list[int]]:
         """Trigger automation suites associated with the given Test Run Set.
 
@@ -120,9 +121,26 @@ class TestRunSetAutomationService:
                     f"Automation suite {sid} does not belong to team {team_id}."
                 )
 
+        # Resolve the target environment: explicit request → the set's saved
+        # default. The team-catalog default is the final fallback, resolved per
+        # suite inside `resolve_env_bundle`.
+        environment_name = environment or set_db.default_automation_environment
+
+        group_service = AutomationScriptGroupService(self.session)
+
+        # Pre-validate environment readiness for every suite BEFORE triggering
+        # any — an unresolved / incomplete environment fails fast (raising
+        # AutomationEnvironment{Required,Incomplete}Error) rather than leaving a
+        # partial "some suites triggered" state. Mirrors the cross-team check above.
+        for sid in suite_ids:
+            group = await group_service.get_group(team_id=team_id, group_id=sid)
+            scripts = await group_service.load_group_scripts(group=group)
+            await group_service.resolve_env_bundle(
+                team_id=team_id, scripts=scripts, environment=environment_name,
+            )
+
         # Trigger each suite via the existing group-trigger helper, which
         # handles CI job self-heal + automation_runs write.
-        group_service = AutomationScriptGroupService(self.session)
         triggered_suite_ids: list[int] = []
         run_ids: list[int] = []
         for sid in suite_ids:
@@ -130,6 +148,7 @@ class TestRunSetAutomationService:
                 team_id=team_id,
                 group_id=sid,
                 actor=actor,
+                environment=environment_name,
                 test_run_set_id=set_id,
             )
             await self.session.flush()

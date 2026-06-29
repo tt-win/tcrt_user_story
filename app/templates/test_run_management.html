@@ -19,38 +19,38 @@
     <!-- 狀態過濾按鈕群組 -->
     <div class="btn-group" role="group" aria-label="Status filter buttons">
         <input type="radio" class="btn-check" name="statusFilter" id="filterAll" value="all" checked>
-        <label class="btn btn-secondary" for="filterAll">
+        <label class="btn btn-sm btn-secondary" for="filterAll">
             <i class="fas fa-list me-1"></i><span data-i18n="testRun.filter.all">全部</span>
         </label>
 
         <input type="radio" class="btn-check" name="statusFilter" id="filterDraft" value="draft">
-        <label class="btn btn-warning" for="filterDraft">
+        <label class="btn btn-sm btn-warning" for="filterDraft">
             <i class="fas fa-edit me-1"></i><span data-i18n="testRun.filter.draft">草稿</span>
         </label>
 
         <input type="radio" class="btn-check" name="statusFilter" id="filterActive" value="active">
-        <label class="btn btn-primary" for="filterActive">
+        <label class="btn btn-sm btn-primary" for="filterActive">
             <i class="fas fa-play me-1"></i><span data-i18n="testRun.filter.active">進行中</span>
         </label>
 
         <input type="radio" class="btn-check" name="statusFilter" id="filterCompleted" value="completed">
-        <label class="btn btn-success" for="filterCompleted">
+        <label class="btn btn-sm btn-success" for="filterCompleted">
             <i class="fas fa-check me-1"></i><span data-i18n="testRun.filter.completed">已完成</span>
         </label>
 
         <input type="radio" class="btn-check" name="statusFilter" id="filterArchived" value="archived">
-        <label class="btn btn-secondary" for="filterArchived">
+        <label class="btn btn-sm btn-secondary" for="filterArchived">
             <i class="fas fa-archive me-1"></i><span data-i18n="testRun.filter.archived">已歸檔</span>
         </label>
     </div>
 
     <!-- 其他操作按鈕 -->
     <div class="d-flex gap-2">
-        <button type="button" class="btn btn-secondary" id="refreshBtn">
-            <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
+        <button type="button" class="btn btn-sm btn-secondary" id="refreshBtn">
+            <i class="fas fa-sync-alt me-1"></i><span data-i18n="common.refresh">重新整理</span>
         </button>
-        <a href="/" class="btn btn-secondary">
-            <i class="fas fa-home me-2"></i><span data-i18n="navigation.backToHome">回到首頁</span>
+        <a href="/" class="btn btn-sm btn-secondary">
+            <i class="fas fa-home me-1"></i><span data-i18n="navigation.backToHome">回到首頁</span>
         </a>
     </div>
 </div>
@@ -502,6 +502,14 @@
                         <div id="testRunSetAutomationSuiteList" class="list-group small"></div>
                         <div class="mt-2 d-flex flex-wrap gap-2" id="testRunSetAutomationSuiteSelected"></div>
                     </div>
+
+                    <div class="mb-3" id="testRunSetDefaultEnvironmentSection">
+                        <label for="testRunSetDefaultEnvironment" class="form-label" data-i18n="testRun.sets.form.defaultAutomationEnvironment">Default Automation Environment</label>
+                        <select class="form-select" id="testRunSetDefaultEnvironment">
+                            <option value="" data-i18n="testRun.sets.form.defaultAutomationEnvironmentNone">— default —</option>
+                        </select>
+                        <div class="form-text text-muted" data-i18n="testRun.sets.form.defaultAutomationEnvironmentHint">Preselected when running automation for this set. Leave on "— default —" to use the team default.</div>
+                    </div>
                 </form>
             </div>
             <div class="modal-footer">
@@ -595,6 +603,7 @@
                                 <tr>
                                     <th data-i18n="testRun.sets.detail.automationRunsColSuite">Suite</th>
                                     <th data-i18n="testRun.sets.detail.automationRunsColBranch">Branch</th>
+                                    <th data-i18n="testRun.sets.detail.automationRunsColEnv">Env</th>
                                     <th data-i18n="testRun.sets.detail.automationRunsColStatus">Status</th>
                                     <th data-i18n="testRun.sets.detail.automationRunsColTrigger">Trigger</th>
                                     <th data-i18n="testRun.sets.detail.automationRunsColStarted">Started</th>

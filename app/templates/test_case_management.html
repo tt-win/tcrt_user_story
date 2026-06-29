@@ -16,12 +16,12 @@
 
 {% block page_specific_actions %}
 <div class="d-flex gap-2">
-    <button type="button" class="btn btn-primary" id="addTestCaseBtn" style="display: none;">
-        <i class="fas fa-plus me-2"></i><span data-i18n="testCase.createTestCase">新增測試案例</span>
+    <button type="button" class="btn btn-primary btn-sm" id="addTestCaseBtn" style="display: none;">
+        <i class="fas fa-plus me-1"></i><span data-i18n="testCase.createTestCase">新增測試案例</span>
     </button>
     <div class="btn-group" role="group" id="bulkModeDropdownGroup" style="display: none;">
-        <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-            <i class="fas fa-layer-group me-2"></i><span data-i18n="testCase.bulk.bulkMode">大量模式</span>
+        <button type="button" class="btn btn-info btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fas fa-layer-group me-1"></i><span data-i18n="testCase.bulk.bulkMode">大量模式</span>
         </button>
         <ul class="dropdown-menu">
             <li><a class="dropdown-item" href="#" id="openBulkCreateBtn">
@@ -32,22 +32,22 @@
             </a></li>
         </ul>
     </div>
-    <button type="button" class="btn btn-secondary" id="refreshBtn">
-        <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
+    <button type="button" class="btn btn-secondary btn-sm" id="refreshBtn">
+        <i class="fas fa-sync-alt me-1"></i><span data-i18n="common.refresh">重新整理</span>
     </button>
     <div class="btn-group" role="group" id="jumpToSetGroup" style="display: none;">
-        <button type="button" class="btn btn-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-            <i class="fas fa-arrow-right me-2"></i><span data-i18n="common.jumpTo">跳至</span>
+        <button type="button" class="btn btn-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fas fa-arrow-right me-1"></i><span data-i18n="common.jumpTo">跳至</span>
         </button>
         <ul class="dropdown-menu" id="jumpToSetDropdown">
             <!-- 其他 Test Case Sets 會在此動態列出 -->
         </ul>
     </div>
-    <a href="/test-case-sets" class="btn btn-secondary">
-        <i class="fas fa-arrow-left me-2"></i><span data-i18n="navigation.backToSets">回到 Test Case Sets</span>
+    <a href="/test-case-sets" class="btn btn-secondary btn-sm">
+        <i class="fas fa-arrow-left me-1"></i><span data-i18n="navigation.backToSets">回到 Test Case Sets</span>
     </a>
-    <a href="/" class="btn btn-secondary">
-        <i class="fas fa-home me-2"></i><span data-i18n="navigation.backToHome">回到首頁</span>
+    <a href="/" class="btn btn-secondary btn-sm">
+        <i class="fas fa-home me-1"></i><span data-i18n="navigation.backToHome">回到首頁</span>
     </a>
 </div>
 {% endblock %}

@@ -41,6 +41,7 @@ class ResourceType(str, Enum):
     AUTOMATION_SCRIPT_GROUP = "automation_script_group"
     AUTOMATION_RUN = "automation_run"
     AUTOMATION_WEBHOOK = "automation_webhook"
+    AUTOMATION_ENVIRONMENT = "automation_environment"
 
 
 class AuditSeverity(str, Enum):

@@ -262,15 +262,15 @@ const AppUtils = {
 
     // 顯示團隊名稱標籤
     showTeamNameBadge: function() {
+        if (window.TeamNav) { window.TeamNav.refresh(); return; }
         const team = this.getCurrentTeam();
-        const badge = document.getElementById('team-name-badge');
+        const wrapper = document.getElementById('team-nav-badge-wrapper');
         const text = document.getElementById('team-name-text');
-
-        if (team && badge && text) {
+        if (team && wrapper && text) {
             text.textContent = team.name;
-            badge.classList.remove('d-none');
-        } else if (badge) {
-            badge.classList.add('d-none');
+            wrapper.classList.remove('d-none');
+        } else if (wrapper) {
+            wrapper.classList.add('d-none');
         }
     },
 
@@ -286,9 +286,10 @@ const AppUtils = {
 
     // 隱藏團隊名稱標籤
     hideTeamNameBadge: function() {
-        const badge = document.getElementById('team-name-badge');
-        if (badge) {
-            badge.classList.add('d-none');
+        if (window.TeamNav) { window.TeamNav.refresh(); return; }
+        const wrapper = document.getElementById('team-nav-badge-wrapper');
+        if (wrapper) {
+            wrapper.classList.add('d-none');
         }
     },
 

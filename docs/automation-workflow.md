@@ -80,7 +80,8 @@ Git（存腳本）、CI（跑腳本）、Allure（產報告）串起來。腳本
 3. **整形 + 連結測試案例** — `tcrt-automation-pomify`（AI agent skill）
    - 在支援 skill 的 agent（Claude Code / Cursor…）對腳本下指令「pomify for TCRT」。
    - skill 會：① 重構成 Page Object Model（selector 進 `pages/`）；② 改檔名/目錄
-     符合 Rescan 掃描規則；③ 加上 `@pytest.mark.tcrt(...)` 標記連結手動測試案例。
+     符合 Rescan 掃描規則；③ 加上 `@pytest.mark.tcrt(...)` 標記連結手動測試案例；
+     ④ 把寫死的環境設定正規化成 `TCRT_VARS` 宣告 + settings loader（詳見第 10 節）。
    - 若 agent 掛了 **TCRT MCP**，skill 會用 MCP 即時解析 team / 測試案例 / ticket
      對應的 TC ID（不杜撰）。
 
@@ -108,7 +109,8 @@ repo-root/
 │   ├── ui/         # Playwright sync+pytest  → PYTEST
 │   └── e2e/        # Playwright async        → PLAYWRIGHT_PY_ASYNC
 ├── pages/          # Page Object（被掃描規則排除）
-├── conftest.py     # 註冊 tcrt marker（排除）
+├── conftest.py     # 註冊 tcrt marker + tcrt_env 設定 loader（排除）
+├── .gitignore      # 忽略 tcrt-env.json + 真實 config（值不進 git）
 └── tcrt-automation.yml   # manifest（可選但建議，可覆寫 scan_path）
 ```
 
@@ -216,7 +218,103 @@ repo-root/
 
 ---
 
-## 10. 一頁速查：三個 Provider
+## 10. 環境與變數設定（Environment & variable config）
+
+腳本常常需要**因環境而異**的設定值（Prod / SIT / dev 各一份的 base URL、API
+token…）。TCRT 的做法是：**值統一存在 TCRT，不進 git**；腳本只在原始碼宣告**變數
+名稱**，執行時由 TCRT 把當下環境的值注入進去。
+
+### 端到端流程
+
+```
+① init / pomify 宣告 TCRT_VARS（只有名稱，無值）
+        ▼
+② Automation Hub → Settings → Environments 定義環境 + shared params（共用值）
+        ▼
+③ Scripts tab → Script view → Configure variables 設 per-script override（覆寫值）
+        ▼
+④ Test Run Set 觸發時選環境（沒選 → set 預設 → team catalog 預設）
+        ▼
+⑤ TCRT 組 bundle，以單一遮罩參數 TCRT_ENV_BUNDLE 透過 HTTP POST body 傳給 CI
+        ▼
+⑥ Jenkins suite job 把非空 bundle 寫進 repo/tcrt-env.json（workspace，gitignored）
+        ▼
+⑦ 腳本的 settings loader 依「當前測試檔的 repo 相對路徑」取出對應 namespace，
+   以固定變數名讀值
+```
+
+### ① 宣告 `TCRT_VARS`（原始碼，只有名稱）
+
+`tcrt-automation-init`（搭骨架時）與 `tcrt-automation-pomify`（整形既有腳本時）
+會在測試模組頂層產生 module-level 的 `TCRT_VARS` 常數。它是一個 list，元素可為
+字串（變數名，等同 `secret=False, required=True`）或 dict
+（`{"name", "secret", "required", "description"}`）。變數名須符合
+`^[A-Za-z_][A-Za-z0-9_]*$`，明顯的機密（token / password / key）標 `secret: True`：
+
+```python
+# 只宣告名稱，絕不寫值
+TCRT_VARS = ["BASE_URL", {"name": "API_TOKEN", "secret": True, "required": True}]
+```
+
+> Rescan 時 TCRT smart-scan 會 AST 解析各檔的 `TCRT_VARS`（**fail-open**：非字面值
+> /格式錯 → 警告並略過該檔），把宣告存到該腳本上。沒有 `TCRT_VARS` 的舊腳本不受
+> 影響（向後相容）。pomify/init 也會幫忙把真正的 config 檔（`tcrt-env.json`、
+> `config/*.yaml`、`.env`）加進 `.gitignore`。
+
+### ②③ 在 TCRT 設值（共用 + per-script 覆寫）
+
+值分兩層，**有效值 = per-script override（若有）否則 environment shared param**：
+
+| 層級 | 設定位置 | 範圍 |
+|---|---|---|
+| 環境共用 shared params | Automation Hub → **Settings → Environments** | 該 team 目錄下所有腳本，依環境 |
+| per-script override | Scripts tab → **Script view → Configure variables** | 單一腳本，依環境 |
+
+機密值（`secret: True`）在 TCRT **加密儲存（encrypted at rest）**。所有值都**只**
+存在 TCRT，**絕不 commit 進 git**。
+
+### ④⑤⑥ 觸發、注入、落地
+
+從 **Test Run Set** 觸發 Suite 時選環境（沒選則退回 set 預設、再退回 team catalog
+預設）。TCRT 解析每支腳本的有效值，組出一份**依腳本 `ref_path` 命名空間化**的 bundle：
+
+```json
+{
+  "tests/ui/test_login.py":  { "BASE_URL": "https://sit.example", "API_TOKEN": "…" },
+  "tests/api/test_orders.py": { "BASE_URL": "https://sit.example" }
+}
+```
+
+這份 bundle 以**單一遮罩參數 `TCRT_ENV_BUNDLE`**（Jenkins `PasswordParameter`，於
+log 遮罩）透過 **HTTP POST body** 傳給 CI。Jenkins suite job 把**非空** bundle 寫進
+**`repo/tcrt-env.json`**（workspace，已 gitignored）——**不**把機密 export 進
+shell 環境變數。bundle 為空（沒選環境 / 無變數）時則不寫該檔。
+
+### ⑦ 腳本端讀取（settings loader）
+
+腳本端用一個小型 settings loader（pytest fixture 或 helper）讀 `tcrt-env.json`，
+依**當前測試檔的 repo 相對路徑**選出對應 namespace，再以**固定變數名**取值。兩種
+等價形態，擇一即可（pomify / init 皆會產生）：
+
+```python
+# (a) conftest.py 的 tcrt_env fixture
+def test_login(page, tcrt_env):
+    base_url = tcrt_env["BASE_URL"]          # 固定名稱；值來自 TCRT
+
+# (b) tcrt_env.py helper（適合不吃 fixture 的 async flow）
+from tcrt_env import load_tcrt_env
+cfg = load_tcrt_env(__file__)
+base_url = cfg["BASE_URL"]
+```
+
+沒選環境時 `tcrt-env.json` 不存在，loader 回傳空集合並退回 `os.environ`；沒有
+`TCRT_VARS` 的測試完全不受影響。
+
+> 💡 一句話原則：**名稱在 git，值在 TCRT**。機密在 TCRT 加密儲存，永遠不進 git。
+
+---
+
+## 11. 一頁速查：三個 Provider
 
 | Slot | 類型 | 關鍵設定 | TCRT 角色 |
 |---|---|---|---|
@@ -226,7 +324,7 @@ repo-root/
 
 ---
 
-## 11. 已知陷阱與注意事項
+## 12. 已知陷阱與注意事項
 
 - **Jenkins label 必須是 `built-in`**（僅 Built-In node 的環境），否則 build 卡住不跑。
 - **marker 連結是唯一寫入路徑**：手動建立連結的 API 與 UI 已移除，測試案例覆蓋

@@ -35,6 +35,7 @@ from app.services.automation.linkage_service import AutomationLinkageService
 from app.services.automation.marker_parse import (  # noqa: F401
     MarkerHit,  # re-exported for backward compatibility
     TestEntry,  # re-exported for backward compatibility
+    _extract_declared_vars,
     _extract_test_entries,
 )
 
@@ -335,6 +336,7 @@ class AutomationScriptService:
                         ref_branch=resolved_branch,
                         cached_content=content,
                         cached_content_etag=ref.etag,
+                        declared_vars_json=_declared_vars_json_from_content(content),
                         last_synced_at=now,
                         tags_json="[]",
                         created_by=actor,
@@ -363,6 +365,13 @@ class AutomationScriptService:
             if ref.etag and script.cached_content_etag != ref.etag:
                 script.cached_content_etag = ref.etag
                 changed = True
+            # Refresh declared variables (TCRT_VARS) from cached content. Recompute
+            # whenever content is present so existing rows backfill on next sync.
+            if script.cached_content is not None:
+                next_declared = _declared_vars_json_from_content(script.cached_content)
+                if next_declared != script.declared_vars_json:
+                    script.declared_vars_json = next_declared
+                    changed = True
             script.last_synced_at = now
             script.updated_by = actor
             script.updated_at = now
@@ -791,6 +800,30 @@ class AutomationScriptService:
         return provider
 
 
+def _declared_vars_json_from_content(content: str | None) -> str | None:
+    """Serialize a script's declared TCRT_VARS to JSON for `declared_vars_json`.
+
+    Returns None when there is no content or no TCRT_VARS declaration, so a
+    script without declared variables stores NULL (env feature stays off for it).
+    """
+    if not content:
+        return None
+    declared, _warnings = _extract_declared_vars(content)
+    if not declared:
+        return None
+    return json.dumps(declared, ensure_ascii=False)
+
+
+def _serialize_declared_vars(
+    content: str | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Fresh parse of declared variables for UI serialization (declared + warnings)."""
+    if not content:
+        return [], []
+    declared, warnings = _extract_declared_vars(content)
+    return declared, list(warnings)
+
+
 def _serialize_test_entries(
     ref_path: str | None, content: str | None
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -827,6 +860,7 @@ def script_to_dict(script: AutomationScript) -> dict[str, Any]:
     test_entries, marker_warnings = _serialize_test_entries(
         script.ref_path, script.cached_content
     )
+    declared_vars, var_warnings = _serialize_declared_vars(script.cached_content)
     return {
         "id": script.id,
         "team_id": script.team_id,
@@ -845,6 +879,8 @@ def script_to_dict(script: AutomationScript) -> dict[str, Any]:
         "linked_test_case_count": script.linked_test_case_count,
         "test_entries": test_entries,
         "marker_warnings": marker_warnings,
+        "declared_vars": declared_vars,
+        "var_warnings": var_warnings,
         "created_by": script.created_by,
         "updated_by": script.updated_by,
         "created_at": script.created_at,

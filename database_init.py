@@ -70,6 +70,9 @@ MAIN_REQUIRED_TABLES: List[str] = [
     "automation_scripts",
     "automation_script_groups",
     "automation_script_case_links",
+    "automation_environments",
+    "automation_environment_params",
+    "automation_script_env_vars",
     "automation_runs",
     "automation_webhooks",
     "automation_webhook_deliveries",
@@ -246,15 +249,32 @@ def verify_automation_provider_encryption_key(engine: Engine, logger: Logger) ->
     if inspector is None:
         logger.debug("略過 Automation provider encryption key 檢查：engine 不支援 inspect")
         return True, None
-    if "team_automation_providers" not in {name.lower() for name in inspector.get_table_names()}:
-        return True, None
+    existing = {name.lower() for name in inspector.get_table_names()}
 
+    # The key is required once any encrypted secret exists at rest: provider
+    # credentials, or automation environment/script secret values.
+    needs_key = False
     with engine.connect() as conn:
-        provider_count = conn.execute(
-            text(f"SELECT COUNT(*) FROM {quote_ident(engine, 'team_automation_providers')}")
-        ).scalar()
+        if "team_automation_providers" in existing:
+            provider_count = conn.execute(
+                text(f"SELECT COUNT(*) FROM {quote_ident(engine, 'team_automation_providers')}")
+            ).scalar()
+            if int(provider_count or 0) > 0:
+                needs_key = True
+        for secret_table in ("automation_environment_params", "automation_script_env_vars"):
+            if needs_key:
+                break
+            if secret_table in existing:
+                secret_count = conn.execute(
+                    text(
+                        f"SELECT COUNT(*) FROM {quote_ident(engine, secret_table)} "
+                        "WHERE value_encrypted IS NOT NULL"
+                    )
+                ).scalar()
+                if int(secret_count or 0) > 0:
+                    needs_key = True
 
-    if int(provider_count or 0) == 0:
+    if not needs_key:
         return True, None
 
     from app.config import get_settings
@@ -262,7 +282,7 @@ def verify_automation_provider_encryption_key(engine: Engine, logger: Logger) ->
     key = (get_settings().automation_provider.encryption_key or "").strip()
     if not key:
         message = (
-            "team_automation_providers 已有資料，但缺少 automation provider encryption key。"
+            "team_automation_providers 或 automation 環境設定已有加密資料，但缺少 automation provider encryption key。"
             "請於 config.yaml 設定 automation_provider.encryption_key，"
             "或匯出環境變數 AUTOMATION_PROVIDER_ENCRYPTION_KEY；"
             "金鑰需為 base64-encoded 32 bytes，例如："

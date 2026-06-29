@@ -95,6 +95,15 @@ class AutomationRunReconcileRequest(BaseModel):
 
 class TestRunSetRunAutomationRequest(BaseModel):
     suite_id: Optional[int] = Field(default=None, ge=1)
+    environment: Optional[str] = Field(
+        default=None,
+        max_length=60,
+        description=(
+            "Automation environment name to run against. Overrides the set's "
+            "default_automation_environment; falls back to the team catalog "
+            "default. See manage-automation-environment-configs."
+        ),
+    )
 
 
 async def _run_write(main_boundary: MainAccessBoundary, operation):
@@ -352,6 +361,7 @@ def _build_set_detail(
         archived_at=set_db.archived_at,
         related_tp_tickets=deserialize_tp_tickets(set_db.related_tp_tickets_json),
         automation_suite_ids=suite_ids,
+        default_automation_environment=set_db.default_automation_environment,
         created_at=set_db.created_at,
         updated_at=set_db.updated_at,
         test_runs=test_runs,
@@ -478,6 +488,7 @@ async def create_test_run_set(
             automation_suite_ids_json=_serialize_suite_ids(
                 payload.automation_suite_ids
             ),
+            default_automation_environment=payload.default_automation_environment or None,
         )
 
         sync_db.add(new_set)
@@ -598,6 +609,11 @@ async def update_test_run_set(
                 suite_ids_update
             )
 
+        # default_automation_environment: "" clears the default → store NULL.
+        if "default_automation_environment" in update_data:
+            env_update = update_data.pop("default_automation_environment")
+            test_run_set.default_automation_environment = env_update or None
+
         for key, value in update_data.items():
             setattr(test_run_set, key, value)
 
@@ -624,6 +640,7 @@ async def update_test_run_set(
             automation_suite_ids=_deserialize_suite_ids(
                 test_run_set.automation_suite_ids_json
             ),
+            default_automation_environment=test_run_set.default_automation_environment,
             created_at=test_run_set.created_at,
             updated_at=test_run_set.updated_at,
         )
@@ -672,6 +689,7 @@ async def list_test_run_set_runs(
     set_id: int,
     run_status: AutomationRunStatus | None = Query(default=None, alias="status"),
     branch: str | None = Query(default=None),
+    environment: str | None = Query(default=None),
     cursor: int | None = Query(default=None, ge=1),
     limit: int = Query(default=50, ge=1, le=200),
     current_user: User = Depends(get_current_user),
@@ -695,6 +713,7 @@ async def list_test_run_set_runs(
             test_run_set_id=set_id,
             status=run_status,
             branch=branch,
+            environment=environment,
             cursor=cursor,
             limit=limit,
         )
@@ -859,7 +878,11 @@ async def run_automation_for_test_run_set(
         TestRunSetSuiteNotFoundError,
         TestRunSetSuiteNotInSetError,
     )
-    from app.services.automation.script_group_service import AutomationScriptGroupCIApiError
+    from app.services.automation.script_group_service import (
+        AutomationScriptGroupCIApiError,
+        AutomationEnvironmentIncompleteError,
+        AutomationEnvironmentRequiredError,
+    )
     from app.models.database_models import AutomationRun, AutomationScriptGroup
     from sqlalchemy import select as sa_select
 
@@ -870,6 +893,7 @@ async def run_automation_for_test_run_set(
             set_id=set_id,
             suite_id=payload.suite_id if payload else None,
             actor=str(current_user.id),
+            environment=payload.environment if payload else None,
         )
 
     try:
@@ -893,6 +917,24 @@ async def run_automation_for_test_run_set(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"code": "AUTOMATION_SUITE_NOT_IN_SET", "message": str(exc)},
+        ) from exc
+    except AutomationEnvironmentRequiredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "ENVIRONMENT_REQUIRED",
+                "message": str(exc),
+                "available": exc.available,
+            },
+        ) from exc
+    except AutomationEnvironmentIncompleteError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "ENVIRONMENT_INCOMPLETE",
+                "message": str(exc),
+                "missing": exc.missing,
+            },
         ) from exc
     except AutomationScriptGroupCIApiError as exc:
         raise HTTPException(
@@ -984,6 +1026,7 @@ async def _audit_run_for_test_run_set(
             "branch": run_db.branch,
             "tcrt_correlation_id": run_db.tcrt_correlation_id,
             "trigger_source": "test-run-set",
+            "environment": run_db.environment,
         },
         action_brief=(
             f"Test Run Set triggered automation suite: set_id={run_db.test_run_set_id} "
@@ -1162,6 +1205,7 @@ async def archive_test_run_set(
             automation_suite_ids=_deserialize_suite_ids(
                 test_run_set.automation_suite_ids_json
             ),
+            default_automation_environment=test_run_set.default_automation_environment,
             created_at=test_run_set.created_at,
             updated_at=test_run_set.updated_at,
         )

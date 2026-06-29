@@ -607,6 +607,9 @@ mark.automation-hl {
   display: grid;
   grid-template-columns: 1fr;
   gap: 0.5rem;
+  /* Each card sizes to its own content — a tall card never stretches its
+     row neighbour, so changes in one block don't reflow another. */
+  align-items: start;
 }
 
 .automation-settings-dashboard .automation-panel {
@@ -632,21 +635,12 @@ mark.automation-hl {
   border-right: 0;
 }
 
-.automation-settings-system {
-  font-size: 0.875rem;
-}
-
-.automation-settings-system li + li {
-  padding-top: 0.5rem;
-  border-top: 1px dashed var(--tr-border-subtle, #edf0f2);
-}
-
 @media (min-width: 992px) {
   .automation-settings-dashboard {
     grid-template-columns: 1fr 1fr;
   }
-  /* The third (System) card spans full width on wide viewports */
-  .automation-settings-dashboard .automation-panel:nth-child(3) {
+  /* Cards marked wide span the full grid width on wide viewports */
+  .automation-settings-dashboard .automation-panel.automation-panel-wide {
     grid-column: 1 / -1;
   }
 }

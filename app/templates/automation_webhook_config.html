@@ -14,17 +14,17 @@
 
 {% block page_specific_actions %}
 <div class="d-flex gap-2 flex-wrap">
-  <a href="/automation-hub" class="btn btn-secondary btn-sm" id="automationHubLink">
-    <i class="fas fa-arrow-left me-1"></i><span data-i18n="automationHub.backToHub">Back to Automation Hub</span>
-  </a>
   <button type="button" class="btn btn-primary btn-sm" id="addWebhookBtn">
     <i class="fas fa-plus me-1"></i><span data-i18n="automationHub.webhooks.addWebhook">Add Webhook</span>
   </button>
   <button type="button" class="btn btn-secondary btn-sm" id="refreshWebhooksBtn">
     <i class="fas fa-sync-alt me-1"></i><span data-i18n="common.refresh">Refresh</span>
   </button>
-  <a href="/team-management" class="btn btn-secondary btn-sm">
-    <i class="fas fa-users me-1"></i><span data-i18n="navigation.teamManagement">Team Management</span>
+  <a href="/automation-hub" class="btn btn-secondary btn-sm" id="automationHubLink">
+    <i class="fas fa-arrow-left me-1"></i><span data-i18n="automationHub.backToHub">Back to Automation Hub</span>
+  </a>
+  <a href="/" class="btn btn-secondary btn-sm">
+    <i class="fas fa-home me-1"></i><span data-i18n="navigation.backToHome">Home</span>
   </a>
 </div>
 {% endblock %}

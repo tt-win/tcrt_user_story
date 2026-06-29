@@ -27,6 +27,11 @@
           <description>Optional GitHub PAT for cloning private repos. Masked in console output.</description>
           <defaultValue></defaultValue>
         </hudson.model.PasswordParameterDefinition>
+        <hudson.model.PasswordParameterDefinition>
+          <name>TCRT_ENV_BUNDLE</name>
+          <description>TCRT-injected environment config: JSON namespaced by script path ({"tests/x.py": {"KEY": "value"}}). Masked. Empty when no environment is selected.</description>
+          <defaultValue></defaultValue>
+        </hudson.model.PasswordParameterDefinition>
       </parameterDefinitions>
     </hudson.model.ParametersDefinitionProperty>
   </properties>
@@ -82,6 +87,25 @@ pipeline {
                 pip install --upgrade pip
                 pip install pytest pytest-playwright allure-pytest
                 playwright install chromium
+                '''
+            }
+        }
+        stage('Env config') {
+            steps {
+                // Materialize the TCRT-injected environment bundle into the
+                // workspace as repo/tcrt-env.json for the test's settings loader
+                // to read by its declared variable names. `set +x` so secret
+                // values aren't echoed; Jenkins also masks TCRT_ENV_BUNDLE
+                // (PasswordParameter). Skipped when empty (no environment
+                // selected) so non-env runs behave exactly as before. We do NOT
+                // export values into the shell env (avoids set -x / child leaks).
+                sh '''
+                set +x
+                if [ -n "${TCRT_ENV_BUNDLE}" ]; then
+                    printf '%s' "${TCRT_ENV_BUNDLE}" > repo/tcrt-env.json
+                    echo "Wrote repo/tcrt-env.json (TCRT environment config)."
+                fi
+                set -x
                 '''
             }
         }

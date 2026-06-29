@@ -35,6 +35,7 @@ class AutomationRunResponse(BaseModel):
     branch: str
     inputs: dict[str, Any] = Field(default_factory=dict)
     runner_label: Optional[str] = None
+    environment: Optional[str] = None
     report_url: Optional[str] = None
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None

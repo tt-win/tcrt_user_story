@@ -394,13 +394,14 @@
   }
 
   function showTeamBadge() {
+    if (window.TeamNav) { window.TeamNav.refresh(); return; }
     const team = window.AppUtils && window.AppUtils.getCurrentTeam ? window.AppUtils.getCurrentTeam() : null;
     if (!team || !team.name) return;
-    const badge = document.getElementById('team-name-badge');
+    const wrapper = document.getElementById('team-nav-badge-wrapper');
     const text = document.getElementById('team-name-text');
-    if (badge && text) {
+    if (wrapper && text) {
       text.textContent = team.name;
-      badge.classList.remove('d-none');
+      wrapper.classList.remove('d-none');
     }
   }
 

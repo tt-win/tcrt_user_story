@@ -230,11 +230,20 @@ class JenkinsCIProvider:
         if self.config.auth_method == "trigger_token" and self.credentials.job_token:
             params["token"] = self.credentials.job_token
 
+        # Secret build params (GIT_TOKEN, TCRT_ENV_BUNDLE) go in the POST body,
+        # never the URL query string, so they don't leak into proxy / request
+        # logs. Jenkins buildWithParameters reads params from query and body alike.
+        body_params: dict[str, str] = {}
+        for secret_key in ("GIT_TOKEN", "TCRT_ENV_BUNDLE"):
+            if secret_key in params:
+                body_params[secret_key] = params.pop(secret_key)
+
         response = await self._request(
             "POST",
             f"/job/{_quote_job(job_name)}/buildWithParameters",
             write=True,
             params=params,
+            data=body_params or None,
         )
         queue_id = _extract_queue_id(response.headers.get("Location", ""))
         return ExternalRunRef(

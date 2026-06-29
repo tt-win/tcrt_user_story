@@ -91,6 +91,7 @@ class AutomationRunService:
         group_id: int | None = None,
         test_run_set_id: int | None = None,
         triggered_by_webhook_id: int | None = None,
+        environment: str | None = None,
         cursor: int | None = None,
         limit: int = 50,
     ) -> tuple[list[AutomationRun], int | None, int]:
@@ -100,6 +101,8 @@ class AutomationRunService:
             conditions.append(AutomationRun.status == status)
         if branch:
             conditions.append(AutomationRun.branch == branch.strip())
+        if environment:
+            conditions.append(AutomationRun.environment == environment.strip())
         if triggered_by is not None:
             conditions.append(AutomationRun.triggered_by == triggered_by)
         if script_id is not None:
@@ -568,6 +571,7 @@ def automation_run_to_dict(run: AutomationRun) -> dict[str, Any]:
         "branch": run.branch,
         "inputs": _load_json_object(run.inputs_json),
         "runner_label": run.runner_label,
+        "environment": run.environment,
         "report_url": run.report_url,
         "started_at": run.started_at,
         "finished_at": run.finished_at,

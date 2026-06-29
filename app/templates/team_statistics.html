@@ -109,13 +109,13 @@ endblock %} {% block page_title_text %}<span data-i18n="teamStats.pageTitle"
 </button>
 
 <!-- 導航按鈕 -->
-<a href="/" class="btn btn-sm btn-secondary me-2">
-    <i class="fas fa-home me-1"></i>
-    <span data-i18n="navigation.backToHome">首頁</span>
-</a>
-<a href="/team-management" class="btn btn-sm btn-secondary">
+<a href="/team-management" class="btn btn-sm btn-secondary me-2">
     <i class="fas fa-arrow-left me-1"></i>
     <span data-i18n="team.management">團隊管理</span>
+</a>
+<a href="/" class="btn btn-sm btn-secondary">
+    <i class="fas fa-home me-1"></i>
+    <span data-i18n="navigation.backToHome">首頁</span>
 </a>
 {% endblock %} {% block head %}
 <link rel="stylesheet" href="/static/css/team-statistics.css">

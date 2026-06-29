@@ -35,6 +35,10 @@ from .automation_scripts import router as automation_scripts_router
 from .automation_links import router as automation_links_router
 from .automation_script_groups import router as automation_script_groups_router
 from .automation_coverage import router as automation_coverage_router
+from .automation_environments import (
+    router as automation_environments_router,
+    script_env_router as automation_script_env_vars_router,
+)
 from .automation_webhooks import router as automation_webhooks_router
 from .automation_webhooks_public import router as automation_webhooks_public_router
 from .automation_result import router as automation_result_router
@@ -76,6 +80,8 @@ api_router.include_router(automation_scripts_router)  # Automation Hub Script �
 api_router.include_router(automation_links_router)  # Automation Hub Script Link 路由
 api_router.include_router(automation_script_groups_router)  # Automation Hub Suite 路由
 api_router.include_router(automation_coverage_router)  # Automation Hub Coverage 路由
+api_router.include_router(automation_environments_router)  # Automation Hub 環境設定路由
+api_router.include_router(automation_script_env_vars_router)  # Automation Hub per-script 變數覆寫路由
 api_router.include_router(automation_webhooks_router)  # Automation Hub Webhook (admin) 路由
 api_router.include_router(automation_webhooks_public_router)  # Automation Hub Webhook (公開 CI callback)
 api_router.include_router(automation_result_router)  # Automation Hub Result provider 連結（dashboard / report URL）

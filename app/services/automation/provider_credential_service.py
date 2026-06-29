@@ -117,3 +117,41 @@ def encrypted_credentials_fingerprint(encrypted: str | None) -> str | None:
         return None
     fingerprint = envelope.get("fingerprint")
     return fingerprint if isinstance(fingerprint, str) and fingerprint else None
+
+
+# --- Single secret value helpers (automation environment / script env vars) ---
+# These reuse the same AES-256-GCM envelope as provider credentials by wrapping
+# the value as {"value": <str>}. Used by AutomationEnvironmentService so secret
+# parameter values are encrypted at rest and never round-tripped in plaintext.
+
+
+def value_fingerprint(value: str | None) -> str | None:
+    """Short fingerprint for a plaintext secret value, e.g. ``***wxyz``."""
+    if not value:
+        return None
+    suffix = value[-4:] if len(value) >= 4 else value
+    return f"***{suffix}"
+
+
+def encrypt_value(value: str | None) -> str | None:
+    """Encrypt a single secret value into an envelope string (or None if blank)."""
+    if value is None or value == "":
+        return None
+    return encrypt_credentials({"value": value})
+
+
+def decrypt_value(encrypted: str | None) -> str | None:
+    """Decrypt a single secret value envelope back to plaintext (or None)."""
+    if not encrypted:
+        return None
+    data = decrypt_credentials(encrypted)
+    value = data.get("value")
+    return value if isinstance(value, str) else None
+
+
+def encrypted_value_fingerprint(encrypted: str | None) -> str | None:
+    """Fingerprint (``***wxyz``) read from a stored secret value envelope."""
+    fingerprint = encrypted_credentials_fingerprint(encrypted)
+    if fingerprint and fingerprint.startswith("value:"):
+        return fingerprint[len("value:"):]
+    return fingerprint

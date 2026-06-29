@@ -33,6 +33,9 @@ let currentSetTpTickets = [];
 let currentSetAutomationSuiteIds = [];
 let currentSetAutomationSuiteOptions = [];
 let currentSetAutomationSuiteSearch = '';
+// Automation environment catalog for the current team (manage-automation-environment-configs).
+// Cached per detail/form render; option "" sends nothing (team default).
+let currentSetEnvironmentOptions = [];
 let setTpInputInitialized = false;
 let reopenSetDetailAfterForm = false;
 let suppressSetDetailReopen = false;

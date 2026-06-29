@@ -16,13 +16,13 @@
 
 {% block page_specific_actions %}
 <div class="d-flex gap-2">
-    <button type="button" class="btn btn-primary" id="createTeamBtn">
-        <i class="fas fa-plus me-2"></i><span data-i18n="team.createTeam">新增團隊</span>
+    <button type="button" class="btn btn-primary btn-sm" id="createTeamBtn">
+        <i class="fas fa-plus me-1"></i><span data-i18n="team.createTeam">新增團隊</span>
     </button>
     <!-- 匯入工具下拉選單 -->
     <div class="btn-group" role="group" id="importMenuGroup">
-        <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-            <i class="fas fa-file-import me-2"></i><span>匯入工具</span>
+        <button type="button" class="btn btn-info btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fas fa-file-import me-1"></i><span>匯入工具</span>
         </button>
         <ul class="dropdown-menu">
             <li>
@@ -34,8 +34,8 @@
     </div>
     <!-- 數據與記錄下拉選單 -->
     <div class="btn-group" role="group" id="dataMenuGroup">
-        <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-            <i class="fas fa-chart-bar me-2"></i><span data-i18n="dataMenu.title">數據與記錄</span>
+        <button type="button" class="btn btn-info btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fas fa-chart-bar me-1"></i><span data-i18n="dataMenu.title">數據與記錄</span>
         </button>
         <ul class="dropdown-menu">
             <li>
@@ -50,14 +50,14 @@
             </li>
         </ul>
     </div>
-    <button type="button" class="btn btn-primary" id="syncOrgBtn">
-        <i class="fas fa-users me-2"></i><span data-i18n="orgSync.openButton">組織與系統設定</span>
+    <button type="button" class="btn btn-info btn-sm" id="syncOrgBtn">
+        <i class="fas fa-users me-1"></i><span data-i18n="orgSync.openButton">組織與系統設定</span>
     </button>
-    <button type="button" class="btn btn-secondary" id="refreshBtn">
-        <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
+    <button type="button" class="btn btn-secondary btn-sm" id="refreshBtn">
+        <i class="fas fa-sync-alt me-1"></i><span data-i18n="common.refresh">重新整理</span>
     </button>
-    <a href="/" class="btn btn-secondary">
-        <i class="fas fa-home me-2"></i><span data-i18n="navigation.backToHome">回到首頁</span>
+    <a href="/" class="btn btn-secondary btn-sm">
+        <i class="fas fa-home me-1"></i><span data-i18n="navigation.backToHome">回到首頁</span>
     </a>
 </div>
 {% endblock %}

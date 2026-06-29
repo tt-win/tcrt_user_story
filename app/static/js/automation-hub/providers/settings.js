@@ -27,13 +27,17 @@
       return;
     }
 
-    const team = window.AppUtils && window.AppUtils.getCurrentTeam ? window.AppUtils.getCurrentTeam() : null;
-    if (team && team.name) {
-      const badge = document.getElementById('team-name-badge');
-      const text = document.getElementById('team-name-text');
-      if (badge && text) {
-        text.textContent = team.name;
-        badge.classList.remove('d-none');
+    if (window.TeamNav) {
+      window.TeamNav.refresh();
+    } else {
+      const team = window.AppUtils && window.AppUtils.getCurrentTeam ? window.AppUtils.getCurrentTeam() : null;
+      if (team && team.name) {
+        const wrapper = document.getElementById('team-nav-badge-wrapper');
+        const text = document.getElementById('team-name-text');
+        if (wrapper && text) {
+          text.textContent = team.name;
+          wrapper.classList.remove('d-none');
+        }
       }
     }
 

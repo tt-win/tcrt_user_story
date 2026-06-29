@@ -267,6 +267,10 @@
     const reconcileBtn = run.external_run_id
       ? ''
       : `<button type="button" class="btn btn-link btn-sm p-0 ms-1 text-warning" data-run-reconcile="${run.id}" title="${escapeAttr(t('testRun.sets.detail.automationRunsReconcile', 'Reconcile'))}"><i class="fas fa-link"></i></button>`;
+    // Environment chip — only when this run recorded an environment.
+    const envChip = run.environment
+      ? `<span class="badge bg-light text-dark border" title="${escapeAttr(t('testRun.sets.detail.runEnvLabel', 'Env'))}"><i class="fas fa-layer-group me-1"></i>${escapeHtml(run.environment)}</span>`
+      : '<span class="text-muted small">—</span>';
     return `
       <tr>
         <td>
@@ -274,6 +278,7 @@
           <div class="font-monospace small text-muted">#${escapeHtml(run.id)}</div>
         </td>
         <td><span class="font-monospace small">${escapeHtml(branch)}</span></td>
+        <td>${envChip}</td>
         <td><span class="badge ${badgeClass}">${escapeHtml(run.status)}</span></td>
         <td>${escapeHtml(trigger)}</td>
         <td>${escapeHtml(started)}${duration ? ' · ' + escapeHtml(duration) : ''}</td>

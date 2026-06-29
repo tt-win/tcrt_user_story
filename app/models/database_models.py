@@ -239,6 +239,16 @@ class TestRunSet(Base):
             "See move-automation-execution-to-test-run-set."
         ),
     )
+    default_automation_environment = Column(
+        String(60),
+        nullable=True,
+        comment=(
+            "Default automation environment name (matching an "
+            "automation_environments.name for this team) preselected when "
+            "triggering run-automation. NULL = no default. "
+            "See manage-automation-environment-configs."
+        ),
+    )
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -1814,6 +1824,15 @@ class AutomationScript(Base):
     cached_content_etag = Column(String(120), nullable=True)
     last_synced_at = Column(DateTime, nullable=True)
     tags_json = Column(Text, nullable=True)
+    declared_vars_json = Column(
+        Text,
+        nullable=True,
+        comment=(
+            "Per-script declared variables discovered from source TCRT_VARS by "
+            "smart-scan. JSON list of {name, secret, required, description}. "
+            "Names only, no values. See manage-automation-environment-configs."
+        ),
+    )
     preferred_runner_label = Column(String(100), nullable=True)
     linked_test_case_count = Column(Integer, default=0, nullable=False)
     created_by = Column(String(64), nullable=True)
@@ -1861,6 +1880,114 @@ class AutomationScriptCaseLink(Base):
     automation_script = relationship("AutomationScript", back_populates="case_links")
     test_case = relationship("TestCaseLocal")
     team = relationship("Team")
+
+
+class AutomationEnvironment(Base):
+    """Per-team, user-defined automation environment catalog (e.g. dev/sit/prod).
+
+    Values live in TCRT (not the repo): environment-level shared params live in
+    AutomationEnvironmentParam; per-script overrides live in
+    AutomationScriptEnvVar. See manage-automation-environment-configs."""
+
+    __tablename__ = "automation_environments"
+    __table_args__ = (
+        UniqueConstraint("team_id", "name", name="uq_automation_environment_name"),
+        Index("ix_automation_environments_team_default", "team_id", "is_default"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(60), nullable=False)
+    label = Column(String(100), nullable=True)
+    description = Column(Text, nullable=True)
+    is_default = Column(Boolean, default=False, nullable=False)
+    created_by = Column(String(64), nullable=True)
+    updated_by = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    team = relationship("Team", backref="automation_environments")
+    params = relationship(
+        "AutomationEnvironmentParam",
+        back_populates="environment",
+        cascade="all, delete-orphan",
+    )
+
+
+class AutomationEnvironmentParam(Base):
+    """Environment-level shared parameter value (shared across the team's scripts).
+
+    secret values are AES-256-GCM encrypted in value_encrypted; non-secret values
+    live in value_plaintext. The effective value for a (script, env, key) is the
+    per-script override if present, else this shared value."""
+
+    __tablename__ = "automation_environment_params"
+    __table_args__ = (
+        UniqueConstraint("environment_id", "key", name="uq_automation_environment_param_key"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    environment_id = Column(
+        Integer,
+        ForeignKey("automation_environments.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    key = Column(String(120), nullable=False)
+    is_secret = Column(Boolean, default=False, nullable=False)
+    value_plaintext = Column(Text, nullable=True)
+    value_encrypted = Column(Text, nullable=True)
+    created_by = Column(String(64), nullable=True)
+    updated_by = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    environment = relationship("AutomationEnvironment", back_populates="params")
+
+
+class AutomationScriptEnvVar(Base):
+    """Per-script override of an environment variable value.
+
+    Tied to the script cache row (ON DELETE CASCADE, like
+    AutomationScriptCaseLink). Normal re-sync updates the script row in place so
+    overrides are preserved; explicit cache delete cascades them away. The
+    effective value overrides the environment-level shared param of the same key."""
+
+    __tablename__ = "automation_script_env_vars"
+    __table_args__ = (
+        UniqueConstraint(
+            "automation_script_id", "environment_id", "key",
+            name="uq_automation_script_env_var",
+        ),
+        Index("ix_automation_script_env_vars_team_path", "team_id", "script_ref_path"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True)
+    automation_script_id = Column(
+        Integer,
+        ForeignKey("automation_scripts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    script_ref_path = Column(String(500), nullable=False)
+    environment_id = Column(
+        Integer,
+        ForeignKey("automation_environments.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    key = Column(String(120), nullable=False)
+    is_secret = Column(Boolean, default=False, nullable=False)
+    value_plaintext = Column(Text, nullable=True)
+    value_encrypted = Column(Text, nullable=True)
+    created_by = Column(String(64), nullable=True)
+    updated_by = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    automation_script = relationship("AutomationScript")
+    environment = relationship("AutomationEnvironment")
 
 
 class AutomationScriptGroup(Base):
@@ -1956,6 +2083,15 @@ class AutomationRun(Base):
     branch = Column(String(200), nullable=False)
     inputs_json = Column(Text, nullable=True)
     runner_label = Column(String(100), nullable=True)
+    environment = Column(
+        String(60),
+        nullable=True,
+        comment=(
+            "Automation environment name used for this run (name only, never "
+            "values). NULL for runs triggered without an environment. "
+            "See manage-automation-environment-configs."
+        ),
+    )
     report_url = Column(String(500), nullable=True)
     started_at = Column(DateTime, nullable=True)
     finished_at = Column(DateTime, nullable=True)

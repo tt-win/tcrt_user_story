@@ -247,8 +247,10 @@ function openTestRunSetFormModal(setId = null) {
         reopenSetDetailAfterForm = false;
     }
 
+    let formSetData = null;
     if (setId) {
         const setData = (testRunSets || []).find(s => s.id === setId) || currentSetContext || null;
+        formSetData = setData;
         titleEl.setAttribute('data-i18n', 'testRun.sets.form.editTitle');
         titleEl.textContent = window.i18n?.t('testRun.sets.form.editTitle') || '編輯 Test Run Set';
         nameInput.value = setData ? (setData.name || '') : '';
@@ -270,6 +272,7 @@ function openTestRunSetFormModal(setId = null) {
     const searchInput = getSetSuiteSearchInput();
     if (searchInput) searchInput.value = '';
     renderAutomationSuitePicker();
+    loadFormEnvironmentOptions(formSetData);
 
     loadAutomationSuiteOptions()
         .then(() => renderAutomationSuitePicker())
@@ -318,6 +321,9 @@ async function handleSaveTestRunSet() {
     // managed via the API directly. This guards against accidentally nulling
     // the field on every save.
     payload.automation_suite_ids = currentSetAutomationSuiteIds.slice();
+    // default_automation_environment: "" means none (team default applies).
+    const envSelect = document.getElementById('testRunSetDefaultEnvironment');
+    payload.default_automation_environment = envSelect && envSelect.value ? envSelect.value : null;
 
     const endpoint = setId
         ? `/api/teams/${currentTeamId}/test-run-sets/${setId}`
@@ -574,6 +580,9 @@ function renderTestRunSetDetail(setData, filterStatus = 'all') {
         );
     }
 
+    // Populate the automation environment selector + bind its change handler.
+    loadSetDetailEnvironments(setData);
+
     // 「⋯」選單在可捲動的 modal-body 內會被 overflow 裁切，改用 fixed 定位
     if (window.bootstrap?.Dropdown) {
         runsContainer.querySelectorAll('[data-bs-toggle="dropdown"]').forEach((toggle) => {
@@ -669,6 +678,25 @@ function buildAutomationSectionActions(setData, perms, suiteCount) {
             </button>
         `
         : '';
+    // Environment selector — option "" (— default —) sends nothing. Populated +
+    // preselected after render by loadSetDetailEnvironments(). Persisting the
+    // choice updates the set's default_automation_environment.
+    const envDisabledAttr = setData.status === 'archived' ? ' disabled' : '';
+    // Dropdown BUTTON (not a native <select>) to match TCRT's toolbar
+    // convention — form-select is reserved for form fields inside modals. The
+    // chosen value lives on the toggle's data-env-value (read by the run
+    // trigger); options are filled by loadSetDetailEnvironments().
+    const envSelector = `
+        <div class="btn-group" role="group">
+            <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" id="setDetailEnvironmentSelector"${envDisabledAttr}
+                    data-bs-toggle="dropdown" aria-expanded="false" data-env-value=""
+                    title="${escapeAttr(window.i18n?.t('testRun.sets.detail.environmentHint') || '')}"
+                    aria-label="${escapeAttr(window.i18n?.t('testRun.sets.detail.environment') || 'Environment')}">
+                <i class="fas fa-layer-group me-1"></i><span id="setDetailEnvironmentLabel">${escapeHtml(window.i18n?.t('testRun.sets.detail.environmentNone') || '— default —')}</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" id="setDetailEnvironmentMenu" aria-labelledby="setDetailEnvironmentSelector"></ul>
+        </div>
+    `;
     const runDisabledAttr = suiteCount > 0 ? '' : ' disabled';
     const runButton = `
         <button type="button" class="btn btn-success btn-sm" id="setDetailRunAutomationBtn"${runDisabledAttr}
@@ -676,13 +704,136 @@ function buildAutomationSectionActions(setData, perms, suiteCount) {
             <i class="fas fa-play me-1"></i><span data-i18n="testRun.sets.detail.runAutomationCompact">執行 Suites</span>
         </button>
     `;
-    return [addButton, runButton].filter(Boolean).join('');
+    return [addButton, envSelector, runButton].filter(Boolean).join('');
 }
 
 function buildDetailCardActions(buttons) {
     const renderedButtons = buttons.filter(Boolean);
     if (!renderedButtons.length) return '';
     return `<div class="testRunDetailRunActions">${renderedButtons.join('')}</div>`;
+}
+
+// Fetch the team's automation environment catalog and fill the detail-view
+// selector. Preselect the set's default_automation_environment, else the
+// catalog default (is_default). Persists the choice via the set PUT so the
+// set's default_automation_environment stays in sync.
+async function loadSetDetailEnvironments(setData) {
+    const selector = document.getElementById('setDetailEnvironmentSelector');
+    if (!selector) return;
+
+    try {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/automation-environments`);
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({ detail: null }));
+            throw new Error(payload?.detail || (window.i18n?.t('testRun.sets.detail.environmentLoadFailed') || 'Failed to load environments'));
+        }
+        currentSetEnvironmentOptions = await response.json();
+    } catch (error) {
+        console.warn('Load automation environments failed:', error);
+        currentSetEnvironmentOptions = [];
+    }
+
+    const environments = Array.isArray(currentSetEnvironmentOptions) ? currentSetEnvironmentOptions : [];
+    const noneLabel = window.i18n?.t('testRun.sets.detail.environmentNone') || '— default —';
+    const menu = document.getElementById('setDetailEnvironmentMenu');
+    if (!menu) return;
+
+    const items = [{ value: '', label: noneLabel }].concat(
+        environments.map((env) => {
+            const mark = env.is_default ? ` (${window.i18n?.t('automationHub.environments.default') || 'Default'})` : '';
+            return { value: env.name, label: `${env.name}${mark}` };
+        })
+    );
+    menu.innerHTML = items.map((it) =>
+        `<li><button type="button" class="dropdown-item" data-env-value="${escapeAttr(it.value)}">${escapeHtml(it.label)}</button></li>`
+    ).join('');
+
+    // Preselect: set's default → catalog is_default → none.
+    const catalogDefault = environments.find((env) => env.is_default);
+    const preselectValue = setData.default_automation_environment || (catalogDefault ? catalogDefault.name : '');
+    const preItem = items.find((it) => it.value === (preselectValue || '')) || items[0];
+    setSetDetailEnvironmentSelection(preItem.value, preItem.label);
+
+    // Bind selection once (delegated): update the toggle + persist the choice.
+    if (!menu.dataset.bound) {
+        menu.dataset.bound = 'true';
+        menu.addEventListener('click', (event) => {
+            const item = event.target.closest('[data-env-value]');
+            if (!item) return;
+            setSetDetailEnvironmentSelection(item.dataset.envValue || '', item.textContent.trim());
+            persistSetDefaultEnvironment(item.dataset.envValue || '');
+        });
+    }
+}
+
+// Apply the chosen environment to the detail-view dropdown button: store the
+// value on the toggle (read by the run trigger), update its label, and mark the
+// active menu item. Keeps a dropdown-button selector in sync without a native
+// <select>, matching TCRT's toolbar dropdown convention.
+function setSetDetailEnvironmentSelection(value, label) {
+    const selector = document.getElementById('setDetailEnvironmentSelector');
+    const labelEl = document.getElementById('setDetailEnvironmentLabel');
+    const menu = document.getElementById('setDetailEnvironmentMenu');
+    if (selector) selector.dataset.envValue = value || '';
+    if (labelEl && label) labelEl.textContent = label;
+    if (menu) {
+        menu.querySelectorAll('.dropdown-item').forEach((it) => {
+            it.classList.toggle('active', (it.dataset.envValue || '') === (value || ''));
+        });
+    }
+}
+
+// Populate the create/edit form's default-environment <select>. Preselects
+// the set's stored default_automation_environment on edit; create starts on
+// "— default —". The catalog is fetched best-effort (non-fatal on failure).
+async function loadFormEnvironmentOptions(setData) {
+    const select = document.getElementById('testRunSetDefaultEnvironment');
+    if (!select) return;
+    const noneLabel = window.i18n?.t('testRun.sets.form.defaultAutomationEnvironmentNone') || '— default —';
+
+    let environments = [];
+    try {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/automation-environments`);
+        if (response.ok) {
+            environments = await response.json();
+            currentSetEnvironmentOptions = environments;
+        }
+    } catch (error) {
+        console.warn('Load automation environments (form) failed:', error);
+    }
+
+    const list = Array.isArray(environments) ? environments : [];
+    select.innerHTML = [`<option value="">${escapeHtml(noneLabel)}</option>`].concat(
+        list.map((env) => {
+            const defaultMark = env.is_default ? ` (${window.i18n?.t('automationHub.environments.default') || 'Default'})` : '';
+            return `<option value="${escapeAttr(env.name)}">${escapeHtml(env.name)}${escapeHtml(defaultMark)}</option>`;
+        })
+    ).join('');
+    select.value = (setData && setData.default_automation_environment) ? setData.default_automation_environment : '';
+}
+
+async function persistSetDefaultEnvironment(envName) {
+    if (!currentSetContext || !currentSetContext.id) return;
+    const value = envName ? envName : null;
+    try {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/${currentSetContext.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ default_automation_environment: value })
+        });
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({ detail: null }));
+            throw new Error(payload?.detail || (window.i18n?.t('testRun.sets.detail.environmentSaveFailed') || 'Failed to save default environment'));
+        }
+        currentSetContext.default_automation_environment = value;
+        // Keep the cached list entry in sync so reopening shows the new default.
+        const cached = (testRunSets || []).find((s) => s.id === currentSetContext.id);
+        if (cached) cached.default_automation_environment = value;
+        AppUtils.showSuccess(window.i18n?.t('testRun.sets.detail.environmentSaveDone') || 'Default environment saved');
+    } catch (error) {
+        console.error('Persist default automation environment failed:', error);
+        AppUtils.showError(error.message);
+    }
 }
 
 async function removeAutomationSuiteFromSet(setData, suiteId, suiteName) {
