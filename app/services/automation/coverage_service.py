@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, time, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.database_models import (
@@ -29,7 +29,7 @@ class AutomationCoverageService:
         with_covers = await self._count_cases_by_link_type(team_id, AutomationScriptLinkType.COVERS)
         with_any = await self._count_cases_with_coverage(team_id)
         uncovered_count = max(total_cases - with_any, 0)
-        by_group, covered_cases = await self._build_case_breakdown(team_id)
+        by_group = await self._build_group_rollup(team_id)
         return {
             "total_test_cases": total_cases,
             "with_primary_link": with_primary,
@@ -37,31 +37,169 @@ class AutomationCoverageService:
             "with_any_link": with_any,
             "uncovered_count": uncovered_count,
             "uncovered_sample": await self._list_uncovered_cases(team_id, uncovered_limit),
-            "covered_cases": covered_cases,
             "by_group": by_group,
             "by_format": await self._count_scripts_by_format(team_id),
             "trend": await self._build_trend(team_id, total_cases),
         }
 
-    async def _build_case_breakdown(
-        self, team_id: int
-    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        """Per-ticket-group coverage rollup + covered cases with their links.
+    async def _build_group_rollup(self, team_id: int) -> list[dict[str, Any]]:
+        """Per-ticket-group coverage rollup (total / covered / primary).
 
         Group key = the test case number's prefix before the first dot
         (``TCG-114460.030.050`` → ``TCG-114460``); dotless numbers group as
-        themselves. Coverage status counts PRIMARY/COVERS links only, but the
-        per-case link list also carries REFERENCES so the UI can show the full
-        linkage picture.
+        themselves. Coverage counts PRIMARY/COVERS links only. The per-case
+        list + links are served by ``list_cases`` (paginated), not here, so the
+        summary payload stays small regardless of case count.
         """
         cases_result = await self.session.execute(
-            select(TestCaseLocal.id, TestCaseLocal.test_case_number, TestCaseLocal.title)
-            .where(TestCaseLocal.team_id == team_id)
-            .order_by(TestCaseLocal.test_case_number, TestCaseLocal.id)
+            select(TestCaseLocal.id, TestCaseLocal.test_case_number).where(TestCaseLocal.team_id == team_id)
         )
         cases = cases_result.all()
 
-        links_result = await self.session.execute(
+        covering_types_by_case = await self._covering_types_by_case(team_id)
+
+        groups: dict[str, dict[str, int]] = {}
+        for case in cases:
+            number = case.test_case_number or ""
+            group_key = number.split(".", 1)[0] if number else "(no number)"
+            bucket = groups.setdefault(group_key, {"total": 0, "covered": 0, "primary": 0})
+            bucket["total"] += 1
+            covering = covering_types_by_case.get(int(case.id))
+            if covering:
+                bucket["covered"] += 1
+                if AutomationScriptLinkType.PRIMARY.value in covering:
+                    bucket["primary"] += 1
+
+        return [
+            {
+                "group": key,
+                "total": bucket["total"],
+                "covered": bucket["covered"],
+                "primary": bucket["primary"],
+            }
+            for key, bucket in sorted(groups.items())
+        ]
+
+    async def _covering_types_by_case(self, team_id: int) -> dict[int, set[str]]:
+        """Map case_id → set of coverage link types (PRIMARY/COVERS) present."""
+        result = await self.session.execute(
+            select(AutomationScriptCaseLink.test_case_id, AutomationScriptCaseLink.link_type).where(
+                AutomationScriptCaseLink.team_id == team_id,
+                AutomationScriptCaseLink.link_type.in_(_COVERAGE_LINK_TYPES),
+            )
+        )
+        covering: dict[int, set[str]] = {}
+        for row in result.all():
+            covering.setdefault(int(row.test_case_id), set()).add(_enum_value(row.link_type))
+        return covering
+
+    async def list_cases(
+        self,
+        *,
+        team_id: int,
+        status: str = "all",
+        group: str | None = None,
+        q: str | None = None,
+        skip: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Paginated, filterable, searchable case list with per-case coverage
+        status + linked scripts. Server-side filtering keeps the browser fast
+        when a team has thousands of manual cases.
+
+        ``status``: all | covered | uncovered | primary.
+        ``group``: ticket-prefix group key (``TCG-114460``) — matches the case
+        number itself or any ``<group>.*`` child. ``q``: substring of number/title.
+        """
+        covered_exists = (
+            select(AutomationScriptCaseLink.id)
+            .where(
+                AutomationScriptCaseLink.team_id == team_id,
+                AutomationScriptCaseLink.test_case_id == TestCaseLocal.id,
+                AutomationScriptCaseLink.link_type.in_(_COVERAGE_LINK_TYPES),
+            )
+            .exists()
+        )
+        primary_exists = (
+            select(AutomationScriptCaseLink.id)
+            .where(
+                AutomationScriptCaseLink.team_id == team_id,
+                AutomationScriptCaseLink.test_case_id == TestCaseLocal.id,
+                AutomationScriptCaseLink.link_type == AutomationScriptLinkType.PRIMARY,
+            )
+            .exists()
+        )
+
+        conditions = [TestCaseLocal.team_id == team_id]
+        if group:
+            conditions.append(
+                or_(
+                    TestCaseLocal.test_case_number == group,
+                    TestCaseLocal.test_case_number.like(f"{group}.%"),
+                )
+            )
+        if q:
+            like = f"%{q.strip()}%"
+            conditions.append(
+                or_(TestCaseLocal.test_case_number.ilike(like), TestCaseLocal.title.ilike(like))
+            )
+        if status == "covered":
+            conditions.append(covered_exists)
+        elif status == "uncovered":
+            conditions.append(~covered_exists)
+        elif status == "primary":
+            conditions.append(primary_exists)
+
+        total = int(
+            (
+                await self.session.execute(
+                    select(func.count(TestCaseLocal.id)).where(*conditions)
+                )
+            ).scalar_one()
+            or 0
+        )
+
+        rows = (
+            await self.session.execute(
+                select(TestCaseLocal.id, TestCaseLocal.test_case_number, TestCaseLocal.title)
+                .where(*conditions)
+                .order_by(TestCaseLocal.test_case_number, TestCaseLocal.id)
+                .offset(max(skip, 0))
+                .limit(limit)
+            )
+        ).all()
+
+        case_ids = [int(r.id) for r in rows]
+        links_by_case, covering_by_case = await self._links_for_cases(team_id, case_ids)
+
+        items: list[dict[str, Any]] = []
+        for r in rows:
+            cid = int(r.id)
+            covering = covering_by_case.get(cid)
+            if covering and AutomationScriptLinkType.PRIMARY.value in covering:
+                case_status = "primary"
+            elif covering:
+                case_status = "covers"
+            else:
+                case_status = "uncovered"
+            items.append(
+                {
+                    "test_case_id": cid,
+                    "test_case_number": r.test_case_number,
+                    "title": r.title,
+                    "status": case_status,
+                    "links": links_by_case.get(cid, []),
+                }
+            )
+        return items, total
+
+    async def _links_for_cases(
+        self, team_id: int, case_ids: list[int]
+    ) -> tuple[dict[int, list[dict[str, Any]]], dict[int, set[str]]]:
+        """Linked scripts + coverage-type set for a specific page of cases."""
+        if not case_ids:
+            return {}, {}
+        result = await self.session.execute(
             select(
                 AutomationScriptCaseLink.test_case_id,
                 AutomationScriptCaseLink.link_type,
@@ -71,14 +209,18 @@ class AutomationCoverageService:
                 AutomationScript.ref_path,
             )
             .join(AutomationScript, AutomationScript.id == AutomationScriptCaseLink.automation_script_id)
-            .where(AutomationScriptCaseLink.team_id == team_id)
+            .where(
+                AutomationScriptCaseLink.team_id == team_id,
+                AutomationScriptCaseLink.test_case_id.in_(case_ids),
+            )
             .order_by(AutomationScriptCaseLink.link_type, AutomationScript.name)
         )
         links_by_case: dict[int, list[dict[str, Any]]] = {}
-        covering_types_by_case: dict[int, set[str]] = {}
-        for row in links_result.all():
+        covering_by_case: dict[int, set[str]] = {}
+        for row in result.all():
+            cid = int(row.test_case_id)
             link_type = _enum_value(row.link_type)
-            links_by_case.setdefault(int(row.test_case_id), []).append(
+            links_by_case.setdefault(cid, []).append(
                 {
                     "script_id": int(row.script_id),
                     "script_name": row.script_name,
@@ -88,40 +230,8 @@ class AutomationCoverageService:
                 }
             )
             if link_type in _COVERAGE_LINK_TYPE_VALUES:
-                covering_types_by_case.setdefault(int(row.test_case_id), set()).add(link_type)
-
-        groups: dict[str, dict[str, int]] = {}
-        covered_cases: list[dict[str, Any]] = []
-        for case in cases:
-            case_id = int(case.id)
-            number = case.test_case_number or ""
-            group_key = number.split(".", 1)[0] if number else "(no number)"
-            bucket = groups.setdefault(group_key, {"total": 0, "covered": 0, "primary": 0})
-            bucket["total"] += 1
-            covering = covering_types_by_case.get(case_id)
-            if covering:
-                bucket["covered"] += 1
-                if AutomationScriptLinkType.PRIMARY.value in covering:
-                    bucket["primary"] += 1
-                covered_cases.append(
-                    {
-                        "test_case_id": case_id,
-                        "test_case_number": number,
-                        "title": case.title,
-                        "links": links_by_case.get(case_id, []),
-                    }
-                )
-
-        by_group = [
-            {
-                "group": key,
-                "total": bucket["total"],
-                "covered": bucket["covered"],
-                "primary": bucket["primary"],
-            }
-            for key, bucket in sorted(groups.items())
-        ]
-        return by_group, covered_cases
+                covering_by_case.setdefault(cid, set()).add(link_type)
+        return links_by_case, covering_by_case
 
     async def _count_total_cases(self, team_id: int) -> int:
         result = await self.session.execute(

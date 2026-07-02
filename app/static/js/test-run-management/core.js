@@ -160,3 +160,71 @@ function showPermissionDenied() {
 let teamIdReady = false;      // 取得有效 teamId 後才為 true
 let dataLoadedOnce = false;   // 成功載入過資料後為 true
 let eventsBound = false;      // 避免重複綁定 i18n/page 事件
+
+// 檢視模式切換 (卡片 / 精簡列表)，套用至 Test Run Set / Ad-hoc / 未歸組三個區塊
+let trmViewMode = 'card'; // 'card' | 'compact'
+const TRM_VIEW_MODE_STORAGE_PREFIX = 'testRunManagement.viewMode.';
+
+function trmViewModeStorageKey() {
+    return currentTeamId ? `${TRM_VIEW_MODE_STORAGE_PREFIX}${currentTeamId}` : null;
+}
+
+function loadTrmViewModePreference() {
+    const key = trmViewModeStorageKey();
+    if (!key) return 'card';
+    try {
+        return window.localStorage.getItem(key) === 'compact' ? 'compact' : 'card';
+    } catch (_e) {
+        return 'card';
+    }
+}
+
+function persistTrmViewModePreference(mode) {
+    const key = trmViewModeStorageKey();
+    if (!key) return;
+    try {
+        window.localStorage.setItem(key, mode);
+    } catch (_e) {
+        /* localStorage may be disabled; non-fatal */
+    }
+}
+
+function applyTrmViewToggleVisual() {
+    const cardBtn = document.getElementById('trmViewToggleCard');
+    const compactBtn = document.getElementById('trmViewToggleCompact');
+    if (cardBtn) cardBtn.classList.toggle('active', trmViewMode === 'card');
+    if (compactBtn) compactBtn.classList.toggle('active', trmViewMode === 'compact');
+
+    const pairs = [
+        ['test-run-sets-container', 'test-run-sets-compact'],
+        ['adhoc-runs-container', 'adhoc-runs-compact'],
+        ['unassigned-test-runs-container', 'unassigned-test-runs-compact']
+    ];
+    pairs.forEach(([cardId, compactId]) => {
+        const cardEl = document.getElementById(cardId);
+        const compactEl = document.getElementById(compactId);
+        if (cardEl) cardEl.classList.toggle('d-none', trmViewMode !== 'card');
+        if (compactEl) compactEl.classList.toggle('d-none', trmViewMode !== 'compact');
+    });
+}
+
+function switchTrmViewMode(mode) {
+    if (mode !== 'card' && mode !== 'compact') return;
+    if (trmViewMode === mode) return;
+    trmViewMode = mode;
+    persistTrmViewModePreference(mode);
+    applyTrmViewToggleVisual();
+}
+
+function bindTrmViewToggleEvents() {
+    const cardBtn = document.getElementById('trmViewToggleCard');
+    const compactBtn = document.getElementById('trmViewToggleCompact');
+    if (cardBtn && cardBtn.dataset.bound !== '1') {
+        cardBtn.dataset.bound = '1';
+        cardBtn.addEventListener('click', () => switchTrmViewMode('card'));
+    }
+    if (compactBtn && compactBtn.dataset.bound !== '1') {
+        compactBtn.dataset.bound = '1';
+        compactBtn.addEventListener('click', () => switchTrmViewMode('compact'));
+    }
+}

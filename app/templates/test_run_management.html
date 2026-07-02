@@ -87,6 +87,18 @@
         </div>
     </div>
 
+    <!-- 檢視切換 (卡片 / 精簡列表)，套用至下方三個區塊 -->
+    <div class="d-flex justify-content-end align-items-center gap-2 mb-3">
+        <div class="btn-group" role="group" aria-label="View toggle">
+            <button type="button" class="btn btn-sm btn-outline-secondary active" id="trmViewToggleCard" data-i18n-title="common.cardView" title="Card view">
+                <i class="fas fa-th-large"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="trmViewToggleCompact" data-i18n-title="common.compactView" title="Compact view">
+                <i class="fas fa-list"></i>
+            </button>
+        </div>
+    </div>
+
     <!-- Test Run Set 與未歸組區域 -->
     <div id="test-run-configs-section">
         <div id="test-run-sets-section" class="mb-5">
@@ -97,6 +109,7 @@
                 </div>
             </div>
             <div class="row" id="test-run-sets-container"></div>
+            <div id="test-run-sets-compact" class="d-none"></div>
         </div>
 
         <div class="test-run-section-divider"></div>
@@ -109,6 +122,7 @@
                 </div>
             </div>
             <div class="row" id="adhoc-runs-container"></div>
+            <div id="adhoc-runs-compact" class="d-none"></div>
             <div class="test-run-section-divider"></div>
         </div>
 
@@ -120,6 +134,7 @@
                 </div>
             </div>
             <div class="row" id="unassigned-test-runs-container"></div>
+            <div id="unassigned-test-runs-compact" class="d-none"></div>
             <div id="no-unassigned-test-runs" class="text-center text-muted py-4" style="display: none;">
                 <i class="fas fa-clipboard-check fa-2x mb-3"></i>
                 <div data-i18n="testRun.unassigned.empty">所有 Test Run 皆已加入 Test Run Set</div>
@@ -871,6 +886,8 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/common/compact-table.js"></script>
+<script src="/static/js/common/pin-store.js"></script>
 <script src="/static/js/adhoc_run_manager.js"></script>
 <script src="/static/js/test-run-management/core.js"></script>
 <script src="/static/js/test-run-management/data.js"></script>

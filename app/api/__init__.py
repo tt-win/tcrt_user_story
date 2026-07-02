@@ -42,6 +42,7 @@ from .automation_environments import (
 from .automation_webhooks import router as automation_webhooks_router
 from .automation_webhooks_public import router as automation_webhooks_public_router
 from .automation_result import router as automation_result_router
+from .pins import router as pins_router
 
 # 創建主 API 路由器
 api_router = APIRouter()
@@ -85,5 +86,6 @@ api_router.include_router(automation_script_env_vars_router)  # Automation Hub p
 api_router.include_router(automation_webhooks_router)  # Automation Hub Webhook (admin) 路由
 api_router.include_router(automation_webhooks_public_router)  # Automation Hub Webhook (公開 CI callback)
 api_router.include_router(automation_result_router)  # Automation Hub Result provider 連結（dashboard / report URL）
+api_router.include_router(pins_router)  # 使用者釘選 (Pin) 路由
 
 # 可以在此添加其他 API 路由

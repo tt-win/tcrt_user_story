@@ -281,9 +281,15 @@ TCRT_VARS = ["BASE_URL", {"name": "API_TOKEN", "secret": True, "required": True}
 ```json
 {
   "tests/ui/test_login.py":  { "BASE_URL": "https://sit.example", "API_TOKEN": "…" },
-  "tests/api/test_orders.py": { "BASE_URL": "https://sit.example" }
+  "tests/api/test_orders.py": { "BASE_URL": "https://sit.example" },
+  "__tcrt__": { "environment": "SIT", "secret_keys": ["API_TOKEN"] }
 }
 ```
+
+bundle 另含一個**保留、非 `ref_path`** 的 `__tcrt__` 項，存
+`{"environment": "<所選環境名>", "secret_keys": [<宣告為 secret 的名稱>]}`，僅供
+loader 在 log 顯示「目前用哪個環境」並遮罩機密（見下方 ⑧）。`ref_path` 一律是 `.py`
+路徑，故此 key 不會相撞。
 
 這份 bundle 以**單一遮罩參數 `TCRT_ENV_BUNDLE`**（Jenkins `PasswordParameter`，於
 log 遮罩）透過 **HTTP POST body** 傳給 CI。Jenkins suite job 把**非空** bundle 寫進
@@ -309,6 +315,22 @@ base_url = cfg["BASE_URL"]
 
 沒選環境時 `tcrt-env.json` 不存在，loader 回傳空集合並退回 `os.environ`；沒有
 `TCRT_VARS` 的測試完全不受影響。
+
+### ⑧ 執行時在 Jenkins log 顯示所用環境
+
+產生的 `conftest.py` 透過 **`pytest_report_header`** hook，在每次執行的**最上方**印出
+目前所用環境與各變數的值（**非機密印明文、機密印 `***(secret)`**，依 `__tcrt__.secret_keys`
+遮罩），讓操作者在 **Jenkins console** 就能確認這次用的是哪個環境、值是什麼：
+
+```
+TCRT automation environment: SIT
+  tests/ui/test_login.py: API_TOKEN=***(secret), BASE_URL=https://sit.example
+  tests/api/test_orders.py: BASE_URL=https://sit.example
+```
+
+> ⚠️ 用 session header 而非 `print`：pytest 預設會 capture `print`，只有**失敗**測試才
+> 顯示，綠色測試會什麼都看不到。header 一律顯示（只有 `pytest -q` 會抑制，TCRT 的
+> Jenkins job 不使用 `-q`）。沒選環境時印 `(none selected …)`。
 
 > 💡 一句話原則：**名稱在 git，值在 TCRT**。機密在 TCRT 加密儲存，永遠不進 git。
 

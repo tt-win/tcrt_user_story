@@ -170,9 +170,13 @@ function renderAdHocRuns(runs) {
     section.style.display = 'block';
     
     let cardsHtml = '';
-    
-    if (runs && runs.length > 0) {
-        cardsHtml += runs.map(run => {
+
+    const orderedRuns = (window.PinStore && Array.isArray(runs))
+        ? window.PinStore.sortPinnedFirst(runs, r => window.PinStore.isPinned('adhoc_run', r.id), r => r.created_at)
+        : runs;
+
+    if (orderedRuns && orderedRuns.length > 0) {
+        cardsHtml += orderedRuns.map(run => {
             const runJson = escapeHtml(JSON.stringify({ 
                 id: run.id, 
                 name: run.name, 
@@ -298,15 +302,17 @@ function renderAdHocRuns(runs) {
                     <small class="text-muted">${created}</small>
                 </div>`;
 
+            const pinnedCardClass = (window.PinStore && window.PinStore.isPinned('adhoc_run', run.id)) ? ' pinned-card' : '';
+            const pinToggle = (typeof trmPinToggleHtml === 'function') ? trmPinToggleHtml('adhoc_run', run.id) : '';
             return `
             <div class="col-xl-4 col-lg-6 mb-4">
-                <div class="card h-100 test-run-card ${statusClass}" onclick="${canEnter ? `window.location.href='/adhoc-runs/${run.id}/execution'` : ''}">
+                <div class="card h-100 test-run-card ${statusClass}${pinnedCardClass}" onclick="${canEnter ? `window.location.href='/adhoc-runs/${run.id}/execution'` : ''}">
                     <div class="card-body d-flex flex-column h-100">
                         <div class="d-none search-text">${escapeHtml(run.name || '')} ${escapeHtml(run.description || '')} ${escapeHtml(run.jira_ticket || '')}</div>
                         <div class="d-flex justify-content-between align-items-start mb-3 gap-2">
                             <div class="d-flex align-items-center overflow-hidden flex-grow-1">
                                 <div class="flex-shrink-0 me-3">
-                                    <div class="bg-info text-white rounded-circle d-flex align-items-center justify-content-center" 
+                                    <div class="bg-info text-white rounded-circle d-flex align-items-center justify-content-center"
                                          style="width: 48px; height: 48px; font-size: 20px;">
                                         <i class="fas fa-table"></i>
                                     </div>
@@ -315,7 +321,8 @@ function renderAdHocRuns(runs) {
                                     <h5 class="card-title text-primary mb-1 text-truncate">${escapeHtml(run.name)}</h5>
                                 </div>
                             </div>
-                            <div class="flex-shrink-0">
+                            <div class="flex-shrink-0 d-flex align-items-center gap-1">
+                                ${pinToggle}
                                 <span class="status-badge ${statusClass}">${statusText}</span>
                             </div>
                         </div>
@@ -374,6 +381,12 @@ function renderAdHocRuns(runs) {
     `;
     
     container.innerHTML = cardsHtml;
+    bindAdhocEditButtons(container);
+
+    renderCompactAdHocRunsTable(runs);
+}
+
+function bindAdhocEditButtons(container) {
     container.querySelectorAll('.adhoc-edit-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -386,6 +399,156 @@ function renderAdHocRuns(runs) {
             }
         });
     });
+}
+
+function buildCompactAdHocActionsHtml(run) {
+    const status = run.status || 'draft';
+    const locked = (status === 'completed' || status === 'archived');
+    const canRerun = (status === 'completed');
+
+    const items = [];
+    items.push(`
+        <li>
+            <button type="button" class="dropdown-item adhoc-edit-btn" data-adhoc-json="${run._runJson}" ${locked ? 'disabled' : ''}>
+                <i class="fas fa-edit me-2"></i><span>${adhocT('adhoc.basicSettings', 'Basic Settings')}</span>
+            </button>
+        </li>
+    `);
+    if (canRerun) {
+        items.push(`
+            <li>
+                <button type="button" class="dropdown-item" onclick="rerunAdHocRun(${run.id})">
+                    <i class="fas fa-redo me-2"></i><span>${adhocT('adhoc.rerun', 'Re-run')}</span>
+                </button>
+            </li>
+        `);
+    }
+    items.push(`
+        <li>
+            <button type="button" class="dropdown-item" onclick="toggleAdHocStatusDropdown(this, ${run.id}, '${status}')">
+                <i class="fas fa-exchange-alt me-2"></i><span>${adhocT('common.status', 'Status')}</span>
+            </button>
+        </li>
+    `);
+    items.push(`
+        <li><hr class="dropdown-divider"></li>
+        <li>
+            <button type="button" class="dropdown-item text-danger" onclick="deleteAdHocRun(${run.id})">
+                <i class="fas fa-trash me-2"></i><span>${adhocT('adhoc.deleteLabel', 'Delete')}</span>
+            </button>
+        </li>
+    `);
+
+    return `
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-primary btn-sm" onclick="window.location.href='/adhoc-runs/${run.id}/execution'">
+                <i class="fas fa-arrow-right"></i>
+            </button>
+            <div class="dropdown">
+                <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="adhocCompactActionsDropdown${run.id}" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="fas fa-ellipsis-v"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="adhocCompactActionsDropdown${run.id}">
+                    ${items.join('')}
+                </ul>
+            </div>
+        </div>
+    `;
+}
+
+function renderCompactAdHocRunsTable(runs) {
+    const container = document.getElementById('adhoc-runs-compact');
+    if (!container) return;
+
+    if (!runs || !runs.length) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const decorated = runs.map(run => {
+        const runJson = escapeHtml(JSON.stringify({
+            id: run.id,
+            name: run.name,
+            description: run.description,
+            jira_ticket: run.jira_ticket,
+            test_environment: run.test_environment,
+            build_number: run.build_number,
+            related_tp_tickets_json: run.related_tp_tickets_json,
+            created_at: run.created_at,
+            updated_at: run.updated_at,
+            status: run.status
+        }));
+        return Object.assign({}, run, { _runJson: runJson });
+    });
+
+    const columns = [
+        {
+            key: 'pin',
+            label: '',
+            sortable: false,
+            stopRowClick: true,
+            thClass: 'compact-pin-col',
+            tdClass: 'compact-pin-col',
+            render: run => (typeof trmPinToggleHtml === 'function') ? trmPinToggleHtml('adhoc_run', run.id) : ''
+        },
+        {
+            key: 'name',
+            label: adhocT('common.name', 'Name'),
+            sortable: true,
+            sortValue: run => (run.name || '').toLowerCase(),
+            render: run => `<span class="fw-semibold text-primary">${escapeHtml(run.name)}</span>`
+        },
+        {
+            key: 'status',
+            label: adhocT('common.status', 'Status'),
+            sortable: true,
+            sortValue: run => (run.status || 'draft').toLowerCase(),
+            render: run => {
+                const status = run.status || 'draft';
+                const statusClass = window.getStatusClass ? window.getStatusClass(status) : `status-${status}`;
+                const statusText = window.getStatusText ? window.getStatusText(status) : status;
+                return `<span class="status-badge ${statusClass}">${statusText}</span>`;
+            }
+        },
+        {
+            key: 'sheets',
+            label: adhocT('adhoc.sheetsLabel', 'Sheets'),
+            sortable: true,
+            thClass: 'text-end',
+            tdClass: 'text-end',
+            sortValue: run => (run.sheets || []).length,
+            render: run => `${(run.sheets || []).length}`
+        },
+        {
+            key: 'created_at',
+            label: adhocT('common.createDate', 'Created'),
+            sortable: true,
+            sortValue: run => run.created_at ? new Date(run.created_at).getTime() : 0,
+            render: run => run.created_at ? AppUtils.formatDate(run.created_at) : 'N/A'
+        },
+        {
+            key: 'actions',
+            label: adhocT('common.actions', 'Actions'),
+            sortable: false,
+            stopRowClick: true,
+            thClass: 'text-end',
+            tdClass: 'text-end',
+            render: run => buildCompactAdHocActionsHtml(run)
+        }
+    ];
+
+    renderCompactTable(container, {
+        storageKey: currentTeamId ? `testRunManagement.sort.adhoc.${currentTeamId}` : null,
+        columns,
+        rows: decorated,
+        rowAttrs: run => ` class="compact-row-clickable" onclick="window.location.href='/adhoc-runs/${run.id}/execution'"`,
+        pin: {
+            isPinned: run => window.PinStore && window.PinStore.isPinned('adhoc_run', run.id),
+            pinSortValue: run => (run.created_at ? new Date(run.created_at).getTime() : 0)
+        }
+    });
+
+    bindAdhocEditButtons(container);
 }
 
 function showAdHocConfirmModal({ title, message, confirmText, confirmClass, type = 'danger', onConfirm }) {

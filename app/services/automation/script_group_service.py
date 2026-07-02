@@ -560,6 +560,21 @@ class AutomationScriptGroupService:
                 f"環境 {env.name} 缺少必填變數值，請至 Script view 變數設定補齊",
                 missing=missing,
             )
+        if bundle:
+            # Reserved, non-ref_path meta entry so the test-side settings loader
+            # can log the active environment + which vars are secret in the run's
+            # Jenkins console banner (see pytest_report_header in the generated
+            # conftest). ref_paths are always ".py" file paths, so "__tcrt__"
+            # never collides. NOT secret-masked here: the bundle carries the
+            # decrypted values the tests actually consume; masking happens only
+            # at PRINT time in the loader, driven by secret_keys below.
+            secret_keys = sorted({
+                dv["name"]
+                for script in scripts
+                for dv in svc._declared_vars(script)
+                if dv.get("secret") and dv.get("name")
+            })
+            bundle["__tcrt__"] = {"environment": env.name, "secret_keys": secret_keys}
         return env.name, (bundle or None)
 
     async def trigger_group_run(

@@ -29,7 +29,7 @@
         </hudson.model.PasswordParameterDefinition>
         <hudson.model.PasswordParameterDefinition>
           <name>TCRT_ENV_BUNDLE</name>
-          <description>TCRT-injected environment config: JSON namespaced by script path ({"tests/x.py": {"KEY": "value"}}). Masked. Empty when no environment is selected.</description>
+          <description>TCRT-injected environment config: JSON namespaced by script path ({"tests/x.py": {"KEY": "value"}}), plus a reserved "__tcrt__" meta entry ({"environment": "...", "secret_keys": [...]}) the test loader reads to log the active environment. Masked. Empty when no environment is selected.</description>
           <defaultValue></defaultValue>
         </hudson.model.PasswordParameterDefinition>
       </parameterDefinitions>

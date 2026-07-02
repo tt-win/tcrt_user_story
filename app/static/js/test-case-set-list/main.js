@@ -11,6 +11,8 @@ let quickSearchTestCases = [];
 let quickSearchTeamId = null;
 let quickSearchLoadPromise = null;
 let quickSearchInitialized = false;
+let viewMode = 'card'; // 'card' | 'compact'
+const VIEW_MODE_STORAGE_PREFIX = 'testCaseSetList.viewMode.';
 
 // 國際化
 const i18n = {
@@ -52,6 +54,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   initializeSetDefaultConfirmModal();
   setupQuickSearch_TestCaseSets();
   bindAiHelperEntrypoint();
+  bindViewToggleEvents();
 
   // 若 AuthClient 存在，監聽 authReady 以確保有完整的 user info
   document.addEventListener('authReady', async (e) => {
@@ -72,6 +75,8 @@ document.addEventListener('DOMContentLoaded', async function() {
       const team = JSON.parse(savedTeam);
       currentTeamId = team.id;
       console.log('Set currentTeamId to:', currentTeamId, 'Type:', typeof currentTeamId);
+      viewMode = loadViewModePreference();
+      applyViewToggleVisual();
 
       // 檢查 AuthClient 是否準備好
       console.log('AuthClient available:', !!window.AuthClient);
@@ -205,6 +210,9 @@ async function loadTestCaseSets() {
 
     testCaseSets = await response.json();
     console.log('Loaded test case sets:', testCaseSets);
+    if (window.PinStore) {
+      await window.PinStore.load(currentTeamId);
+    }
     await renderTestCaseSets();
   } catch (error) {
     console.error('Error loading test case sets:', error);
@@ -247,6 +255,221 @@ function getButtonTexts() {
   };
 }
 
+// 檢視模式切換 (卡片 / 精簡列表)，偏好依團隊記錄於 localStorage
+function viewModeStorageKey() {
+  return currentTeamId ? `${VIEW_MODE_STORAGE_PREFIX}${currentTeamId}` : null;
+}
+
+function loadViewModePreference() {
+  const key = viewModeStorageKey();
+  if (!key) return 'card';
+  try {
+    return window.localStorage.getItem(key) === 'compact' ? 'compact' : 'card';
+  } catch (_e) {
+    return 'card';
+  }
+}
+
+function persistViewModePreference(mode) {
+  const key = viewModeStorageKey();
+  if (!key) return;
+  try {
+    window.localStorage.setItem(key, mode);
+  } catch (_e) {
+    /* localStorage may be disabled; non-fatal */
+  }
+}
+
+function applyViewToggleVisual() {
+  const cardBtn = document.getElementById('viewToggleCard');
+  const compactBtn = document.getElementById('viewToggleCompact');
+  const cardContainer = document.getElementById('testCaseSetsContainer');
+  const compactContainer = document.getElementById('testCaseSetsCompactContainer');
+  const addBtn = document.getElementById('compactAddSetBtn');
+  if (cardBtn) cardBtn.classList.toggle('active', viewMode === 'card');
+  if (compactBtn) compactBtn.classList.toggle('active', viewMode === 'compact');
+  if (cardContainer) cardContainer.classList.toggle('d-none', viewMode !== 'card');
+  if (compactContainer) compactContainer.classList.toggle('d-none', viewMode !== 'compact');
+  if (addBtn) addBtn.classList.toggle('d-none', viewMode !== 'compact');
+}
+
+function switchViewMode(mode) {
+  if (mode !== 'card' && mode !== 'compact') return;
+  if (viewMode === mode) return;
+  viewMode = mode;
+  persistViewModePreference(mode);
+  applyViewToggleVisual();
+}
+
+function bindViewToggleEvents() {
+  const cardBtn = document.getElementById('viewToggleCard');
+  const compactBtn = document.getElementById('viewToggleCompact');
+  const addBtn = document.getElementById('compactAddSetBtn');
+  if (cardBtn && cardBtn.dataset.bound !== '1') {
+    cardBtn.dataset.bound = '1';
+    cardBtn.addEventListener('click', () => switchViewMode('card'));
+  }
+  if (compactBtn && compactBtn.dataset.bound !== '1') {
+    compactBtn.dataset.bound = '1';
+    compactBtn.addEventListener('click', () => switchViewMode('compact'));
+  }
+  if (addBtn && addBtn.dataset.bound !== '1') {
+    addBtn.dataset.bound = '1';
+    addBtn.addEventListener('click', () => showCreateSetModal());
+  }
+}
+
+// 渲染 Test Case Sets 精簡列表
+function renderCompactTestCaseSets(btnTexts, isAdmin) {
+  const container = document.getElementById('testCaseSetsCompactContainer');
+  if (!container) return;
+
+  if (testCaseSets.length === 0) {
+    container.innerHTML = `<div class="text-muted text-center py-4">${getLocalizedText('testCaseSet.noTestCaseSets', {}, i18n.noTestCaseSets)}</div>`;
+    return;
+  }
+
+  const columns = [
+    {
+      key: 'pin',
+      label: '',
+      sortable: false,
+      stopRowClick: true,
+      thClass: 'compact-pin-col',
+      tdClass: 'compact-pin-col',
+      render: set => pinToggleHtml(set)
+    },
+    {
+      key: 'name',
+      label: getLocalizedText('common.name', {}, '名稱'),
+      sortable: true,
+      sortValue: set => (set.name || '').toLowerCase(),
+      render: set => `
+        <div class="d-flex align-items-center gap-2">
+          <i class="fas fa-${set.is_default ? 'star text-warning' : 'folder text-secondary'}"></i>
+          <span class="fw-semibold text-primary">${escapeHtml(set.name)}</span>
+        </div>
+      `
+    },
+    {
+      key: 'test_case_count',
+      label: getLocalizedText('testCaseSet.caseCount', {}, 'Test Cases'),
+      sortable: true,
+      thClass: 'text-end',
+      tdClass: 'text-end',
+      sortValue: set => set.test_case_count || 0,
+      render: set => `${set.test_case_count || 0}`
+    },
+    {
+      key: 'created_at',
+      label: getLocalizedText('common.createDate', {}, '建立時間'),
+      sortable: true,
+      sortValue: set => set.created_at ? new Date(set.created_at).getTime() : 0,
+      render: set => set.created_at ? AppUtils.formatDate(set.created_at, 'datetime') : '-'
+    },
+    {
+      key: 'actions',
+      label: btnTexts.actions,
+      sortable: false,
+      stopRowClick: true,
+      thClass: 'text-end',
+      tdClass: 'text-end',
+      render: set => `
+        <div class="d-flex gap-2 justify-content-end">
+          <button class="btn btn-primary btn-sm" onclick="navigateToSet(${set.id})" title="${btnTexts.enter}">
+            <i class="fas fa-arrow-right"></i>
+          </button>
+          <div class="dropdown">
+            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="setCompactActionsDropdown${set.id}" data-bs-toggle="dropdown" aria-expanded="false" title="${btnTexts.actions}">
+              <i class="fas fa-ellipsis-v"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="setCompactActionsDropdown${set.id}">
+              <li>
+                <button type="button" class="dropdown-item" onclick="openSetCaseSelectModal(${set.id})">
+                  <i class="fas fa-plus me-2 text-success"></i>${btnTexts.createTestRun}
+                </button>
+              </li>
+              <li>
+                <button type="button" class="dropdown-item" onclick="exportTestCasesFromSet(${set.id}, this)">
+                  <i class="fas fa-file-csv me-2 text-info"></i>${btnTexts.exportCsv}
+                </button>
+              </li>
+              <li>
+                <button type="button" class="dropdown-item" data-edit-set-id="${set.id}" data-edit-set-name="${escapeHtml(set.name)}" data-edit-set-desc="${escapeHtml(set.description || '')}" onclick="showEditSetModal(this.dataset.editSetId, this.dataset.editSetName, this.dataset.editSetDesc)">
+                  <i class="fas fa-edit me-2"></i>${btnTexts.edit}
+                </button>
+              </li>
+              ${!set.is_default && isAdmin ? `
+              <li>
+                <button type="button" class="dropdown-item" onclick="showSetDefaultConfirm(${set.id}, '${escapeHtml(set.name).replace(/'/g, "\\'")}')">
+                  <i class="fas fa-star me-2 text-warning"></i>${btnTexts.setAsDefault}
+                </button>
+              </li>
+              ` : ''}
+              <li><hr class="dropdown-divider"></li>
+              <li>
+                <button type="button" class="dropdown-item text-danger ${set.is_default ? 'disabled' : ''}" ${set.is_default ? 'disabled aria-disabled="true"' : `onclick="showDeleteConfirm(${set.id}, '${escapeHtml(set.name).replace(/'/g, "\\'")}')"`}>
+                  <i class="fas fa-trash me-2"></i>${btnTexts.deleteSet}
+                </button>
+              </li>
+            </ul>
+          </div>
+        </div>
+      `
+    }
+  ];
+
+  renderCompactTable(container, {
+    storageKey: currentTeamId ? `testCaseSetList.sort.${currentTeamId}` : null,
+    columns,
+    rows: testCaseSets,
+    rowAttrs: set => ` class="compact-row-clickable" onclick="navigateToSet(${set.id})"`,
+    pin: {
+      isPinned: set => set.is_default || (window.PinStore && window.PinStore.isPinned('test_case_set', set.id)),
+      pinSortValue: set => set.is_default ? Infinity : (set.created_at ? new Date(set.created_at).getTime() : 0)
+    }
+  });
+}
+
+// 釘選切換按鈕 HTML（卡片與精簡列表共用）。
+// 預設集合永遠置頂，因此不提供 Pin 按鈕。
+function pinToggleHtml(set) {
+  if (set.is_default) return '';
+  const pinned = !!(window.PinStore && window.PinStore.isPinned('test_case_set', set.id));
+  const label = getLocalizedText(pinned ? 'common.unpin' : 'common.pin', {}, pinned ? 'Unpin' : 'Pin');
+  return `<button type="button" class="pin-toggle ${pinned ? 'pinned' : ''}" title="${label}" aria-label="${label}"
+            onclick="event.stopPropagation(); toggleSetPin(${set.id})">
+            <i class="fas fa-thumbtack"></i>
+          </button>`;
+}
+
+// 排序：預設集合永遠最上方，其次為釘選集合（依建立日期新→舊），其餘維持原順序。
+function orderTestCaseSetsDefaultFirst(sets) {
+  const defaults = sets.filter(s => s.is_default);
+  const others = sets.filter(s => !s.is_default);
+  const orderedOthers = window.PinStore
+    ? window.PinStore.sortPinnedFirst(others, s => window.PinStore.isPinned('test_case_set', s.id), s => s.created_at)
+    : others;
+  return defaults.concat(orderedOthers);
+}
+
+// 切換 Test Case Set 釘選狀態：成功後重繪卡片＋精簡列表兩種檢視
+async function toggleSetPin(setId) {
+  if (!window.PinStore || !currentTeamId) return;
+  const wasPinned = window.PinStore.isPinned('test_case_set', setId);
+  try {
+    if (wasPinned) {
+      await window.PinStore.unpin(currentTeamId, 'test_case_set', setId);
+    } else {
+      await window.PinStore.pin(currentTeamId, 'test_case_set', setId);
+    }
+    await renderTestCaseSets();
+  } catch (error) {
+    console.error('Toggle pin failed:', error);
+    showAlert(getLocalizedText('common.failed', {}, 'Operation failed'), 'danger');
+  }
+}
+
 // 渲染 Test Case Sets 卡片
 async function renderTestCaseSets() {
   const container = document.getElementById('testCaseSetsContainer');
@@ -273,14 +496,17 @@ async function renderTestCaseSets() {
       </div>
     `;
     emptyState.classList.add('d-none');
+    renderCompactTestCaseSets(btnTexts, isAdmin);
     return;
   }
 
   emptyState.classList.add('d-none');
 
-  const cardsHtml = testCaseSets.map(set => `
+  const orderedSets = orderTestCaseSetsDefaultFirst(testCaseSets);
+
+  const cardsHtml = orderedSets.map(set => `
     <div class="col-md-6 col-lg-4 mb-4">
-      <div class="card h-100 test-case-set-card ${set.is_default ? 'border-warning' : ''}" data-set-id="${set.id}">
+      <div class="card h-100 test-case-set-card ${set.is_default ? 'border-warning' : ''} ${window.PinStore && window.PinStore.isPinned('test_case_set', set.id) ? 'pinned-card' : ''}" data-set-id="${set.id}">
         ${set.is_default ? '<div class="card-header bg-warning text-dark py-1 px-3 fs-7 fw-bold" style="font-size: 0.75rem;"><i class="fas fa-star me-1"></i> Default Set</div>' : ''}
         <div class="card-body d-flex flex-column h-100">
           <div class="d-flex align-items-start mb-3">
@@ -297,6 +523,9 @@ async function renderTestCaseSets() {
               <p class="card-text text-muted small mb-0">
                 ${set.description ? escapeHtml(set.description) : '<em>無描述</em>'}
               </p>
+            </div>
+            <div class="flex-shrink-0">
+              ${pinToggleHtml(set)}
             </div>
           </div>
           <div class="mt-2 mb-3">
@@ -357,6 +586,8 @@ async function renderTestCaseSets() {
       ${getAddTestCaseSetCardHtml(btnTexts)}
     </div>
   `;
+
+  renderCompactTestCaseSets(btnTexts, isAdmin);
 }
 
 function showSetDefaultConfirm(setId, setName) {

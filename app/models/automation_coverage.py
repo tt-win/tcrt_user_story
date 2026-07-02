@@ -19,8 +19,19 @@ class AutomationCoverageLinkItem(BaseModel):
     link_type: str
 
 
-class AutomationCoverageCoveredCaseItem(AutomationCoverageCaseItem):
-    links: list[AutomationCoverageLinkItem]
+class AutomationCoverageCaseRow(AutomationCoverageCaseItem):
+    """One case in the paginated explorer: coverage status + linked scripts."""
+
+    status: str  # "primary" | "covers" | "uncovered"
+    links: list[AutomationCoverageLinkItem] = []
+
+
+class AutomationCoverageCasesPage(BaseModel):
+    items: list[AutomationCoverageCaseRow]
+    total: int
+    skip: int
+    limit: int
+    has_next: bool
 
 
 class AutomationCoverageGroupItem(BaseModel):
@@ -45,7 +56,6 @@ class AutomationCoverageResponse(BaseModel):
     with_any_link: int
     uncovered_count: int
     uncovered_sample: list[AutomationCoverageCaseItem]
-    covered_cases: list[AutomationCoverageCoveredCaseItem]
     by_group: list[AutomationCoverageGroupItem]
     by_format: dict[str, int]
     trend: list[AutomationCoverageTrendPoint]

@@ -84,6 +84,9 @@ function initializePage() {
     // 確保網址列包含 team_id（不重新載入頁面）
     try { if (currentTeamId) ensureTeamIdInUrl_TRM(currentTeamId); } catch (_) {}
 
+    trmViewMode = loadTrmViewModePreference();
+    applyTrmViewToggleVisual();
+
     if (currentTeamId) {
         teamIdReady = true;
         loadTestRunConfigs();
@@ -96,6 +99,8 @@ function initializePage() {
 }
 
 function bindEventListeners() {
+    bindTrmViewToggleEvents();
+
     const refreshBtn = document.getElementById('refreshBtn');
     if (refreshBtn) refreshBtn.addEventListener('click', () => {
         if (!teamIdReady) {

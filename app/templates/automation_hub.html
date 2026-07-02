@@ -201,38 +201,43 @@
                 </div>
               </div>
 
-              <div class="automation-coverage-layout">
-                <div class="automation-coverage-main">
-                  <div class="automation-section-title" data-i18n="automationHub.coverage.byGroup">By case group</div>
-                  <div id="coverageGroupList" class="automation-coverage-groups mb-3"></div>
-
-                  <div class="d-flex align-items-center gap-2 mb-2">
-                    <div class="btn-group btn-group-sm" role="group" aria-label="Coverage case view">
-                      <button type="button" class="btn btn-outline-secondary active" id="coverageTabUncovered">
-                        <span data-i18n="automationHub.coverage.uncovered">Uncovered</span> <span id="coverageTabUncoveredCount" class="ms-1">0</span>
-                      </button>
-                      <button type="button" class="btn btn-outline-secondary" id="coverageTabCovered">
-                        <span data-i18n="automationHub.coverage.covered">Covered</span> <span id="coverageTabCoveredCount" class="ms-1">0</span>
-                      </button>
-                    </div>
-                    <span class="badge bg-light text-dark border d-none" id="coverageGroupFilterBadge">
-                      <span id="coverageGroupFilterText"></span>
-                      <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline" id="coverageGroupFilterClear" aria-label="Clear group filter"><i class="fas fa-times"></i></button>
-                    </span>
-                  </div>
-                  <div class="table-responsive automation-coverage-table-wrap">
-                    <table class="table table-hover table-sm align-middle mb-0">
-                      <thead class="table-light">
-                        <tr>
-                          <th style="width: 220px;" data-i18n="automationHub.coverage.caseNumber">Case</th>
-                          <th data-i18n="common.title">Title</th>
-                          <th id="coverageLinksHeader" class="d-none" style="width: 40%;" data-i18n="automationHub.coverage.linkedScripts">Linked scripts</th>
-                        </tr>
-                      </thead>
-                      <tbody id="coverageCaseRows"></tbody>
-                    </table>
-                  </div>
+              <div class="automation-coverage-toolbar d-flex flex-wrap gap-2 align-items-center mb-2">
+                <div class="automation-coverage-search position-relative flex-grow-1">
+                  <i class="fas fa-search" aria-hidden="true"></i>
+                  <input type="text" id="coverageSearch" class="form-control form-control-sm" data-i18n-placeholder="automationHub.coverage.searchPlaceholder" placeholder="Search case number or title" aria-label="Search cases">
                 </div>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Coverage status filter" id="coverageStatusFilter">
+                  <button type="button" class="btn btn-outline-secondary active" data-status="all"><span data-i18n="automationHub.coverage.statusAll">All</span></button>
+                  <button type="button" class="btn btn-outline-secondary" data-status="uncovered"><span data-i18n="automationHub.coverage.uncovered">Uncovered</span></button>
+                  <button type="button" class="btn btn-outline-secondary" data-status="covered"><span data-i18n="automationHub.coverage.covered">Covered</span></button>
+                  <button type="button" class="btn btn-outline-secondary" data-status="primary">PRIMARY</button>
+                </div>
+                <select id="coverageSort" class="form-select form-select-sm automation-coverage-sort" aria-label="Sort">
+                  <option value="pct-asc" data-i18n="automationHub.coverage.sortWorst">Coverage low to high</option>
+                  <option value="pct-desc" data-i18n="automationHub.coverage.sortBest">Coverage high to low</option>
+                  <option value="size-desc" data-i18n="automationHub.coverage.sortSize">Case count</option>
+                  <option value="name" data-i18n="automationHub.coverage.sortNumber">Case number</option>
+                </select>
+                <button type="button" id="coverageGroupToggle" class="btn btn-outline-secondary btn-sm active" aria-pressed="true">
+                  <i class="fas fa-stream me-1" aria-hidden="true"></i><span data-i18n="automationHub.coverage.groupByTicket">Group by ticket</span>
+                </button>
+                <button type="button" id="coverageExpandAll" class="btn btn-outline-secondary btn-sm">
+                  <i class="fas fa-angle-double-down me-1" aria-hidden="true"></i><span data-i18n="automationHub.coverage.expandAll">Expand all</span>
+                </button>
+              </div>
+
+              <div class="automation-coverage-explorer-head">
+                <span data-i18n="automationHub.coverage.caseOrGroup">Case / group</span>
+                <span data-i18n="automationHub.coverage.distribution">Coverage</span>
+                <span class="text-end" data-i18n="automationHub.coverage.coveredOfTotal">Covered/total</span>
+                <span class="text-end">%</span>
+              </div>
+              <div id="coverageScroll" class="automation-coverage-explorer">
+                <div id="coverageList"></div>
+              </div>
+              <div class="automation-coverage-explorer-foot d-flex justify-content-between flex-wrap gap-2">
+                <span id="coverageFootLeft"></span>
+                <span id="coverageFootRight" class="text-muted"></span>
               </div>
             </div>
             <div id="coverageEmpty" class="text-center py-4 d-none">

@@ -212,6 +212,11 @@ async def test_resolve_env_bundle_paths(env_db):
             team_id=env_db["team_id"], scripts=[script], environment="sit")
         assert name == "sit"
         assert bundle["tests/test_login.py"]["API_TOKEN"] == "tok_abcd"
+        # Reserved meta rides along for the test-side log banner: env name +
+        # which keys are secret (so the loader masks them). Never a ref_path.
+        assert bundle["__tcrt__"]["environment"] == "sit"
+        assert "API_TOKEN" in bundle["__tcrt__"]["secret_keys"]
+        assert "BASE_URL" not in bundle["__tcrt__"]["secret_keys"]
 
         # Default fallback (environment=None → catalog default).
         name2, _ = await gsvc.resolve_env_bundle(

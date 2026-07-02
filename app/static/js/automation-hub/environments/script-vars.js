@@ -147,10 +147,48 @@
       ? ` <i class="fas fa-lock text-muted small" title="${escapeAttr(t('automationHub.environments.varsSecret', 'secret'))}"></i>`
       : '';
     const descTitle = declaredVar.description ? escapeAttr(declaredVar.description) : '';
-    const nameCell = `<td class="font-monospace small fw-semibold" title="${descTitle}">${escapeHtml(declaredVar.name)}${requiredFlag}${secretFlag}</td>`;
+    const usage = declaredVar.usage || {};
+    const hasUsage = Array.isArray(usage.sites) && usage.sites.length > 0;
+    // No detected usage → no toggle at all, rather than a button that only
+    // opens to an empty state. Keeps the row as compact as today's when
+    // there's nothing useful to show.
+    const usageToggle = hasUsage
+      ? ` <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline" data-usage-toggle
+            title="${escapeAttr(t('automationHub.environments.varsShowUsage', 'Show where this variable is used'))}">
+            <i class="fas fa-code"></i>
+          </button>`
+      : '';
+    const nameCell = `<td class="font-monospace small fw-semibold" title="${descTitle}">${escapeHtml(declaredVar.name)}${requiredFlag}${secretFlag}${usageToggle}</td>`;
 
     const cells = environments.map((env) => renderCell(declaredVar, env)).join('');
-    return `<tr>${nameCell}${cells}</tr>`;
+    const mainRow = `<tr>${nameCell}${cells}</tr>`;
+    if (!hasUsage) return mainRow;
+
+    const colspan = environments.length + 1;
+    const usageRow = `
+      <tr class="automation-vars-usage-row d-none" data-usage-row>
+        <td colspan="${colspan}">${renderUsagePanel(usage)}</td>
+      </tr>`;
+    return mainRow + usageRow;
+  }
+
+  // Collapsed by default; toggled open per-row via onMatrixClick. Data is
+  // already in state.data, so no extra fetch on expand.
+  function renderUsagePanel(usage) {
+    const blocks = (usage.sites || []).map(renderUsageSite).join('<hr class="my-2">');
+    const moreNote = usage.truncated
+      ? `<div class="text-muted small mt-2" data-i18n="automationHub.environments.varsUsageMore">${escapeHtml(t('automationHub.environments.varsUsageMore', 'More usages exist in this file.'))}</div>`
+      : '';
+    return `<div class="automation-vars-usage-panel">${blocks}${moreNote}</div>`;
+  }
+
+  function renderUsageSite(site) {
+    const lines = Array.isArray(site.lines) ? site.lines : [];
+    const rows = lines.map((line) => {
+      const cls = line.match ? ' automation-vars-usage-line-match' : '';
+      return `<div class="automation-vars-usage-line${cls}"><span class="automation-vars-usage-gutter">${line.no}</span><span>${escapeHtml(line.text)}</span></div>`;
+    }).join('');
+    return `<pre class="automation-vars-usage-code mb-0"><code>${rows}</code></pre>`;
   }
 
   function renderCell(declaredVar, env) {
@@ -198,6 +236,11 @@
   }
 
   function onMatrixClick(event) {
+    const usageToggle = event.target.closest('[data-usage-toggle]');
+    if (usageToggle) {
+      toggleUsageRow(usageToggle);
+      return;
+    }
     const cellEl = event.target.closest('[data-vars-cell]');
     if (!cellEl) return;
     openCellModal({
@@ -206,6 +249,13 @@
       varName: cellEl.dataset.varName,
       isSecret: cellEl.dataset.isSecret === '1',
     });
+  }
+
+  function toggleUsageRow(toggleBtn) {
+    const row = toggleBtn.closest('tr');
+    const usageRow = row && row.nextElementSibling;
+    if (!usageRow || !usageRow.hasAttribute('data-usage-row')) return;
+    usageRow.classList.toggle('d-none');
   }
 
   // ── Cell editor (set / clear an override) ────────────────────────

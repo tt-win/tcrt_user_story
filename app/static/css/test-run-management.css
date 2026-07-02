@@ -899,3 +899,107 @@ input[type="checkbox"]:indeterminate {
     background-color: #0dcaf0;
     border-color: #0dcaf0;
 }
+
+/* Compact (list) view table */
+.compact-table-wrapper {
+    border: 1px solid var(--tr-border-light, #dee2e6);
+    border-radius: 0.5rem;
+}
+
+.compact-table {
+    width: 100%;
+    margin-bottom: 0;
+    background: #fff;
+}
+
+.compact-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.compact-table th,
+.compact-table td {
+    padding: 0.6rem 0.75rem;
+    vertical-align: middle;
+    border-bottom: 1px solid var(--tr-border-light, #dee2e6);
+}
+
+/* Header row: give it a distinct tint so the list reads as a real table
+   right after switching from card view (instead of an all-white block). */
+.compact-table thead th {
+    background-color: var(--tr-bg-light, #f8f9fa);
+    border-bottom: 2px solid var(--tr-border-light, #dee2e6);
+}
+
+.compact-table thead th:first-child {
+    border-top-left-radius: 0.5rem;
+}
+
+.compact-table thead th:last-child {
+    border-top-right-radius: 0.5rem;
+}
+
+.compact-table-th {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    user-select: none;
+}
+
+.compact-table-th.sortable {
+    cursor: pointer;
+}
+
+.compact-table thead th.sortable:hover {
+    color: var(--tr-primary, #0d6efd);
+    background-color: #eceef1;
+}
+
+.compact-table-th.sorted {
+    color: var(--tr-primary, #0d6efd);
+}
+
+.compact-table-sort-indicator {
+    font-size: 0.7rem;
+}
+
+.compact-row-clickable {
+    cursor: pointer;
+}
+
+.compact-row-clickable:hover {
+    background-color: var(--tr-bg-light, #f8f9fa);
+}
+
+/* Pin toggle (shared card + compact) */
+.pin-toggle {
+    border: none;
+    background: transparent;
+    padding: 0.15rem 0.35rem;
+    color: var(--tr-text-muted, #adb5bd);
+    cursor: pointer;
+    line-height: 1;
+    border-radius: 0.25rem;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.pin-toggle:hover {
+    color: var(--tr-primary, #0d6efd);
+    background-color: var(--tr-bg-light, #f8f9fa);
+}
+
+.pin-toggle.pinned {
+    color: var(--bs-warning, #ffc107);
+}
+
+/* Pinned card gets a subtle warm accent */
+.test-run-card.pinned-card {
+    box-shadow: 0 2px 10px rgba(255, 193, 7, 0.22);
+}
+
+.compact-pin-col {
+    width: 2.25rem;
+    text-align: center;
+}

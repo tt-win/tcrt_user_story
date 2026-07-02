@@ -8,15 +8,19 @@
     "assignee": "执行者",
     "back": "返回",
     "cancel": "取消",
+    "cardView": "卡片视图",
     "clear": "清除",
     "clearSelection": "清除选择",
     "close": "关闭",
+    "compactView": "精简列表",
     "confirm": "确认",
     "copy": "复制",
     "cut": "剪切",
     "paste": "粘贴",
     "copyLink": "复制链接",
     "copied": "已复制",
+    "pin": "置顶",
+    "unpin": "取消置顶",
     "create": "新增",
     "createDate": "创建日期",
     "delete": "删除",
@@ -795,7 +799,24 @@
       "linkDone": "Automation script 已连接",
       "linkFailed": "连接 automation script 失败",
       "noScripts": "暂无可用 scripts",
-      "noUncovered": "所有 cases 都已有 automation coverage。"
+      "noUncovered": "所有 cases 都已有 automation coverage。",
+      "searchPlaceholder": "搜索案件编号或标题",
+      "statusAll": "全部",
+      "sortWorst": "覆盖率 低→高",
+      "sortBest": "覆盖率 高→低",
+      "sortSize": "案件数",
+      "sortNumber": "案件编号",
+      "groupByTicket": "按 Ticket 分组",
+      "expandAll": "展开全部",
+      "collapseAll": "收起全部",
+      "loadMore": "加载更多",
+      "caseOrGroup": "案件 / 分组",
+      "distribution": "覆盖分布",
+      "coveredOfTotal": "已覆盖/总数",
+      "noResults": "没有符合的案件",
+      "footSummary": "共 {total} 个案件 · 已覆盖 {covered} · 未覆盖 {uncovered}",
+      "footMatches": "符合 {n} 个",
+      "footTreeHint": "点击分组可展开其案件"
     },
     "settings": {
       "title": "Settings",
@@ -1078,7 +1099,9 @@
       "varsClearConfirm": "要移除此覆盖并改用共用值吗？",
       "varsClearDone": "已移除覆盖",
       "varsClearFailed": "移除覆盖失败",
-      "varsSecureNote": "数值以加密形式存储在 TCRT，绝不会提交到 git。"
+      "varsSecureNote": "数值以加密形式存储在 TCRT，绝不会提交到 git。",
+      "varsShowUsage": "显示此变量的使用位置",
+      "varsUsageMore": "此文件中还有其他使用位置。"
     }
   },
   "orgSync": {
@@ -1548,6 +1571,7 @@
   },
   "testCaseSet": {
     "pageSubtitle": "选择或创建一个测试案例集合来开始管理测试案例",
+    "caseCount": "测试案例数量",
     "setName": "集合名称",
     "createSet": "新增测试案例集合",
     "editSet": "编辑测试案例集合",
@@ -2544,6 +2568,7 @@
   "adhoc": {
     "title": "临时 Test Run",
     "desc": "快速进行未预先定义案例的测试",
+    "sheetsLabel": "分页",
     "enter": "进入",
     "editLabel": "编辑",
     "deleteLabel": "删除",

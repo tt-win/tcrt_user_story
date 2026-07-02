@@ -29,6 +29,7 @@ from app.models.automation_environment import (
     ScriptEnvVarCell,
     ScriptEnvVarsResponse,
 )
+from app.services.automation.marker_parse import _find_var_usage_sites
 from app.models.database_models import (
     AutomationEnvironment,
     AutomationEnvironmentParam,
@@ -396,6 +397,11 @@ class EnvironmentService:
     async def get_script_env_vars(self, *, team_id: int, script_id: int) -> ScriptEnvVarsResponse:
         script = await self._get_script(team_id, script_id)
         declared = self._declared_vars(script)
+        usage_by_name = _find_var_usage_sites(
+            script.cached_content or "", [dv["name"] for dv in declared if dv.get("name")]
+        )
+        for dv in declared:
+            dv["usage"] = usage_by_name.get(dv.get("name") or "", {"sites": [], "truncated": False})
         envs_result = await self.session.execute(
             select(AutomationEnvironment).where(AutomationEnvironment.team_id == team_id).order_by(AutomationEnvironment.name)
         )

@@ -294,3 +294,74 @@ def _extract_declared_vars(
         seen.add(name)
         declared.append({"name": name, **spec})
     return declared, warnings
+
+
+_USAGE_CONTEXT_LINES = 3
+_MAX_USAGE_SITES = 3
+
+
+def _find_var_usage_sites(
+    content: str, names: list[str]
+) -> dict[str, dict[str, Any]]:
+    """Locate where each declared variable name is read as a string-literal key.
+
+    Structural heuristic for the Configure-variables UI — NOT a data-flow
+    analysis. Matches ``xxx["NAME"]`` (``ast.Subscript``) and ``xxx.get("NAME")``
+    / ``os.getenv("NAME")`` (``ast.Call``), regardless of what ``xxx`` is named,
+    so it finds usage through the ``tcrt_env`` fixture, the ``tcrt_env.py``
+    helper, or a raw ``os.environ`` read alike. Trade-offs: an aliased read
+    (``u = tcrt_env["X"]``; later ``use(u)``) only surfaces the assignment
+    line, and an unrelated dict sharing a key name would show as a false
+    positive. The ``TCRT_VARS`` declaration itself never matches — it's a list
+    literal, not a Subscript/``.get()`` call.
+
+    Returns ``{name: {"sites": [...], "truncated": bool}}`` for names with at
+    least one hit; a name with none is simply absent. Each site is
+    ``{"lines": [{"no", "text", "match"?}, ...]}`` with up to
+    ``_USAGE_CONTEXT_LINES`` lines of context on each side of the match.
+    Fail-open: a syntax error or empty input yields ``{}``.
+    """
+    if not names or not content:
+        return {}
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return {}
+
+    wanted = set(names)
+    hits: dict[str, list[int]] = {}
+
+    for node in ast.walk(tree):
+        key: str | None = None
+        if isinstance(node, ast.Subscript):
+            slice_node = node.slice
+            if isinstance(slice_node, ast.Constant) and isinstance(slice_node.value, str):
+                key = slice_node.value
+        elif isinstance(node, ast.Call):
+            func = node.func
+            attr = func.attr if isinstance(func, ast.Attribute) else (
+                func.id if isinstance(func, ast.Name) else None
+            )
+            if attr in ("get", "getenv") and node.args:
+                first_arg = node.args[0]
+                if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+                    key = first_arg.value
+        lineno = getattr(node, "lineno", 0)
+        if key is not None and key in wanted and lineno > 0:
+            hits.setdefault(key, []).append(lineno)
+
+    lines = content.splitlines()
+    result: dict[str, dict[str, Any]] = {}
+    for name, line_nos in hits.items():
+        unique_lines = sorted(set(line_nos))
+        sites = []
+        for lineno in unique_lines[:_MAX_USAGE_SITES]:
+            start = max(1, lineno - _USAGE_CONTEXT_LINES)
+            end = min(len(lines), lineno + _USAGE_CONTEXT_LINES)
+            site_lines = [
+                {"no": n, "text": lines[n - 1], **({"match": True} if n == lineno else {})}
+                for n in range(start, end + 1)
+            ]
+            sites.append({"lines": site_lines})
+        result[name] = {"sites": sites, "truncated": len(unique_lines) > _MAX_USAGE_SITES}
+    return result

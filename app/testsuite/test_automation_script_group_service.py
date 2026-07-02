@@ -474,9 +474,10 @@ async def test_trigger_group_run_injects_env_bundle_and_masks_inputs(
 
     # CI inputs carry the decrypted, per-script-namespaced bundle.
     injected = json.loads(fake_ci.trigger_calls[-1][2]["TCRT_ENV_BUNDLE"])
-    assert injected == {
-        "tests/test_login.py": {"BASE_URL": "https://sit", "API_TOKEN": "tok_secret"}
-    }
+    assert injected["tests/test_login.py"] == {"BASE_URL": "https://sit", "API_TOKEN": "tok_secret"}
+    # Reserved meta rides along so the test-side loader can log the active env in
+    # the Jenkins console (secrets masked at print time). Never a ref_path.
+    assert injected["__tcrt__"] == {"environment": "sit", "secret_keys": ["API_TOKEN"]}
     # Run records the environment NAME only; stored inputs_json masks the bundle.
     assert persisted.environment == "sit"
     assert json.loads(persisted.inputs_json)["TCRT_ENV_BUNDLE"] == "***"

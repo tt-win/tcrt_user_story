@@ -148,13 +148,55 @@ async def test_compute_coverage_counts_uncovered_cases(automation_coverage_db):
         "TC-004": (1, 0, 0),
     }
 
-    # Covered cases carry their linked scripts (link list shows all types,
-    # but only PRIMARY/COVERS-linked cases appear here).
-    covered = {item["test_case_number"]: item for item in coverage["covered_cases"]}
-    assert set(covered) == {"TC-001", "TC-002"}
-    assert [(l["script_name"], l["link_type"]) for l in covered["TC-001"]["links"]] == [
-        ("test_login.py", "PRIMARY"),
-    ]
-    assert [(l["script_name"], l["link_type"]) for l in covered["TC-002"]["links"]] == [
-        ("test_logout.py", "COVERS"),
-    ]
+    # The summary no longer carries the full case list — it is served,
+    # paginated, by list_cases (see test_list_cases_*).
+    assert "covered_cases" not in coverage
+
+
+@pytest.mark.asyncio
+async def test_list_cases_status_filters_and_links(automation_coverage_db):
+    ids = automation_coverage_db["ids"]
+    async with automation_coverage_db["async_sessionmaker"]() as session:
+        service = AutomationCoverageService(session)
+
+        all_items, all_total = await service.list_cases(team_id=ids["team_id"])
+        assert all_total == 4
+        by_num = {i["test_case_number"]: i for i in all_items}
+        # REFERENCES-only (TC-003) is NOT coverage → uncovered.
+        assert by_num["TC-001"]["status"] == "primary"
+        assert by_num["TC-002"]["status"] == "covers"
+        assert by_num["TC-003"]["status"] == "uncovered"
+        assert by_num["TC-004"]["status"] == "uncovered"
+        assert [(l["script_name"], l["link_type"]) for l in by_num["TC-001"]["links"]] == [
+            ("test_login.py", "PRIMARY"),
+        ]
+
+        covered, covered_total = await service.list_cases(team_id=ids["team_id"], status="covered")
+        assert covered_total == 2
+        assert {i["test_case_number"] for i in covered} == {"TC-001", "TC-002"}
+
+        uncovered, uncovered_total = await service.list_cases(team_id=ids["team_id"], status="uncovered")
+        assert uncovered_total == 2
+        assert {i["test_case_number"] for i in uncovered} == {"TC-003", "TC-004"}
+
+        primary, primary_total = await service.list_cases(team_id=ids["team_id"], status="primary")
+        assert primary_total == 1
+        assert primary[0]["test_case_number"] == "TC-001"
+
+
+@pytest.mark.asyncio
+async def test_list_cases_search_and_pagination(automation_coverage_db):
+    ids = automation_coverage_db["ids"]
+    async with automation_coverage_db["async_sessionmaker"]() as session:
+        service = AutomationCoverageService(session)
+
+        # Search matches title or number (case-insensitive).
+        found, found_total = await service.list_cases(team_id=ids["team_id"], q="logout")
+        assert found_total == 1 and found[0]["test_case_number"] == "TC-002"
+
+        # First page caps at limit while total reflects the full match set.
+        page1, total = await service.list_cases(team_id=ids["team_id"], skip=0, limit=2)
+        assert total == 4 and len(page1) == 2
+        assert [i["test_case_number"] for i in page1] == ["TC-001", "TC-002"]
+        page2, _ = await service.list_cases(team_id=ids["team_id"], skip=2, limit=2)
+        assert [i["test_case_number"] for i in page2] == ["TC-003", "TC-004"]

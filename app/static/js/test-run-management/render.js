@@ -2,6 +2,39 @@
    TEST RUN MANAGEMENT - RENDER
    ============================================================ */
 
+// ---- 釘選 (Pin) 共用工具（Test Run Set / Test Run / Ad-hoc Run 共用）----
+function trmPinToggleHtml(entityType, id) {
+    const pinned = !!(window.PinStore && window.PinStore.isPinned(entityType, id));
+    const label = (window.i18n && window.i18n.isReady() && window.i18n.t(pinned ? 'common.unpin' : 'common.pin'))
+        || (pinned ? 'Unpin' : 'Pin');
+    return `<button type="button" class="pin-toggle ${pinned ? 'pinned' : ''}" title="${label}" aria-label="${label}"
+              onclick="event.stopPropagation(); toggleTrmPin('${entityType}', ${id})">
+              <i class="fas fa-thumbtack"></i>
+            </button>`;
+}
+
+async function toggleTrmPin(entityType, id) {
+    if (!window.PinStore || !currentTeamId) return;
+    const wasPinned = window.PinStore.isPinned(entityType, id);
+    try {
+        if (wasPinned) {
+            await window.PinStore.unpin(currentTeamId, entityType, id);
+        } else {
+            await window.PinStore.pin(currentTeamId, entityType, id);
+        }
+        if (entityType === 'adhoc_run') {
+            if (typeof renderAdHocRuns === 'function') renderAdHocRuns(window.lastAdHocRuns || []);
+        } else {
+            renderTestRunOverview(currentStatusFilter);
+        }
+    } catch (error) {
+        console.error('Toggle pin failed:', error);
+        if (window.AppUtils && typeof AppUtils.showError === 'function') {
+            AppUtils.showError((window.i18n && window.i18n.isReady() && window.i18n.t('common.failed')) || 'Operation failed');
+        }
+    }
+}
+
 function renderTestRunOverview(filterStatus = 'all') {
     const hasSets = Array.isArray(testRunSets) && testRunSets.length > 0;
     const hasUnassigned = Array.isArray(unassignedTestRuns) && unassignedTestRuns.length > 0;
@@ -41,7 +74,11 @@ function renderTestRunSetCards(filterStatus) {
         });
     }
 
-    const cards = filteredSets.length > 0 ? filteredSets.map(set => createTestRunSetCard(set, filterStatus)) : [];
+    const orderedSets = window.PinStore
+        ? window.PinStore.sortPinnedFirst(filteredSets, s => window.PinStore.isPinned('test_run_set', s.id), s => s.created_at)
+        : filteredSets;
+
+    const cards = orderedSets.length > 0 ? orderedSets.map(set => createTestRunSetCard(set, filterStatus)) : [];
 
     if (perms.canCreate) {
         cards.push(getAddTestRunSetCardHtml());
@@ -54,6 +91,112 @@ function renderTestRunSetCards(filterStatus) {
     if (window.i18n && window.i18n.isReady()) {
         window.i18n.retranslate(container);
     }
+
+    renderCompactTestRunSetTable(filteredSets, filterStatus);
+}
+
+function renderCompactTestRunSetTable(filteredSets, filterStatus) {
+    const container = document.getElementById('test-run-sets-compact');
+    if (!container) return;
+
+    if (!filteredSets.length) {
+        container.innerHTML = `<div class="text-muted text-center py-4" data-i18n="testRun.sets.card.empty">尚未包含任何 Test Run</div>`;
+        return;
+    }
+
+    const decorated = filteredSets.map(set => {
+        const allRuns = Array.isArray(set.test_runs) ? set.test_runs : [];
+        const filteredRuns = filterTestRunsByStatus(allRuns, filterStatus);
+        return Object.assign({}, set, {
+            _totalRuns: allRuns.length,
+            _filteredCount: filteredRuns.length,
+            _metrics: summarizeSetMetrics(filteredRuns)
+        });
+    });
+
+    const columns = [
+        {
+            key: 'pin',
+            label: '',
+            sortable: false,
+            stopRowClick: true,
+            thClass: 'compact-pin-col',
+            tdClass: 'compact-pin-col',
+            render: set => trmPinToggleHtml('test_run_set', set.id)
+        },
+        {
+            key: 'name',
+            label: (window.i18n && window.i18n.t('common.name')) || '名稱',
+            sortable: true,
+            sortValue: set => (set.name || '').toLowerCase(),
+            render: set => `<span class="fw-semibold text-primary">${escapeHtml(set.name)}</span>`
+        },
+        {
+            key: 'status',
+            label: (window.i18n && window.i18n.t('common.status')) || '狀態',
+            sortable: true,
+            sortValue: set => (set.status || 'active').toLowerCase(),
+            render: set => getSetStatusBadge(set.status)
+        },
+        {
+            key: 'runs',
+            label: (window.i18n && window.i18n.t('testRun.sets.card.totalRuns')) || '包含 Test Run',
+            sortable: true,
+            thClass: 'text-end',
+            tdClass: 'text-end',
+            sortValue: set => set._totalRuns,
+            render: set => `${set._filteredCount}/${set._totalRuns}`
+        },
+        {
+            key: 'execution_rate',
+            label: (window.i18n && window.i18n.t('testRun.progressLabel')) || '執行進度',
+            sortable: true,
+            thClass: 'text-end',
+            tdClass: 'text-end',
+            sortValue: set => set._metrics.executionRate,
+            render: set => `${set._metrics.executionRate.toFixed(1)}%`
+        },
+        {
+            key: 'pass_rate',
+            label: (window.i18n && window.i18n.t('testRun.passRateLabel')) || 'Pass Rate',
+            sortable: true,
+            thClass: 'text-end',
+            tdClass: 'text-end',
+            sortValue: set => set._metrics.passRate,
+            render: set => `${set._metrics.passRate.toFixed(1)}%`
+        },
+        {
+            key: 'created_at',
+            label: (window.i18n && window.i18n.t('common.createDate')) || '建立時間',
+            sortable: true,
+            sortValue: set => set.created_at ? new Date(set.created_at).getTime() : 0,
+            render: set => AppUtils.formatDate(set.created_at, 'datetime')
+        },
+        {
+            key: 'actions',
+            label: (window.i18n && window.i18n.t('common.actions')) || '操作',
+            sortable: false,
+            stopRowClick: true,
+            thClass: 'text-end',
+            tdClass: 'text-end',
+            render: set => `
+                <button type="button" class="btn btn-primary btn-sm" onclick="openTestRunSetDetail(${set.id})">
+                    <i class="fas fa-layer-group me-1"></i><span data-i18n="testRun.sets.card.openDetail">管理 Test Run</span>
+                </button>
+            `
+        }
+    ];
+
+    renderCompactTable(container, {
+        storageKey: currentTeamId ? `testRunManagement.sort.sets.${currentTeamId}` : null,
+        columns,
+        rows: decorated,
+        rowAttrs: set => ` class="compact-row-clickable" onclick="openTestRunSetDetail(${set.id})"`,
+        pin: {
+            isPinned: set => window.PinStore && window.PinStore.isPinned('test_run_set', set.id),
+            pinSortValue: set => (set.created_at ? new Date(set.created_at).getTime() : 0)
+        }
+    });
 }
 
 function summarizeSetMetrics(testRuns) {
@@ -297,9 +440,11 @@ function createTestRunSetCard(set, filterStatus) {
         <div class="d-flex flex-wrap gap-1 justify-content-end ms-auto">${tpContent}</div>
     </div>`;
 
+    const pinnedCardClass = (window.PinStore && window.PinStore.isPinned('test_run_set', set.id)) ? ' pinned-card' : '';
+
     return `
         <div class="col-xl-4 col-lg-6 mb-4">
-            <div class="card h-100 test-run-card ${statusClass}" onclick="openTestRunSetDetail(${set.id})">
+            <div class="card h-100 test-run-card ${statusClass}${pinnedCardClass}" onclick="openTestRunSetDetail(${set.id})">
                 <div class="card-body d-flex flex-column">
                     <div class="d-flex justify-content-between align-items-start mb-3 gap-2">
                         <div class="flex-grow-1 min-width-0">
@@ -308,7 +453,8 @@ function createTestRunSetCard(set, filterStatus) {
                                 <i class="fas fa-calendar-plus me-1"></i>${AppUtils.formatDate(set.created_at, 'datetime')}
                             </div>
                         </div>
-                        <div class="flex-shrink-0">
+                        <div class="flex-shrink-0 d-flex align-items-center gap-1">
+                            ${trmPinToggleHtml('test_run_set', set.id)}
                             ${statusBadge}
                         </div>
                     </div>
@@ -346,6 +492,7 @@ function renderUnassignedTestRunCards(filterStatus) {
         if (window.i18n && window.i18n.isReady()) {
             window.i18n.retranslate(container);
         }
+        renderCompactUnassignedRunsTable([]);
         return;
     }
 
@@ -368,10 +515,15 @@ function renderUnassignedTestRunCards(filterStatus) {
         if (window.i18n && window.i18n.isReady()) {
             window.i18n.retranslate(container);
         }
+        renderCompactUnassignedRunsTable([]);
         return;
     }
 
-    let cardsHtml = runs.map(config => createConfigCard(config)).join('');
+    const orderedRuns = window.PinStore
+        ? window.PinStore.sortPinnedFirst(runs, r => window.PinStore.isPinned('test_run', r.id), r => r.created_at)
+        : runs;
+
+    let cardsHtml = orderedRuns.map(config => createConfigCard(config)).join('');
     if (perms.canCreate) {
         cardsHtml += getAddTestRunCardHtml();
     }
@@ -381,6 +533,180 @@ function renderUnassignedTestRunCards(filterStatus) {
     if (window.i18n && window.i18n.isReady()) {
         window.i18n.retranslate(container);
     }
+
+    renderCompactUnassignedRunsTable(runs);
+}
+
+function buildCompactRunActionsHtml(config) {
+    const permissions = window._testRunPermissions || testRunPermissions || {};
+    const lockedForConfigEdit = config.status === 'archived';
+    const lockedForCasesEdit = config.status === 'completed' || config.status === 'archived';
+    const items = [];
+
+    if (permissions.canUpdate) {
+        items.push(`
+            <li>
+                <button type="button" class="dropdown-item${lockedForConfigEdit ? ' disabled' : ''}" ${lockedForConfigEdit ? 'disabled' : ''} onclick="editBasicSettings(${config.id})">
+                    <i class="fas fa-edit me-2"></i><span data-i18n="testRun.editBasicSettings">編輯基本設定</span>
+                </button>
+            </li>
+        `);
+        items.push(`
+            <li>
+                <button type="button" class="dropdown-item${lockedForCasesEdit ? ' disabled' : ''}" ${lockedForCasesEdit ? 'disabled' : ''} onclick="editTestCases(${config.id})">
+                    <i class="fas fa-list me-2"></i><span data-i18n="testRun.editTestCases">編輯 Test Case</span>
+                </button>
+            </li>
+        `);
+    }
+
+    if (permissions.canChangeStatus) {
+        items.push(`
+            <li>
+                <button type="button" class="dropdown-item" onclick="toggleCustomStatusDropdown(this, ${config.id})">
+                    <i class="fas fa-exchange-alt me-2"></i><span data-i18n="testRun.changeStatus">狀態</span>
+                </button>
+            </li>
+        `);
+    }
+
+    if (permissions.canUpdate && Array.isArray(testRunSets) && testRunSets.some(s => s.status !== 'archived')) {
+        items.push(`
+            <li>
+                <button type="button" class="dropdown-item" onclick="toggleAddToSetDropdown(this, ${config.id})">
+                    <i class="fas fa-folder-plus me-2"></i><span data-i18n="testRun.sets.addToSet">加入 Set</span>
+                </button>
+            </li>
+        `);
+    }
+
+    if (permissions.canDelete) {
+        items.push(`
+            <li><hr class="dropdown-divider"></li>
+            <li>
+                <button type="button" class="dropdown-item text-danger" onclick="deleteTestRun(${config.id}, '${escapeHtml(config.name).replace(/'/g, "\\'")}')">
+                    <i class="fas fa-trash me-2"></i><span data-i18n="common.delete">刪除</span>
+                </button>
+            </li>
+        `);
+    }
+
+    const menu = items.length ? `
+        <div class="dropdown">
+            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="runCompactActionsDropdown${config.id}" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fas fa-ellipsis-v"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="runCompactActionsDropdown${config.id}">
+                ${items.join('')}
+            </ul>
+        </div>
+    ` : '';
+
+    return `
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-primary btn-sm" onclick="enterTestRun(${config.id})">
+                <i class="fas fa-arrow-right"></i>
+            </button>
+            ${menu}
+        </div>
+    `;
+}
+
+function renderCompactUnassignedRunsTable(runs) {
+    const container = document.getElementById('unassigned-test-runs-compact');
+    if (!container) return;
+
+    if (!runs.length) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const columns = [
+        {
+            key: 'pin',
+            label: '',
+            sortable: false,
+            stopRowClick: true,
+            thClass: 'compact-pin-col',
+            tdClass: 'compact-pin-col',
+            render: run => trmPinToggleHtml('test_run', run.id)
+        },
+        {
+            key: 'name',
+            label: (window.i18n && window.i18n.t('common.name')) || '名稱',
+            sortable: true,
+            sortValue: run => (run.name || '').toLowerCase(),
+            render: run => `<span class="fw-semibold text-primary">${escapeHtml(run.name)}</span>`
+        },
+        {
+            key: 'status',
+            label: (window.i18n && window.i18n.t('common.status')) || '狀態',
+            sortable: true,
+            sortValue: run => (run.status || 'draft').toLowerCase(),
+            render: run => `<span class="status-badge ${getStatusClass(run.status)}">${getStatusText(run.status)}</span>`
+        },
+        {
+            key: 'execution_rate',
+            label: (window.i18n && window.i18n.t('testRun.progressLabel')) || '執行進度',
+            sortable: true,
+            thClass: 'text-end',
+            tdClass: 'text-end',
+            sortValue: run => run.execution_rate || 0,
+            render: run => `${(run.execution_rate || 0).toFixed(1)}%`
+        },
+        {
+            key: 'pass_rate',
+            label: (window.i18n && window.i18n.t('testRun.passRateLabel')) || 'Pass Rate',
+            sortable: true,
+            thClass: 'text-end',
+            tdClass: 'text-end',
+            sortValue: run => run.pass_rate || 0,
+            render: run => `${(run.pass_rate || 0).toFixed(1)}%`
+        },
+        {
+            key: 'cases',
+            label: (window.i18n && window.i18n.t('testCaseSet.caseCount')) || 'Test Cases',
+            sortable: true,
+            thClass: 'text-end',
+            tdClass: 'text-end',
+            sortValue: run => run.total_test_cases || 0,
+            render: run => `${run.executed_cases || 0}/${run.total_test_cases || 0}`
+        },
+        {
+            key: 'test_environment',
+            label: (window.i18n && window.i18n.t('testRun.testEnvironment')) || '測試環境',
+            sortable: true,
+            sortValue: run => (run.test_environment || '').toLowerCase(),
+            render: run => run.test_environment ? escapeHtml(run.test_environment) : '-'
+        },
+        {
+            key: 'created_at',
+            label: (window.i18n && window.i18n.t('common.createDate')) || '建立時間',
+            sortable: true,
+            sortValue: run => run.created_at ? new Date(run.created_at).getTime() : 0,
+            render: run => AppUtils.formatDate(run.created_at, 'datetime-tz')
+        },
+        {
+            key: 'actions',
+            label: (window.i18n && window.i18n.t('common.actions')) || '操作',
+            sortable: false,
+            stopRowClick: true,
+            thClass: 'text-end',
+            tdClass: 'text-end',
+            render: run => buildCompactRunActionsHtml(run)
+        }
+    ];
+
+    renderCompactTable(container, {
+        storageKey: currentTeamId ? `testRunManagement.sort.unassigned.${currentTeamId}` : null,
+        columns,
+        rows: runs,
+        rowAttrs: run => ` class="compact-row-clickable" onclick="enterTestRun(${run.id})"`,
+        pin: {
+            isPinned: run => window.PinStore && window.PinStore.isPinned('test_run', run.id),
+            pinSortValue: run => (run.created_at ? new Date(run.created_at).getTime() : 0)
+        }
+    });
 }
 
 
@@ -513,14 +839,16 @@ function createConfigCard(config) {
         return `<div class="d-flex gap-2 flex-wrap w-100 justify-content-lg-end">${merged.join('')}</div>`;
     })();
 
+    const pinnedCardClass = (window.PinStore && window.PinStore.isPinned('test_run', config.id)) ? ' pinned-card' : '';
+
     return `
         <div class="col-md-6 col-lg-4 mb-4">
-            <div class="card h-100 test-run-card ${getStatusClass(config.status)}" onclick="enterTestRun(${config.id})">
+            <div class="card h-100 test-run-card ${getStatusClass(config.status)}${pinnedCardClass}" onclick="enterTestRun(${config.id})">
                 <div class="card-body d-flex flex-column h-100">
                     <div class="d-flex justify-content-between align-items-start mb-3 gap-2">
                         <div class="d-flex align-items-center overflow-hidden flex-grow-1">
                             <div class="flex-shrink-0 me-3">
-                                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" 
+                                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center"
                                      style="width: 48px; height: 48px; font-size: 16px; font-weight: bold;">
                                     <i class="fas fa-play"></i>
                                 </div>
@@ -529,7 +857,8 @@ function createConfigCard(config) {
                                 <h5 class="card-title text-primary mb-1 text-truncate">${escapeHtml(config.name)}</h5>
                             </div>
                         </div>
-                        <div class="flex-shrink-0">
+                        <div class="flex-shrink-0 d-flex align-items-center gap-1">
+                            ${trmPinToggleHtml('test_run', config.id)}
                             <span class="status-badge ${statusClass}">${statusText}</span>
                         </div>
                     </div>

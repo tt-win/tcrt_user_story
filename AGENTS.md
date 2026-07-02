@@ -76,8 +76,14 @@
 
 ## 7) OpenSpec 現況與建議
 
-- 目前無 active change。
-- 已完成並封存（archive）之主要功能（位於 `openspec/changes/archive/`）：
+- 目前 active changes（位於 `openspec/changes/`）：
+  - 進行中：`achieve-full-i18n-coverage`、`unify-ui-design-tokens-and-components`
+  - 未開始（僅規劃）：`consolidate-agent-onboarding-docs`、`make-schema-engine-portable`、`optimize-core-hot-paths`、`split-suite-ci-jobs-by-trigger`
+  - 僅骨架：`qa-ai-helper-team-prompt-presets`
+- 已完成並封存（archive）之主要功能（位於 `openspec/changes/archive/`，共 61 個）：
+  - Automation Hub 環境變數管理、入口開關、MCP script groups、machine token 管理（2026-06）
+  - 團隊徽章導航選單、統一 Header 按鈕（2026-06）
+  - 容器部署加固、webhook suite trigger、automation markers（2026-06）
   - JIRA Ticket 轉 Test Case PoC 與 Helper 工作流整合（2026-02）
   - AI 輔助產生 Test Case 功能統一更新（2026-02）
   - 測試執行多集合（Multi Test Case Sets）支援（2026-02）

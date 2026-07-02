@@ -23,6 +23,11 @@ async function loadTestRunConfigs() {
         // 預先載入 Test Case Set 列表
         await loadTestCaseSets();
 
+        // 載入使用者釘選狀態（供三個區塊置頂使用）
+        if (window.PinStore) {
+            await window.PinStore.load(currentTeamId);
+        }
+
         showLoading();
         const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/overview?include_archived=true`);
         if (!response.ok) {

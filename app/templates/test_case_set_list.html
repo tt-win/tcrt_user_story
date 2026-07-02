@@ -26,10 +26,28 @@
 {% block content %}
 <div class="container-fluid mt-4">
 
+  <!-- 檢視切換 (卡片 / 精簡列表) -->
+  <div class="d-flex justify-content-end align-items-center gap-2 mb-3">
+    <button type="button" class="btn btn-sm btn-outline-primary d-none" id="compactAddSetBtn" data-i18n-title="testCaseSet.addSet" title="Add Set">
+      <i class="fas fa-plus"></i>
+    </button>
+    <div class="btn-group" role="group" aria-label="View toggle">
+      <button type="button" class="btn btn-sm btn-outline-secondary active" id="viewToggleCard" data-i18n-title="common.cardView" title="Card view">
+        <i class="fas fa-th-large"></i>
+      </button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="viewToggleCompact" data-i18n-title="common.compactView" title="Compact view">
+        <i class="fas fa-list"></i>
+      </button>
+    </div>
+  </div>
+
   <!-- Test Case Sets 卡片容器 -->
   <div class="row" id="testCaseSetsContainer">
     <!-- 動態生成的卡片會插入這裡 -->
   </div>
+
+  <!-- Test Case Sets 精簡列表容器 -->
+  <div id="testCaseSetsCompactContainer" class="d-none"></div>
 
   <!-- 空狀態提示 -->
   <div id="emptyState" class="row d-none">
@@ -184,5 +202,7 @@
 
 {% block scripts %}
 <script src="{{ asset_url('js/i18n-test-case-set.js') }}"></script>
+<script src="{{ asset_url('js/common/compact-table.js') }}"></script>
+<script src="{{ asset_url('js/common/pin-store.js') }}"></script>
 <script src="{{ asset_url('js/test-case-set-list/main.js') }}"></script>
 {% endblock %}

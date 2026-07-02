@@ -1596,6 +1596,26 @@ class User(Base):
     )
 
 
+class UserPin(Base):
+    """使用者釘選（Pin）表格：每位使用者可將 Test Case Set / Test Run Set /
+    Test Run / Ad-hoc Run 釘選，釘選項目在列表中永遠置頂。Per-user。"""
+
+    __tablename__ = "user_pins"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # team_id 反正規化保存，讓「某使用者在某團隊的所有釘選」可用單一查詢取回
+    team_id = Column(Integer, nullable=False, index=True)
+    entity_type = Column(String(50), nullable=False)  # test_case_set / test_run_set / test_run / adhoc_run
+    entity_id = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "entity_type", "entity_id", name="uq_user_pin"),
+        Index("ix_user_pins_user_team", "user_id", "team_id"),
+    )
+
+
 class UserTeamPermission(Base):
     """使用者團隊權限表格"""
 

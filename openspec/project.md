@@ -1,53 +1,83 @@
 ## 專案概覽
 
-Test Case Repository Tool（TCRT）是一個以 `FastAPI + Jinja2 + 原生 JS/CSS + SQLite` 為核心的測試案例與測試執行管理系統，並已逐步整理為可支援多資料庫遷移、排程服務、MCP 讀取 API 與新版 QA AI Helper 的架構。
+Test Case Repository Tool（TCRT）是一個以 `FastAPI + Jinja2 + 原生 JS/CSS + SQLite` 為核心的測試案例與測試執行管理系統，並已逐步整理為可支援多資料庫引擎（SQLite / MySQL / PostgreSQL）、多副本部署、排程服務、MCP 讀取 API、Automation Hub 端到端自動化測試整合，與新版 QA AI Helper 的架構。
 
 ### 核心能力
-- **測試案例管理**：Test Case Set / Section / Case 管理、附件、批次操作、預設 Set、共享過濾連結。
-- **測試執行管理**：Test Run / Config / Item 管理、多 Set 範圍、執行頁與 adhoc 執行 UI。
-- **AI Helper / QA AI Agent**：新版七畫面工作流、需求解析、驗證規劃、種子與 testcase 生成、採用率與遙測統計。
-- **團隊與系統管理**：權限、稽核、排程服務管理、MCP machine token 管理。
-- **資料與整合**：Jira、Lark、Qdrant / embedding / LLM、HTML 報告輸出、跨資料庫遷移腳本。
+- **測試案例管理**：Test Case Set / Section / Case 管理、附件、批次操作、預設 Set、共享過濾連結、CSV 匯出。
+- **測試執行管理**：Test Run / Config / Item 管理、多 Set 範圍、執行頁與 adhoc 執行 UI、Test Run Set 觸發自動化。
+- **Automation Hub**：端到端自動化測試整合——Storage Provider（GitHub / Local Git）、CI Provider（Jenkins）、Result Provider（Allure）、腳本自動掃描與快取、marker-derived linkage、coverage 統計、環境變數管理（AES-256-GCM 加密）、webhook 整合、Suite CI Job 觸發與狀態回流。
+- **AI Helper / QA AI Agent**：新版七畫面工作流、MAGI 多模型檢查、需求解析、驗證規劃、種子與 testcase 生成、採用率與遙測統計、session 管理。
+- **團隊與系統管理**：權限（Casbin RBAC）、稽核（audit DB）、排程服務管理、MCP machine token 管理、組織層 Automation Hub 入口開關。
+- **資料與整合**：Jira、Lark、Qdrant / embedding / LLM、HTML 報告輸出、跨資料庫遷移腳本（Alembic 三庫）。
+- **容器化部署**：Dockerfile、docker-compose（app / MySQL / PostgreSQL）、RSA 簽章金鑰持久化、leader 選舉、bootstrap lock。
 
 ### 目前技術架構
 - **後端入口**：`app/main.py`
-- **API 組裝**：`app/api/__init__.py`
+- **API 組裝**：`app/api/__init__.py`（38+ 個 router，含 11 個 Automation Hub 路由）
 - **主要資料層**：
   - 主庫 async runtime：`app/database.py`
-  - 顯式資料存取邊界：`app/db_access/`
+  - 顯式資料存取邊界：`app/db_access/`（core / coordinator / guardrails / audit / usm / main）
   - USM 專屬 DB：`app/models/user_story_map_db.py`
-  - Audit DB：由 audit / migration 流程管理
-- **前端**：Jinja2 模板、`app/static` 靜態資產、Bootstrap 5 CDN、既有 TCRT/TestRail 設計 token
+  - Audit DB：`app/audit/`（獨立模組，含 audit_service / database / models）
+  - Alembic 遷移：`alembic/`（主庫）、`alembic_audit/`（audit 庫）、`alembic_usm/`（USM 庫）
+  - 多引擎支援：SQLite / MySQL 8 / PostgreSQL 16（設定範例：`config.mysql.yaml`、`config.postgresql.yaml.example`、`config.sqlite.yaml.example`）
+- **前端**：Jinja2 模板、`app/static` 靜態資產、Bootstrap 5 CDN、Jinja 組件庫（`app/templates/components/`）、stylelint 護欄
 - **AI Helper 實作**：
   - API：`app/api/qa_ai_helper.py`
-  - 服務：`app/services/qa_ai_helper_service.py`
+  - 服務：`app/services/qa_ai_helper_service.py`（含 planner / preclean / prompt / runtime / metrics / llm_service）
   - 需求解析與驗證：`app/services/test_case_helper/`
   - 團隊統計：`app/api/team_statistics_qa_ai_helper.py`
+- **Automation Hub 實作**：
+  - 服務：`app/services/automation/`（provider_registry / script_service / script_group_service / coverage_service / environment_service / linkage_service / run_service / webhook_service / allure_proxy / background / marker_sync / scan_filters / ai_link_suggest_service）
+  - Provider：`app/services/automation/providers/`（github_storage / local_git_storage / jenkins_ci / allure_result）
+  - API：`app/api/automation_*.py`（providers / scripts / links / script_groups / coverage / environments / webhooks / result）
 - **排程服務**：`app/services/scheduler.py`
 - **MCP 讀取 API / 驗證**：`app/api/mcp.py`、`app/auth/mcp_dependencies.py`
 - **報告儲存**：`app/services/html_report_service.py`，並由 `reports.root_dir` 控制輸出根目錄
+- **容器化**：`Dockerfile`、`docker-compose.app.yml`、`docker-compose.mysql.yml`、`docker-compose.postgres.yml`、`docker/app-entrypoint.sh`
+- **前端品質守衛**：stylelint（`.stylelintrc.json`）、i18n coverage linter（`scripts/check-i18n-coverage.mjs`）、inline style checker（`scripts/check-inline-styles.mjs`）
 
 ### 專案結構
 
 ```text
 tcrt_user_story/
 ├── app/
-│   ├── api/                    # FastAPI 路由
-│   ├── auth/                   # JWT / MCP 驗證與授權
-│   ├── db_access/              # 資料存取邊界與 guardrails
-│   ├── models/                 # ORM / schema 定義
-│   ├── services/               # 業務邏輯、scheduler、report、AI helper
+│   ├── api/                    # FastAPI 路由（43 個檔案，38+ 個 router）
+│   ├── auth/                   # JWT / MCP 驗證與授權（含 Casbin RBAC）
+│   ├── audit/                  # 審計日誌獨立模組（audit_service / database / models）
+│   ├── db_access/              # 資料存取邊界與 guardrails（core / coordinator / audit / usm）
+│   ├── middlewares/            # 中介層（audit_middleware）
+│   ├── models/                 # ORM / schema 定義（24 個檔案，含 8 個 automation 模型）
+│   ├── services/               # 業務邏輯（39 個項目）
+│   │   ├── automation/         # Automation Hub 服務（19 個項目）
+│   │   └── test_case_helper/   # Test Case Helper 服務（7 個項目）
 │   ├── static/                 # CSS / JS / locales / samples
+│   │   └── js/
+│   │       ├── automation-hub/ # Automation Hub 前端模組（5 子目錄）
+│   │       ├── test-case-management/
+│   │       ├── test-run-management/
+│   │       ├── test-run-execution/
+│   │       ├── qa-ai-helper/
+│   │       └── team-management/
 │   ├── templates/              # Jinja2 頁面
-│   └── testsuite/              # pytest 測試
+│   │   ├── components/         # Jinja 組件庫（button / data_table / modal / toolbar / status_badge）
+│   │   └── _partials/          # 局部模板
+│   └── testsuite/              # pytest 測試（73 個檔案）
 ├── ai/                         # ETL / RAG / CLI 工具
-├── scripts/                    # migration / repair / ETL / maintenance 腳本
-├── tools/                      # 對外工具（sample repo、可攜 AI agent skill）
-│   ├── sample_automation_repo/         # TCRT Automation Hub 連接示範用的範例 git repo
-│   └── skills/                         # 可攜 AI agent skill bundle（跨 IDE / Agent 可用）
-│       └── tcrt-automation-pomify/     # 把使用者 script → POM + TCRT 格式
-├── docs/                       # 使用與功能文件
-└── openspec/                   # OpenSpec 專案文件
+├── alembic/                    # Alembic 遷移（主庫）
+├── alembic_audit/              # Alembic 遷移（audit 庫）
+├── alembic_usm/                # Alembic 遷移（USM 庫）
+├── config/                     # 設定檔（db_access_policy / permissions）
+├── docker/                     # 容器化腳本（app-entrypoint / mysql-init / postgres-init）
+├── docs/                       # 使用與功能文件（24 個項目）
+├── manual/                     # 使用者手冊（9 章）
+├── openspec/                   # OpenSpec 專案文件
+├── prompts/                    # AI prompt 模板（ac_inspection / jira_testcase_helper）
+├── scripts/                    # migration / repair / ETL / maintenance 腳本（22 個項目）
+└── tools/                      # 對外工具（sample repo、可攜 AI agent skill）
+    ├── sample_automation_repo/         # TCRT Automation Hub 連接示範用的範例 git repo
+    └── skills/                         # 可攜 AI agent skill bundle（跨 IDE / Agent 可用）
+        └── tcrt-automation-pomify/     # 把使用者 script → POM + TCRT 格式
 ```
 
 #### Automation Hub 工具鏈
@@ -101,72 +131,132 @@ Automation Hub 的 script ↔ test case link 現況已收斂為 **marker-derived
 
 #### 主規格（`openspec/specs/`）
 
-目前主規格除原有測試管理、資料庫與 UI 能力外，已涵蓋下列現況能力：
+目前主規格共 **43 個**，依領域分類如下：
 
+**Automation Hub（6 個）：**
+- `automation-hub-mcp-read`
+- `automation-hub-provider-framework`
+- `automation-hub-run-orchestration`
+- `automation-hub-script-management`
+- `automation-hub-webhook-integration`
+- `automation-hub-entry-toggle`（由已封存 change 新增）
+
+**Database（5 個）：**
 - `database-async`
 - `database-access-boundaries`
-- `database-migration`
 - `database-cutover-readiness`
+- `database-migration`
 - `database-operations`
-- `system-bootstrap`
-- `test-case-management-ui`
-- `test-run-management-ui`
-- `test-run-execution-ui`
-- `test-run-multi-set-integrity`
-- `adhoc-test-run-execution-ui`
-- `team-default-test-case-set`
-- `generated-report-storage`
-- `scheduled-service-management`
-- `mcp-machine-auth`
-- `mcp-read-api`
-- `jira-ticket-to-test-case-poc`
+
+**QA AI Helper（12 個）：**
 - `helper-guided-intake`
-- `helper-structured-requirement-schema`
+- `helper-magi-inspection`
+- `helper-ai-progress-animation`
 - `helper-requirement-completeness-warning`
+- `helper-requirement-editing`
+- `helper-structured-requirement-schema`
 - `helper-deterministic-seed-planning`
+- `helper-plan-section-crud`
 - `helper-final-generation-contract`
 - `helper-prompt-file-loading`
 - `helper-session-management`
 - `helper-team-analytics`
+
+**Test Case / Test Run UI（8 個）：**
+- `test-case-management-ui`
+- `test-case-management`
+- `test-case-editor-ai-assist`
 - `test-case-helper-config-toggle`
-- 以及既有 `template-asset-separation`、`ui-design-system`、`etl-all-teams`、`test-case-editor-ai-assist` 等能力
+- `test-run-management-ui`
+- `test-run-execution-ui`
+- `test-run-multi-set-integrity`
+- `adhoc-test-run-execution-ui`
+
+**Infrastructure（5 個）：**
+- `system-bootstrap`
+- `scheduled-service-management`
+- `generated-report-storage`
+- `background-service-scaling`
+- `container-deployment`
+
+**MCP / Auth（3 個）：**
+- `mcp-machine-auth`
+- `mcp-read-api`
+- `mcp-machine-token-management`（由已封存 change 新增）
+
+**UI / Design（4 個）：**
+- `ui-design-system`
+- `template-asset-separation`
+- `ai-assist-ui-exposure-control`
+- `team-badge-nav-dropdown`（由已封存 change 新增）
+
+**其他（4 個）：**
+- `etl-all-teams`
+- `jira-ticket-to-test-case-poc`
+- `team-default-test-case-set`
+- `automation-environment-configs`（由已封存 change 新增）
 
 #### Active changes（`openspec/changes/`）
 
-依目前 `openspec list --json` 狀態：
+依目前狀態：
 
-- 已完成但尚未封存：
-  - `rewrite-qa-ai-agent`
-  - `manage-scheduled-services`
-  - `manage-team-default-test-case-set`
-  - `complete-db-access-abstraction`
-  - `complete-cross-db-migration-readiness`
-  - `refactor-database-init`
-  - `add-mcp-read-machine-auth`
-  - `add-test-case-helper-config-toggle`
-  - `add-qa-helper-team-analytics-tab`
-  - `add-test-case-helper-session-management`
-- 原本標為進行中，但實作已存在且需要同步文件：
-  - `configure-generated-report-root-dir`
+- **進行中（早期）**：
+  - `achieve-full-i18n-coverage` — 全站三語系翻譯覆蓋率推到 100%（linter 已建好，後端外部化與前端抽出未開始）
+- **進行中（中期）**：
+  - `unify-ui-design-tokens-and-components` — UI design token 收斂與 Jinja macro 元件庫（P0 止血完成，P1/P2 未開始）
+- **未開始（僅完成規劃）**：
+  - `consolidate-agent-onboarding-docs` — 整併散落的啟動/設定文件
+  - `make-schema-engine-portable` — DB schema 跨引擎可攜（SQLite / MySQL / PostgreSQL）
+  - `optimize-core-hot-paths` — 核心熱路徑效能優化
+  - `split-suite-ci-jobs-by-trigger` — Suite CI Job 依觸發源拆分
+- **僅骨架（可能棄用）**：
+  - `qa-ai-helper-team-prompt-presets` — 僅有 `.openspec.yaml`，缺所有工件
+
+#### 已封存之主要功能（`openspec/changes/archive/`，共 61 個）
+
+近期封存（2026-06）：
+- Automation Hub 環境變數管理（`manage-automation-environment-configs`）
+- Automation Hub 入口開關（`add-automation-hub-entry-toggle`）
+- MCP API 暴露 Script Groups（`expose-automation-script-groups-in-mcp-api`）
+- MCP 機器 Token 管理（`manage-mcp-machine-tokens`）
+- 團隊徽章導航選單（`team-badge-navigation-menu`）
+- 統一 Header 操作按鈕（`unify-header-action-buttons`）
+- 容器部署加固（`harden-container-deployment`）
+- Suite CI Job 依觸發源拆分 webhook（`add-webhook-suite-trigger`）
+- 移除手動 automation link UI（`remove-manual-automation-link-ui-and-write-api`）
+- Automation test markers（`add-automation-test-markers-and-test-view`）
+- Test Run Set automation suite 管理（`improve-test-run-set-automation-suite-management`）
+- Provider scope 簡化（`simplify-provider-scope-with-org-level-ci-result`）
+- Automation Hub 核心（`add-automation-hub`）
+- 自動化執行移轉至 Test Run Set（`move-automation-execution-to-test-run-set`）
+- Run history 移轉至 Test Run Set（`move-run-history-to-test-run-set`）
 
 ### 開發與實作約定
 - **程式風格**：Python 採 `snake_case`、型別提示；Pydantic / ORM 依既有模組分層。
 - **資料庫策略**：
   - Web runtime 優先使用 async session。
-  - 新增資料欄位或資料表時，需同時檢查 `database_init.py`、Alembic / migration 流程與跨庫腳本。
+  - 新增資料欄位或資料表時，需同時檢查 `database_init.py`、Alembic migration 流程（三庫：`alembic/`、`alembic_audit/`、`alembic_usm/`）與跨庫腳本。
   - 不做破壞性自動修補。
+  - 跨引擎相容性：新增 SQL 需考慮 SQLite / MySQL / PostgreSQL 差異（參考 `app/db_types.py`、`app/db_url.py`）。
 - **前端策略**：
   - HTML 在 `app/templates/`
   - JS / CSS / locales 在 `app/static/`
   - 動態文案需接既有 i18n lifecycle
+  - 優先使用 Jinja 組件庫（`app/templates/components/`）
+  - 新增 CSS 需通過 stylelint 護欄
 - **安全與設定**：
   - 主要設定來源為 `config.yaml` + `.env`
   - 敏感資訊不可進版控
   - MCP machine token 與 team scope 需受權限控制與 audit 記錄
+  - Automation 環境變數使用 AES-256-GCM 加密儲存
 
 ### 測試與驗證
-- 全套後端測試：`pytest app/testsuite -q`
-- 資料庫 / migration / scheduler / MCP / report storage / QA helper 均已有 focused tests
+- 全套後端測試：`pytest app/testsuite -q`（73 個測試檔案）
+- 資料庫 / migration / scheduler / MCP / report storage / QA helper / automation hub 均已有 focused tests
+- 前端品質守衛：
+  - `node scripts/check-i18n-coverage.mjs` — i18n 覆蓋率檢查
+  - `node scripts/check-inline-styles.mjs` — inline style 檢查
+  - stylelint — CSS 規範檢查
 - 新 spec 或 change 同步後，應優先補齊對應測試檔與行為驗證
 
 ### OpenSpec 維護原則
