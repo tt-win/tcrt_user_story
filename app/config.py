@@ -294,7 +294,7 @@ class InspectionConfig(BaseModel):
 
 class QAAIHelperConfig(BaseModel):
     enable: bool = True
-    prompt_contract_version: str = "qa-ai-helper.prompt.v1"
+    prompt_contract_version: str = "qa-ai-helper.prompt.v2"
     payload_contract_version: str = "qa-ai-helper.payload.v1"
     min_steps: int = 3
     min_preconditions: int = 1
@@ -663,7 +663,7 @@ def create_default_config(config_path: str = "config.yaml") -> None:
         "ai": {
             "qa_ai_helper": {
                 "enable": True,
-                "prompt_contract_version": "qa-ai-helper.prompt.v1",
+                "prompt_contract_version": "qa-ai-helper.prompt.v2",
                 "payload_contract_version": "qa-ai-helper.payload.v1",
                 "min_steps": 3,
                 "min_preconditions": 1,

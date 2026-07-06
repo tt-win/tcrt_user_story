@@ -1047,6 +1047,10 @@
   min-width: 12rem;
 }
 
+.qa-helper-inline-profile-select {
+  max-width: 12rem;
+}
+
 @media (max-width: 991.98px) {
   .qa-ai-helper-page {
     --qa-helper-step-offset: 10rem;

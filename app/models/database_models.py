@@ -543,6 +543,30 @@ class TestCaseLocal(Base):
     )
 
 
+class QAAIHelperPromptProfile(Base):
+    """Team-scoped custom style instructions for QA AI Helper prompt generation."""
+
+    __tablename__ = "qa_ai_helper_prompt_profiles"
+    __table_args__ = (
+        UniqueConstraint("team_id", "name", name="uq_qa_ai_helper_prompt_profile_team_name"),
+        Index("ix_qa_ai_helper_prompt_profiles_team_default", "team_id", "is_default"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    seed_instructions = Column(qa_ai_helper_large_text_type(), nullable=True)
+    testcase_instructions = Column(qa_ai_helper_large_text_type(), nullable=True)
+    is_default = Column(Boolean, nullable=False, default=False)
+    created_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    team = relationship("Team")
+
+
 class QAAIHelperSession(Base):
     """Rewritten QA AI Helper session root."""
 
@@ -583,6 +607,12 @@ class QAAIHelperSession(Base):
     active_seed_set_id = Column(Integer, nullable=True)
     active_testcase_draft_set_id = Column(Integer, nullable=True)
     selected_target_test_case_set_id = Column(Integer, nullable=True)
+    prompt_profile_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_prompt_profiles.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -1161,6 +1191,13 @@ class QAAIHelperSeedSet(Base):
         nullable=True,
         index=True,
     )
+    prompt_profile_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_prompt_profiles.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    custom_instructions_snapshot = Column(qa_ai_helper_large_text_type(), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -1260,6 +1297,13 @@ class QAAIHelperTestcaseDraftSet(Base):
         nullable=True,
         index=True,
     )
+    prompt_profile_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_prompt_profiles.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    custom_instructions_snapshot = Column(qa_ai_helper_large_text_type(), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     committed_at = Column(DateTime, nullable=True)
