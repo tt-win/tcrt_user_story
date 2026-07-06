@@ -9,12 +9,13 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .test_case import TestDataCategory, TestDataItem
 
 
 TCG_TICKET_PATTERN = re.compile(r"^[A-Z]+-\d+$")
+TEAM_STYLE_INSTRUCTIONS_MAX_CHARS = 2000
 
 
 class QAAIHelperTestDataSuggestion(BaseModel):
@@ -248,6 +249,7 @@ class QAAIHelperCanonicalContent(BaseModel):
 class QAAIHelperSessionCreateRequest(BaseModel):
     ticket_key: str = Field(..., description="Jira ticket key")
     output_locale: QAAIHelperLocale = Field(QAAIHelperLocale.ZH_TW)
+    prompt_profile_id: Optional[int] = None
 
     @field_validator("ticket_key")
     @classmethod
@@ -329,6 +331,7 @@ class QAAIHelperDraftUpdateRequest(BaseModel):
 
 class QAAIHelperTestcaseGenerateRequest(BaseModel):
     force_regenerate: bool = False
+    prompt_profile_id: Optional[int] = None
 
 
 class QAAIHelperTestcaseDraftUpdateRequest(BaseModel):
@@ -405,6 +408,7 @@ class QAAIHelperNoTicketSessionRequest(BaseModel):
 
     section_header: str
     output_locale: Optional[str] = "zh-TW"
+    prompt_profile_id: Optional[int] = None
 
     @field_validator("section_header")
     @classmethod
@@ -541,6 +545,7 @@ class QAAIHelperSessionResponse(BaseModel):
     active_requirement_plan_id: Optional[int] = None
     active_seed_set_id: Optional[int] = None
     active_testcase_draft_set_id: Optional[int] = None
+    prompt_profile_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
@@ -735,6 +740,8 @@ class QAAIHelperSeedSetResponse(BaseModel):
     included_seed_count: int = 0
     adoption_rate: float = 0.0
     created_by_user_id: Optional[int] = None
+    prompt_profile_id: Optional[int] = None
+    custom_instructions_snapshot: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     seed_items: List[QAAIHelperSeedItemResponse] = Field(default_factory=list)
@@ -776,6 +783,8 @@ class QAAIHelperTestcaseDraftSetResponse(BaseModel):
     selected_for_commit_count: int = 0
     adoption_rate: float = 0.0
     created_by_user_id: Optional[int] = None
+    prompt_profile_id: Optional[int] = None
+    custom_instructions_snapshot: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     committed_at: Optional[datetime] = None
@@ -895,6 +904,121 @@ class QAAIHelperCommitResponse(BaseModel):
     created_count: int
     updated_count: int = 0
     committed_draft_set_id: Optional[int] = None
+
+
+def _normalize_prompt_profile_name(value: str) -> str:
+    normalized = (value or "").strip()
+    if not normalized or len(normalized) > 100:
+        raise ValueError("name 需為 1-100 字元")
+    return normalized
+
+
+def _normalize_prompt_profile_text_field(value: Optional[str], *, field_name: str) -> Optional[str]:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if len(normalized) > TEAM_STYLE_INSTRUCTIONS_MAX_CHARS:
+        raise ValueError(f"{field_name} 不可超過 {TEAM_STYLE_INSTRUCTIONS_MAX_CHARS} 字元")
+    return normalized
+
+
+class QAAIHelperPromptProfileCreateRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    seed_instructions: Optional[str] = None
+    testcase_instructions: Optional[str] = None
+    is_default: bool = False
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, value: str) -> str:
+        return _normalize_prompt_profile_name(value)
+
+    @field_validator("description")
+    @classmethod
+    def _validate_description(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("seed_instructions")
+    @classmethod
+    def _validate_seed_instructions(cls, value: Optional[str]) -> Optional[str]:
+        return _normalize_prompt_profile_text_field(value, field_name="seed_instructions")
+
+    @field_validator("testcase_instructions")
+    @classmethod
+    def _validate_testcase_instructions(cls, value: Optional[str]) -> Optional[str]:
+        return _normalize_prompt_profile_text_field(value, field_name="testcase_instructions")
+
+    @model_validator(mode="after")
+    def _validate_at_least_one_instruction(self) -> "QAAIHelperPromptProfileCreateRequest":
+        if not self.seed_instructions and not self.testcase_instructions:
+            raise ValueError("seed_instructions 與 testcase_instructions 不可皆為空")
+        return self
+
+
+class QAAIHelperPromptProfileUpdateRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    seed_instructions: Optional[str] = None
+    testcase_instructions: Optional[str] = None
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, value: str) -> str:
+        return _normalize_prompt_profile_name(value)
+
+    @field_validator("description")
+    @classmethod
+    def _validate_description(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("seed_instructions")
+    @classmethod
+    def _validate_seed_instructions(cls, value: Optional[str]) -> Optional[str]:
+        return _normalize_prompt_profile_text_field(value, field_name="seed_instructions")
+
+    @field_validator("testcase_instructions")
+    @classmethod
+    def _validate_testcase_instructions(cls, value: Optional[str]) -> Optional[str]:
+        return _normalize_prompt_profile_text_field(value, field_name="testcase_instructions")
+
+    @model_validator(mode="after")
+    def _validate_at_least_one_instruction(self) -> "QAAIHelperPromptProfileUpdateRequest":
+        if not self.seed_instructions and not self.testcase_instructions:
+            raise ValueError("seed_instructions 與 testcase_instructions 不可皆為空")
+        return self
+
+
+class QAAIHelperPromptProfileSetDefaultRequest(BaseModel):
+    is_default: bool
+
+
+class QAAIHelperPromptProfileResponse(BaseModel):
+    id: int
+    team_id: int
+    name: str
+    description: Optional[str] = None
+    seed_instructions: Optional[str] = None
+    testcase_instructions: Optional[str] = None
+    is_default: bool = False
+    created_by_user_id: Optional[int] = None
+    updated_by_user_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class QAAIHelperPromptProfileListResponse(BaseModel):
+    profiles: List[QAAIHelperPromptProfileResponse] = Field(default_factory=list)
 
 
 QAAIHelperWorkspaceResponse.model_rebuild()

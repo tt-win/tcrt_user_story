@@ -17,6 +17,7 @@ from app.database import get_db
 from app.main import app
 from app.models.database_models import (
     QAAIHelperCommitLink,
+    QAAIHelperPromptProfile,
     QAAIHelperRequirementPlan,
     QAAIHelperSeedItem,
     QAAIHelperSeedSet,
@@ -1539,3 +1540,193 @@ def test_reopen_to_testcase_review_allows_section_selection(qa_ai_helper_db):
         json={"selected": False},
     )
     assert section_toggle.status_code == 200, section_toggle.text
+
+
+def _install_capturing_call_stage(monkeypatch, captured: dict):
+    async def _fake_call_stage(self, *, stage: str, prompt: str, max_tokens: int = 4000):
+        captured.setdefault(stage, []).append(prompt)
+        model_name = self.resolve_stage_model_id(stage)
+        return self._fallback_result(stage=stage, prompt=prompt, model_name=model_name)
+
+    monkeypatch.setattr(QAAIHelperLLMService, "call_stage", _fake_call_stage)
+
+
+def _create_prompt_profile(client: TestClient, team_id: int, **overrides) -> dict:
+    payload = {
+        "name": overrides.pop("name", "Style A"),
+        "seed_instructions": overrides.pop("seed_instructions", "步驟一律用祈使句"),
+        "testcase_instructions": overrides.pop("testcase_instructions", "expected_results 以「系統應」開頭"),
+    }
+    payload.update(overrides)
+    resp = client.post(f"/api/teams/{team_id}/qa-ai-helper/prompt-profiles", json=payload)
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def test_generate_seed_set_with_profile_injects_guard_frame_and_snapshots(qa_ai_helper_db, monkeypatch):
+    client = TestClient(app)
+    team_id = qa_ai_helper_db["team_id"]
+    captured: dict = {}
+    _install_capturing_call_stage(monkeypatch, captured)
+
+    profile = _create_prompt_profile(client, team_id)
+    session_id, _locked_payload = _prepare_locked_requirement_plan(client, team_id)
+
+    generated = client.post(
+        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/seed-sets",
+        json={"prompt_profile_id": profile["id"]},
+    )
+    assert generated.status_code == 200, generated.text
+    payload = generated.json()
+
+    seed_set = payload["seed_set"]
+    assert seed_set["prompt_profile_id"] == profile["id"]
+    assert seed_set["custom_instructions_snapshot"] == "步驟一律用祈使句"
+    assert payload["session"]["prompt_profile_id"] == profile["id"]
+
+    assert captured["seed"], "seed stage should have been called"
+    for prompt in captured["seed"]:
+        assert "團隊風格指引" in prompt
+        assert "<team_style_guidelines>\n步驟一律用祈使句\n</team_style_guidelines>" in prompt
+
+
+def test_generate_testcase_draft_set_with_profile_injects_guard_frame_and_snapshots(qa_ai_helper_db, monkeypatch):
+    client = TestClient(app)
+    team_id = qa_ai_helper_db["team_id"]
+    captured: dict = {}
+    _install_capturing_call_stage(monkeypatch, captured)
+
+    profile = _create_prompt_profile(client, team_id)
+    session_id, _locked_seed_payload = _prepare_locked_seed_set(client, team_id)
+
+    generated = client.post(
+        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/testcase-draft-sets",
+        json={"force_regenerate": False, "prompt_profile_id": profile["id"]},
+    )
+    assert generated.status_code == 200, generated.text
+    draft_set = generated.json()["testcase_draft_set"]
+    assert draft_set["prompt_profile_id"] == profile["id"]
+    assert draft_set["custom_instructions_snapshot"] == "expected_results 以「系統應」開頭"
+
+    assert captured["testcase"], "testcase stage should have been called"
+    for prompt in captured["testcase"]:
+        assert "團隊風格指引" in prompt
+        assert "expected_results 以「系統應」開頭" in prompt
+
+
+def test_refine_seed_set_reuses_snapshot_after_profile_is_modified(qa_ai_helper_db, monkeypatch):
+    client = TestClient(app)
+    team_id = qa_ai_helper_db["team_id"]
+    captured: dict = {}
+    _install_capturing_call_stage(monkeypatch, captured)
+
+    profile = _create_prompt_profile(client, team_id, seed_instructions="舊風格：步驟簡短")
+    session_id, _locked_payload = _prepare_locked_requirement_plan(client, team_id)
+
+    generated = client.post(
+        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/seed-sets",
+        json={"prompt_profile_id": profile["id"]},
+    )
+    assert generated.status_code == 200, generated.text
+    seed_set = generated.json()["seed_set"]
+    seed_item = seed_set["seed_items"][0]
+
+    updated = client.put(
+        f"/api/teams/{team_id}/qa-ai-helper/prompt-profiles/{profile['id']}",
+        json={"name": profile["name"], "seed_instructions": "新風格：步驟改用條列"},
+    )
+    assert updated.status_code == 200, updated.text
+
+    refined = client.post(
+        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/seed-sets/{seed_set['id']}/refine",
+        json={"items": [{"seed_item_id": seed_item["id"], "comment_text": "請補充前置條件"}]},
+    )
+    assert refined.status_code == 200, refined.text
+
+    assert captured["seed_refine"], "seed_refine stage should have been called"
+    refine_prompt = captured["seed_refine"][-1]
+    assert "舊風格：步驟簡短" in refine_prompt
+    assert "新風格：步驟改用條列" not in refine_prompt
+
+
+def test_generate_seed_set_explicit_null_profile_skips_injection(qa_ai_helper_db, monkeypatch):
+    client = TestClient(app)
+    team_id = qa_ai_helper_db["team_id"]
+    captured: dict = {}
+    _install_capturing_call_stage(monkeypatch, captured)
+
+    profile = _create_prompt_profile(client, team_id)
+    session_id, _locked_payload = _prepare_locked_requirement_plan(client, team_id)
+
+    first = client.post(
+        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/seed-sets",
+        json={"prompt_profile_id": profile["id"]},
+    )
+    assert first.status_code == 200, first.text
+    assert first.json()["session"]["prompt_profile_id"] == profile["id"]
+
+    second = client.post(
+        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/seed-sets",
+        json={"force_regenerate": True, "prompt_profile_id": None},
+    )
+    assert second.status_code == 200, second.text
+    payload = second.json()
+    assert payload["session"]["prompt_profile_id"] is None
+    assert payload["seed_set"]["prompt_profile_id"] is None
+    assert payload["seed_set"]["custom_instructions_snapshot"] is None
+
+    assert len(captured["seed"]) >= 2
+    assert "團隊風格指引" not in captured["seed"][-1]
+
+
+def test_generate_seed_set_with_profile_from_other_team_returns_404(qa_ai_helper_db, monkeypatch):
+    client = TestClient(app)
+    team_id = qa_ai_helper_db["team_id"]
+    captured: dict = {}
+    _install_capturing_call_stage(monkeypatch, captured)
+
+    with qa_ai_helper_db["sync_session_factory"]() as sync_db:
+        other_team = Team(
+            name="Other Team",
+            description="",
+            wiki_token="wiki-other-team",
+            test_case_table_id="tbl-other-team",
+        )
+        sync_db.add(other_team)
+        sync_db.commit()
+        other_team_profile = QAAIHelperPromptProfile(
+            team_id=other_team.id,
+            name="Other Team Style",
+            seed_instructions="不應被套用",
+        )
+        sync_db.add(other_team_profile)
+        sync_db.commit()
+        other_profile_id = other_team_profile.id
+
+    session_id, _locked_payload = _prepare_locked_requirement_plan(client, team_id)
+
+    resp = client.post(
+        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/seed-sets",
+        json={"prompt_profile_id": other_profile_id},
+    )
+    assert resp.status_code == 404, resp.text
+    assert "seed" not in captured
+
+
+def test_generate_seed_set_without_profile_has_no_style_block(qa_ai_helper_db, monkeypatch):
+    client = TestClient(app)
+    team_id = qa_ai_helper_db["team_id"]
+    captured: dict = {}
+    _install_capturing_call_stage(monkeypatch, captured)
+
+    session_id, _locked_payload = _prepare_locked_requirement_plan(client, team_id)
+
+    generated = client.post(f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/seed-sets")
+    assert generated.status_code == 200, generated.text
+    payload = generated.json()
+    assert payload["seed_set"]["prompt_profile_id"] is None
+    assert payload["seed_set"]["custom_instructions_snapshot"] is None
+
+    for prompt in captured["seed"]:
+        assert "{team_style_block}" not in prompt
+        assert "團隊風格指引" not in prompt

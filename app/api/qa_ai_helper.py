@@ -128,6 +128,8 @@ async def create_no_ticket_session(
             user_id=current_user.id,
             section_header=request.section_header,
             output_locale=request.output_locale,
+            prompt_profile_id=request.prompt_profile_id,
+            prompt_profile_id_provided="prompt_profile_id" in request.model_fields_set,
         )
     except Exception as exc:  # noqa: BLE001
         raise _map_exception(exc) from exc
@@ -286,12 +288,15 @@ async def generate_seed_set(
     await _verify_team_write_access(team_id=team_id, current_user=current_user)
     service = QAAIHelperService()
     force_regenerate = bool(request and request.force_regenerate)
+    prompt_profile_id_provided = bool(request and "prompt_profile_id" in request.model_fields_set)
     try:
         return await service.generate_seed_set(
             team_id=team_id,
             session_id=session_id,
             user_id=current_user.id,
             force_regenerate=force_regenerate,
+            prompt_profile_id=request.prompt_profile_id if request else None,
+            prompt_profile_id_provided=prompt_profile_id_provided,
         )
     except Exception as exc:  # noqa: BLE001
         raise _map_exception(exc) from exc
