@@ -825,8 +825,6 @@ class QAAIHelperService:
                 "included_seed_count": int(seed_set.included_seed_count or 0),
                 "adoption_rate": float(seed_set.adoption_rate or 0.0),
                 "created_by_user_id": seed_set.created_by_user_id,
-                "prompt_profile_id": seed_set.prompt_profile_id,
-                "custom_instructions_snapshot": seed_set.custom_instructions_snapshot,
                 "created_at": seed_set.created_at,
                 "updated_at": seed_set.updated_at,
                 "seed_items": [
@@ -3343,8 +3341,6 @@ class QAAIHelperService:
         session_id: int,
         user_id: int,
         force_regenerate: bool = False,
-        prompt_profile_id: Optional[int] = None,
-        prompt_profile_id_provided: bool = False,
     ) -> QAAIHelperWorkspaceResponse:
         read_snapshot = await self.get_workspace(team_id=team_id, session_id=session_id)
         requirement_plan = read_snapshot.requirement_plan
@@ -3387,17 +3383,6 @@ class QAAIHelperService:
         if not generation_items:
             raise ValueError("沒有可生成的驗證項目")
 
-        effective_prompt_profile_id = (
-            prompt_profile_id if prompt_profile_id_provided else read_snapshot.session.prompt_profile_id
-        )
-        seed_style_text: Optional[str] = None
-        if effective_prompt_profile_id is not None:
-            def _load_profile(sync_db: Session):
-                return self._resolve_team_prompt_profile_sync(sync_db, team_id, effective_prompt_profile_id)
-
-            resolved_profile = await self._run_read(_load_profile)
-            seed_style_text = (resolved_profile.seed_instructions or "").strip() or None
-
         output_locale = (
             read_snapshot.session.output_locale.value
             if hasattr(read_snapshot.session.output_locale, "value")
@@ -3421,7 +3406,6 @@ class QAAIHelperService:
                     "requirement_plan_json": requirement_plan_json,
                     "generation_items_json": json_compact_dumps_nullable(batch_items),
                 },
-                team_style_text=seed_style_text,
             )
             async with sem:
                 result = await self.llm_service.call_stage(
@@ -3522,16 +3506,11 @@ class QAAIHelperService:
                 included_seed_count=0,
                 adoption_rate=0.0,
                 created_by_user_id=user_id,
-                prompt_profile_id=effective_prompt_profile_id,
-                custom_instructions_snapshot=seed_style_text,
                 created_at=_now(),
                 updated_at=_now(),
             )
             sync_db.add(seed_set)
             sync_db.flush()
-
-            if prompt_profile_id_provided:
-                session.prompt_profile_id = effective_prompt_profile_id
 
             for generation_item, normalized_output in zip(generation_items, normalized_outputs):
                 sync_db.add(
@@ -3577,7 +3556,6 @@ class QAAIHelperService:
                 payload={
                     "batch_count": len(generation_batches),
                     "item_count": len(generation_items),
-                    "prompt_profile_id": effective_prompt_profile_id,
                 },
             )
             session.active_seed_set_id = seed_set.id
@@ -3787,7 +3765,6 @@ class QAAIHelperService:
                 "seed_items_json": json_compact_dumps_nullable(dirty_seed_items),
                 "seed_comments_json": json_compact_dumps_nullable(dirty_comments),
             },
-            team_style_text=seed_set.custom_instructions_snapshot,
         )
         refine_started_at = time.perf_counter()
         llm_result = await self.llm_service.call_stage(
@@ -3885,10 +3862,7 @@ class QAAIHelperService:
                 model_name=llm_result.model_name,
                 usage=llm_result.usage,
                 duration_ms=duration_ms,
-                payload={
-                    "dirty_seed_count": len(dirty_seed_items),
-                    "prompt_profile_id": seed_set_row.prompt_profile_id,
-                },
+                payload={"dirty_seed_count": len(dirty_seed_items)},
             )
             return self._load_workspace_sync(sync_db, team_id=team_id, session_id=session.id)
 

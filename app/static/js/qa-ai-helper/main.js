@@ -367,7 +367,6 @@
     const payload = {
       ticket_key: ticketKey,
       output_locale: currentOutputLocale(),
-      prompt_profile_id: selectedProfileIdOrNull('qaHelperCreateProfileSelect'),
     };
     const response = await authFetch(`/api/teams/${teamId}/qa-ai-helper/sessions`, {
       method: 'POST',
@@ -405,7 +404,6 @@
     const payload = {
       section_header: sectionHeader,
       output_locale: outputLocale,
-      prompt_profile_id: selectedProfileIdOrNull('qaHelperNoTicketProfileSelect'),
     };
     const response = await authFetch(`/api/teams/${teamId}/qa-ai-helper/sessions/no-ticket`, {
       method: 'POST',
@@ -2209,10 +2207,7 @@
       const response = await authFetch(`/api/teams/${teamId}/qa-ai-helper/sessions/${state.sessionId}/seed-sets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          force_regenerate: !!forceRegenerate,
-          prompt_profile_id: selectedProfileIdOrNull('qaHelperSeedProfileSelect'),
-        }),
+        body: JSON.stringify({ force_regenerate: !!forceRegenerate }),
       });
       if (!response.ok) {
         throw new Error(await response.text());
@@ -3146,27 +3141,13 @@
     if (selectEl.value !== selectedValue) selectEl.value = '';
   }
 
-  function teamDefaultPromptProfileId() {
-    const defaultProfile = (state.promptProfiles || []).find((profile) => profile.is_default);
-    return defaultProfile ? defaultProfile.id : null;
-  }
-
   function renderPromptProfileSelects() {
-    fillProfileSelect('qaHelperCreateProfileSelect', teamDefaultPromptProfileId());
-    fillProfileSelect('qaHelperNoTicketProfileSelect', teamDefaultPromptProfileId());
     const session = (state.workspace || {}).session || {};
     const currentSelection = session.prompt_profile_id !== undefined && session.prompt_profile_id !== null
       ? session.prompt_profile_id
       : null;
-    fillProfileSelect('qaHelperSeedProfileSelect', currentSelection);
     fillProfileSelect('qaHelperTestcaseProfileSelect', currentSelection);
 
-    const seedSet = (state.workspace || {}).seed_set;
-    const seedSelectEl = el('qaHelperSeedProfileSelect');
-    if (seedSelectEl && seedSet) {
-      seedSelectEl.title = promptProfileAppliedLabel(seedSet.prompt_profile_id, seedSet.custom_instructions_snapshot)
-        || t('qaAiHelper.promptProfiles.selectLabel', {}, '風格指引');
-    }
     const testcaseDraftSet = (state.workspace || {}).testcase_draft_set;
     const testcaseSelectEl = el('qaHelperTestcaseProfileSelect');
     if (testcaseSelectEl && testcaseDraftSet) {
@@ -3249,7 +3230,6 @@
     el('qaHelperPromptProfileEditingId').value = profile ? profile.id : '';
     el('qaHelperPromptProfileName').value = profile ? profile.name : '';
     el('qaHelperPromptProfileDescription').value = profile ? (profile.description || '') : '';
-    el('qaHelperPromptProfileSeedInstructions').value = profile ? (profile.seed_instructions || '') : '';
     el('qaHelperPromptProfileTestcaseInstructions').value = profile ? (profile.testcase_instructions || '') : '';
     el('qaHelperPromptProfileIsDefault').checked = !!(profile && profile.is_default);
     updatePromptProfileCharCounts();
@@ -3264,11 +3244,8 @@
   }
 
   function updatePromptProfileCharCounts() {
-    const seedInput = el('qaHelperPromptProfileSeedInstructions');
     const testcaseInput = el('qaHelperPromptProfileTestcaseInstructions');
-    const seedCount = el('qaHelperPromptProfileSeedCharCount');
     const testcaseCount = el('qaHelperPromptProfileTestcaseCharCount');
-    if (seedInput && seedCount) seedCount.textContent = `${seedInput.value.length} / 2000`;
     if (testcaseInput && testcaseCount) testcaseCount.textContent = `${testcaseInput.value.length} / 2000`;
   }
 
@@ -3279,8 +3256,7 @@
     const payload = {
       name: String(el('qaHelperPromptProfileName').value || '').trim(),
       description: String(el('qaHelperPromptProfileDescription').value || '').trim() || null,
-      seed_instructions: String(el('qaHelperPromptProfileSeedInstructions').value || '').trim() || null,
-      testcase_instructions: String(el('qaHelperPromptProfileTestcaseInstructions').value || '').trim() || null,
+      testcase_instructions: String(el('qaHelperPromptProfileTestcaseInstructions').value || '').trim(),
     };
     if (!editingId) {
       payload.is_default = !!el('qaHelperPromptProfileIsDefault').checked;
@@ -3466,7 +3442,6 @@
     bindIfPresent('qaHelperPromptProfileAddBtn', 'click', () => showPromptProfileForm(null));
     bindIfPresent('qaHelperPromptProfileCancelFormBtn', 'click', () => hidePromptProfileForm());
     bindIfPresent('qaHelperPromptProfileSaveBtn', 'click', () => savePromptProfile().catch(handleError));
-    bindIfPresent('qaHelperPromptProfileSeedInstructions', 'input', updatePromptProfileCharCounts);
     bindIfPresent('qaHelperPromptProfileTestcaseInstructions', 'input', updatePromptProfileCharCounts);
     const promptProfilesList = el('qaHelperPromptProfilesList');
     if (promptProfilesList) {

@@ -3157,8 +3157,6 @@
       "deleteConfirm": "確定要刪除此風格設定嗎？",
       "name": "名稱",
       "description": "說明（選填）",
-      "seedInstructions": "Test Case 種子風格指引",
-      "seedInstructionsHelp": "只會影響格式與風格（用詞、語氣、詳細程度），不會改變輸出結構。",
       "testcaseInstructions": "Test Case 風格指引",
       "testcaseInstructionsHelp": "只會影響格式與風格（用詞、語氣、詳細程度），不會改變輸出結構。",
       "charCount": "{{count}} / 2000",

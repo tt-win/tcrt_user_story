@@ -32,7 +32,6 @@ def upgrade() -> None:
             sa.Column("team_id", sa.Integer(), nullable=False),
             sa.Column("name", sa.String(length=100), nullable=False),
             sa.Column("description", sa.Text(), nullable=True),
-            sa.Column("seed_instructions", MediumText(), nullable=True),
             sa.Column("testcase_instructions", MediumText(), nullable=True),
             sa.Column("is_default", sa.Boolean(), nullable=False),
             sa.Column("created_by_user_id", sa.Integer(), nullable=True),
@@ -69,20 +68,6 @@ def upgrade() -> None:
             unique=False,
         )
 
-    seed_set_columns = [col["name"] for col in inspector.get_columns("qa_ai_helper_seed_sets")]
-    with op.batch_alter_table("qa_ai_helper_seed_sets") as batch_op:
-        if "prompt_profile_id" not in seed_set_columns:
-            batch_op.add_column(sa.Column("prompt_profile_id", sa.Integer(), nullable=True))
-        if "custom_instructions_snapshot" not in seed_set_columns:
-            batch_op.add_column(sa.Column("custom_instructions_snapshot", MediumText(), nullable=True))
-    if "prompt_profile_id" not in seed_set_columns:
-        op.create_index(
-            "ix_qa_ai_helper_seed_sets_prompt_profile_id",
-            "qa_ai_helper_seed_sets",
-            ["prompt_profile_id"],
-            unique=False,
-        )
-
     draft_set_columns = [col["name"] for col in inspector.get_columns("qa_ai_helper_testcase_draft_sets")]
     with op.batch_alter_table("qa_ai_helper_testcase_draft_sets") as batch_op:
         if "prompt_profile_id" not in draft_set_columns:
@@ -110,16 +95,6 @@ def downgrade() -> None:
         if "custom_instructions_snapshot" in draft_set_columns:
             batch_op.drop_column("custom_instructions_snapshot")
         if "prompt_profile_id" in draft_set_columns:
-            batch_op.drop_column("prompt_profile_id")
-
-    seed_set_columns = [col["name"] for col in inspector.get_columns("qa_ai_helper_seed_sets")]
-    seed_set_indexes = [idx["name"] for idx in inspector.get_indexes("qa_ai_helper_seed_sets")]
-    with op.batch_alter_table("qa_ai_helper_seed_sets") as batch_op:
-        if "ix_qa_ai_helper_seed_sets_prompt_profile_id" in seed_set_indexes:
-            batch_op.drop_index("ix_qa_ai_helper_seed_sets_prompt_profile_id")
-        if "custom_instructions_snapshot" in seed_set_columns:
-            batch_op.drop_column("custom_instructions_snapshot")
-        if "prompt_profile_id" in seed_set_columns:
             batch_op.drop_column("prompt_profile_id")
 
     session_columns = [col["name"] for col in inspector.get_columns("qa_ai_helper_sessions")]

@@ -10,22 +10,11 @@ if str(PROJECT_ROOT) not in sys.path:
 from app.config import Settings
 from app.services.qa_ai_helper_prompt_service import QAAIHelperPromptService
 
-GOLDEN_STAGES = ("seed", "seed_refine", "testcase", "repair")
+GOLDEN_STAGES = ("testcase", "repair")
 
 GOLDEN_FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "qa_ai_helper" / "prompts"
 
 GOLDEN_REPLACEMENTS = {
-    "seed": {
-        "output_language": "繁體中文",
-        "section_summary_json": '{"golden":"section_summary"}',
-        "requirement_plan_json": '{"golden":"requirement_plan"}',
-        "generation_items_json": '[{"golden":"generation_item"}]',
-    },
-    "seed_refine": {
-        "output_language": "繁體中文",
-        "seed_items_json": '[{"golden":"seed_item"}]',
-        "seed_comments_json": '[{"golden":"seed_comment"}]',
-    },
     "testcase": {
         "output_language": "繁體中文",
         "min_steps": "3",

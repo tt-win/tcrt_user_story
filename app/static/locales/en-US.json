@@ -3062,8 +3062,6 @@
       "deleteConfirm": "Are you sure you want to delete this style profile?",
       "name": "Name",
       "description": "Description (optional)",
-      "seedInstructions": "Test Case Seed style instructions",
-      "seedInstructionsHelp": "Only affects wording, tone, and level of detail — output structure is unchanged.",
       "testcaseInstructions": "Test Case style instructions",
       "testcaseInstructionsHelp": "Only affects wording, tone, and level of detail — output structure is unchanged.",
       "charCount": "{{count}} / 2000",
