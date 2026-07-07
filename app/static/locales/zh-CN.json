@@ -3013,8 +3013,6 @@
       "deleteConfirm": "确定要删除此风格设定吗？",
       "name": "名称",
       "description": "说明（选填）",
-      "seedInstructions": "Test Case 种子风格指引",
-      "seedInstructionsHelp": "只会影响格式与风格（用词、语气、详细程度），不会改变输出结构。",
       "testcaseInstructions": "Test Case 风格指引",
       "testcaseInstructionsHelp": "只会影响格式与风格（用词、语气、详细程度），不会改变输出结构。",
       "charCount": "{{count}} / 2000",

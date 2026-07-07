@@ -34,6 +34,5 @@ Category 僅能使用以下 9 類（不得新增或翻譯）：
 - Seed「確認登入後儀表板顯示歡迎訊息」→ `[]`（純顯示驗證，無需輸入資料）
 - Seed「POST /api/orders 建立訂單成功」→ `[{"category":"url","name":"Orders API endpoint"}, {"category":"json","name":"Order payload"}]`
 
-{team_style_block}
 輸出 schema:
 {"outputs":[{"item_index":0,"seed_reference_key":"","section_id":"","verification_item_ref":"","check_condition_ids":[],"seed_summary":"","seed_body":"","coverage_tags":["Happy Path"],"test_data_suggestions":[{"category":"text","name":""}]}]}

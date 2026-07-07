@@ -37,7 +37,6 @@ FALLBACK_PROMPTS: Dict[QAAIHelperPromptStage, str] = {
         "SECTION_SUMMARY={section_summary_json}\n"
         "REQUIREMENT_PLAN={requirement_plan_json}\n"
         "GENERATION_ITEMS={generation_items_json}\n\n"
-        "{team_style_block}\n"
         "輸出 schema:\n"
         '{"outputs":[{"item_index":0,"seed_reference_key":"","section_id":"","verification_item_ref":"","check_condition_ids":[],"seed_summary":"","seed_body":"","coverage_tags":["Happy Path"]}]}'
     ),
@@ -47,7 +46,6 @@ FALLBACK_PROMPTS: Dict[QAAIHelperPromptStage, str] = {
         "只輸出 JSON，禁止輸出 Markdown、說明或 code fence。\n\n"
         "SEED_ITEMS={seed_items_json}\n"
         "SEED_COMMENTS={seed_comments_json}\n\n"
-        "{team_style_block}\n"
         "輸出 schema:\n"
         '{"outputs":[{"item_index":0,"seed_reference_key":"","section_id":"","verification_item_ref":"","check_condition_ids":[],"seed_summary":"","seed_body":"","coverage_tags":["Happy Path"]}]}'
     ),

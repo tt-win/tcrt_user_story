@@ -110,6 +110,25 @@ def test_default_repair_fallback_requires_numbering_for_multi_item_fields(tmp_pa
     assert "只有 1 項，則不要加編號" in rendered
 
 
+def test_seed_and_seed_refine_do_not_support_team_style() -> None:
+    service = QAAIHelperPromptService(Settings().ai.qa_ai_helper)
+    seed_rendered = service.render_stage_prompt(
+        "seed",
+        {"generation_items_json": "[]"},
+        team_style_text="不應出現",
+    )
+    seed_refine_rendered = service.render_stage_prompt(
+        "seed_refine",
+        {"seed_items_json": "[]"},
+        team_style_text="不應出現",
+    )
+
+    for rendered in (seed_rendered, seed_refine_rendered):
+        assert "{team_style_block}" not in rendered
+        assert "不應出現" not in rendered
+        assert "團隊風格指引" not in rendered
+
+
 def test_render_without_team_style_matches_golden_fixture() -> None:
     service = QAAIHelperPromptService(Settings().ai.qa_ai_helper)
     for stage in GOLDEN_STAGES:
@@ -122,8 +141,8 @@ def test_render_without_team_style_matches_golden_fixture() -> None:
 def test_render_with_team_style_wraps_guard_frame() -> None:
     service = QAAIHelperPromptService(Settings().ai.qa_ai_helper)
     rendered = service.render_stage_prompt(
-        "seed",
-        GOLDEN_REPLACEMENTS["seed"],
+        "testcase",
+        GOLDEN_REPLACEMENTS["testcase"],
         team_style_text="步驟用祈使句",
     )
 
@@ -141,20 +160,20 @@ def test_render_with_team_style_wraps_guard_frame() -> None:
 def test_team_style_placeholder_not_expanded() -> None:
     service = QAAIHelperPromptService(Settings().ai.qa_ai_helper)
     rendered = service.render_stage_prompt(
-        "seed",
-        GOLDEN_REPLACEMENTS["seed"],
+        "testcase",
+        GOLDEN_REPLACEMENTS["testcase"],
         team_style_text="請保留字面 {generation_items_json} 與 {min_steps}",
     )
 
     assert "請保留字面 {generation_items_json} 與 {min_steps}" in rendered
-    assert GOLDEN_REPLACEMENTS["seed"]["generation_items_json"] in rendered
+    assert GOLDEN_REPLACEMENTS["testcase"]["generation_items_json"] in rendered
 
 
 def test_render_replacements_cannot_inject_team_style_block() -> None:
     service = QAAIHelperPromptService(Settings().ai.qa_ai_helper)
-    replacements = dict(GOLDEN_REPLACEMENTS["seed"])
+    replacements = dict(GOLDEN_REPLACEMENTS["testcase"])
     replacements["team_style_block"] = "HACK"
-    rendered = service.render_stage_prompt("seed", replacements)
+    rendered = service.render_stage_prompt("testcase", replacements)
 
     assert "HACK" not in rendered
     assert "{team_style_block}" not in rendered

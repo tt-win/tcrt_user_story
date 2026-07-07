@@ -110,7 +110,6 @@ def test_create_list_update_delete_round_trip(prompt_profiles_db):
         json={
             "name": "Concise Style",
             "description": "Short steps",
-            "seed_instructions": "步驟用祈使句",
             "testcase_instructions": "expected_results 以「系統應」開頭",
         },
     )
@@ -128,13 +127,13 @@ def test_create_list_update_delete_round_trip(prompt_profiles_db):
         json={
             "name": "Concise Style v2",
             "description": None,
-            "seed_instructions": "步驟用祈使句",
-            "testcase_instructions": None,
+            "testcase_instructions": "步驟用祈使句",
         },
     )
     assert updated.status_code == 200, updated.text
     assert updated.json()["name"] == "Concise Style v2"
-    assert updated.json()["testcase_instructions"] is None
+    assert updated.json()["description"] is None
+    assert updated.json()["testcase_instructions"] == "步驟用祈使句"
 
     deleted = client.delete(_profiles_url(team_id, f"/{profile['id']}"))
     assert deleted.status_code == 200, deleted.text
@@ -149,28 +148,37 @@ def test_duplicate_name_rejected(prompt_profiles_db):
     client = TestClient(app)
     team_id = prompt_profiles_db["team_id"]
 
-    first = client.post(_profiles_url(team_id), json={"name": "Dup", "seed_instructions": "a"})
+    first = client.post(_profiles_url(team_id), json={"name": "Dup", "testcase_instructions": "a"})
     assert first.status_code == 201, first.text
 
-    second = client.post(_profiles_url(team_id), json={"name": "Dup", "seed_instructions": "b"})
+    second = client.post(_profiles_url(team_id), json={"name": "Dup", "testcase_instructions": "b"})
     assert second.status_code == 409, second.text
     assert second.json()["detail"]["code"] == "PROMPT_PROFILE_NAME_DUPLICATE"
 
-    renamed_conflict = client.post(_profiles_url(team_id), json={"name": "Other", "seed_instructions": "c"})
+    renamed_conflict = client.post(_profiles_url(team_id), json={"name": "Other", "testcase_instructions": "c"})
     assert renamed_conflict.status_code == 201, renamed_conflict.text
     conflict_update = client.put(
         _profiles_url(team_id, f"/{renamed_conflict.json()['id']}"),
-        json={"name": "Dup", "seed_instructions": "c"},
+        json={"name": "Dup", "testcase_instructions": "c"},
     )
     assert conflict_update.status_code == 409, conflict_update.text
 
 
-def test_both_instructions_empty_rejected(prompt_profiles_db):
+def test_instructions_missing_rejected(prompt_profiles_db):
     _login_as_admin(prompt_profiles_db)
     client = TestClient(app)
     team_id = prompt_profiles_db["team_id"]
 
     resp = client.post(_profiles_url(team_id), json={"name": "Empty"})
+    assert resp.status_code == 422, resp.text
+
+
+def test_instructions_blank_rejected(prompt_profiles_db):
+    _login_as_admin(prompt_profiles_db)
+    client = TestClient(app)
+    team_id = prompt_profiles_db["team_id"]
+
+    resp = client.post(_profiles_url(team_id), json={"name": "Blank", "testcase_instructions": "   "})
     assert resp.status_code == 422, resp.text
 
 
@@ -181,7 +189,7 @@ def test_instructions_over_length_limit_rejected(prompt_profiles_db):
 
     resp = client.post(
         _profiles_url(team_id),
-        json={"name": "TooLong", "seed_instructions": "x" * 2001},
+        json={"name": "TooLong", "testcase_instructions": "x" * 2001},
     )
     assert resp.status_code == 422, resp.text
 
@@ -191,7 +199,7 @@ def test_name_empty_rejected(prompt_profiles_db):
     client = TestClient(app)
     team_id = prompt_profiles_db["team_id"]
 
-    resp = client.post(_profiles_url(team_id), json={"name": "  ", "seed_instructions": "a"})
+    resp = client.post(_profiles_url(team_id), json={"name": "  ", "testcase_instructions": "a"})
     assert resp.status_code == 422, resp.text
 
 
@@ -199,18 +207,18 @@ def test_member_write_forbidden_but_can_list(prompt_profiles_db):
     _login_as_admin(prompt_profiles_db)
     client = TestClient(app)
     team_id = prompt_profiles_db["team_id"]
-    created = client.post(_profiles_url(team_id), json={"name": "Admin Only", "seed_instructions": "a"})
+    created = client.post(_profiles_url(team_id), json={"name": "Admin Only", "testcase_instructions": "a"})
     assert created.status_code == 201, created.text
     profile_id = created.json()["id"]
 
     _login_as_member(prompt_profiles_db)
 
-    forbidden_create = client.post(_profiles_url(team_id), json={"name": "Member Try", "seed_instructions": "a"})
+    forbidden_create = client.post(_profiles_url(team_id), json={"name": "Member Try", "testcase_instructions": "a"})
     assert forbidden_create.status_code == 403, forbidden_create.text
 
     forbidden_update = client.put(
         _profiles_url(team_id, f"/{profile_id}"),
-        json={"name": "Member Try", "seed_instructions": "a"},
+        json={"name": "Member Try", "testcase_instructions": "a"},
     )
     assert forbidden_update.status_code == 403, forbidden_update.text
 
@@ -242,9 +250,9 @@ def test_set_default_is_exclusive_per_team(prompt_profiles_db):
     team_id = prompt_profiles_db["team_id"]
 
     profile_a = client.post(
-        _profiles_url(team_id), json={"name": "A", "seed_instructions": "a", "is_default": True}
+        _profiles_url(team_id), json={"name": "A", "testcase_instructions": "a", "is_default": True}
     ).json()
-    profile_b = client.post(_profiles_url(team_id), json={"name": "B", "seed_instructions": "b"}).json()
+    profile_b = client.post(_profiles_url(team_id), json={"name": "B", "testcase_instructions": "b"}).json()
     assert profile_a["is_default"] is True
 
     set_b_default = client.post(
@@ -275,7 +283,7 @@ def test_delete_clears_session_reference(prompt_profiles_db):
     client = TestClient(app)
     team_id = prompt_profiles_db["team_id"]
 
-    profile = client.post(_profiles_url(team_id), json={"name": "Linked", "seed_instructions": "a"}).json()
+    profile = client.post(_profiles_url(team_id), json={"name": "Linked", "testcase_instructions": "a"}).json()
 
     sync_session_factory = prompt_profiles_db["sync_session_factory"]
     with sync_session_factory() as db_session:

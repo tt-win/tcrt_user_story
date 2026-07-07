@@ -78,12 +78,6 @@
                                 <option value="en">English</option>
                             </select>
                         </div>
-                        <div class="col-12">
-                            <label class="form-label" for="qaHelperCreateProfileSelect" data-i18n="qaAiHelper.promptProfiles.selectLabel">風格指引</label>
-                            <select class="form-select form-select-sm" id="qaHelperCreateProfileSelect">
-                                <option value="" data-i18n="qaAiHelper.promptProfiles.systemDefault">系統預設（不使用自訂指引）</option>
-                            </select>
-                        </div>
                     </div>
                     <div class="qa-helper-summary mt-3" id="qaHelperWorkspaceSummary"></div>
                 </div>
@@ -121,12 +115,6 @@
                                 <option value="zh-TW">繁體中文</option>
                                 <option value="zh-CN">简体中文</option>
                                 <option value="en">English</option>
-                            </select>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label" for="qaHelperNoTicketProfileSelect" data-i18n="qaAiHelper.promptProfiles.selectLabel">風格指引</label>
-                            <select class="form-select form-select-sm" id="qaHelperNoTicketProfileSelect">
-                                <option value="" data-i18n="qaAiHelper.promptProfiles.systemDefault">系統預設（不使用自訂指引）</option>
                             </select>
                         </div>
                     </div>
@@ -283,9 +271,6 @@
                         <button type="button" class="btn btn-secondary btn-sm" id="qaHelperUnlockRequirementPlanBtn">
                             <i class="fas fa-lock-open me-1"></i><span data-i18n="qaAiHelper.unlockRequirementPlan">解開鎖定</span>
                         </button>
-                        <select class="form-select form-select-sm qa-helper-inline-profile-select" id="qaHelperSeedProfileSelect" style="width:auto;" data-i18n-title="qaAiHelper.promptProfiles.selectLabel" title="風格指引">
-                            <option value="" data-i18n="qaAiHelper.promptProfiles.systemDefault">系統預設（不使用自訂指引）</option>
-                        </select>
                         <button type="button" class="btn btn-primary btn-sm" id="qaHelperStartSeedReviewBtn">
                             <i class="fas fa-wand-magic-sparkles me-1"></i><span data-i18n="qaAiHelper.startSeedGeneration">開始產生 Test Case 種子</span>
                         </button>
@@ -647,15 +632,9 @@
                         <input type="text" class="form-control" id="qaHelperPromptProfileDescription">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label" for="qaHelperPromptProfileSeedInstructions" data-i18n="qaAiHelper.promptProfiles.seedInstructions">Test Case 種子風格指引</label>
-                        <div class="form-text" data-i18n="qaAiHelper.promptProfiles.seedInstructionsHelp">只會影響格式與風格（用詞、語氣、詳細程度），不會改變輸出結構。</div>
-                        <textarea class="form-control" id="qaHelperPromptProfileSeedInstructions" rows="4" maxlength="2000"></textarea>
-                        <div class="form-text text-end" id="qaHelperPromptProfileSeedCharCount">0 / 2000</div>
-                    </div>
-                    <div class="mb-3">
                         <label class="form-label" for="qaHelperPromptProfileTestcaseInstructions" data-i18n="qaAiHelper.promptProfiles.testcaseInstructions">Test Case 風格指引</label>
                         <div class="form-text" data-i18n="qaAiHelper.promptProfiles.testcaseInstructionsHelp">只會影響格式與風格（用詞、語氣、詳細程度），不會改變輸出結構。</div>
-                        <textarea class="form-control" id="qaHelperPromptProfileTestcaseInstructions" rows="4" maxlength="2000"></textarea>
+                        <textarea class="form-control" id="qaHelperPromptProfileTestcaseInstructions" rows="4" maxlength="2000" required></textarea>
                         <div class="form-text text-end" id="qaHelperPromptProfileTestcaseCharCount">0 / 2000</div>
                     </div>
                     <div class="form-check form-switch mb-2">

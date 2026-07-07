@@ -556,7 +556,6 @@ class QAAIHelperPromptProfile(Base):
     team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
-    seed_instructions = Column(qa_ai_helper_large_text_type(), nullable=True)
     testcase_instructions = Column(qa_ai_helper_large_text_type(), nullable=True)
     is_default = Column(Boolean, nullable=False, default=False)
     created_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -1191,13 +1190,6 @@ class QAAIHelperSeedSet(Base):
         nullable=True,
         index=True,
     )
-    prompt_profile_id = Column(
-        Integer,
-        ForeignKey("qa_ai_helper_prompt_profiles.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-    custom_instructions_snapshot = Column(qa_ai_helper_large_text_type(), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

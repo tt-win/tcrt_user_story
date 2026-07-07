@@ -13,7 +13,6 @@ from app.auth.models import UserRole
 from app.db_access.main import MainAccessBoundary, get_main_access_boundary
 from app.models.database_models import (
     QAAIHelperPromptProfile,
-    QAAIHelperSeedSet,
     QAAIHelperSession,
     QAAIHelperTestcaseDraftSet,
     Team,
@@ -147,7 +146,6 @@ async def create_prompt_profile(
             team_id=team_id,
             name=payload.name,
             description=payload.description,
-            seed_instructions=payload.seed_instructions,
             testcase_instructions=payload.testcase_instructions,
             is_default=payload.is_default,
             created_by_user_id=current_user.id,
@@ -178,7 +176,6 @@ async def update_prompt_profile(
 
         profile.name = payload.name
         profile.description = payload.description
-        profile.seed_instructions = payload.seed_instructions
         profile.testcase_instructions = payload.testcase_instructions
         profile.updated_by_user_id = current_user.id
         profile.updated_at = datetime.utcnow()
@@ -200,7 +197,7 @@ async def delete_prompt_profile(
         await _ensure_team_exists(session, team_id)
         profile = await _get_profile_or_404(session, team_id, profile_id)
 
-        for model in (QAAIHelperSession, QAAIHelperSeedSet, QAAIHelperTestcaseDraftSet):
+        for model in (QAAIHelperSession, QAAIHelperTestcaseDraftSet):
             await session.execute(
                 update(model)
                 .where(model.prompt_profile_id == profile_id)
