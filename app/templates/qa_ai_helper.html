@@ -59,9 +59,6 @@
                                     <button type="button" class="btn btn-outline-secondary btn-sm" id="qaHelperRefreshSessionsBtn">
                                         <i class="fas fa-rotate me-1"></i><span data-i18n="common.refresh">重新整理</span>
                                     </button>
-                                    <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="qaHelperPromptProfilesBtn">
-                                        <i class="fas fa-sliders me-1"></i><span data-i18n="qaAiHelper.promptProfiles.manageButton">風格設定</span>
-                                    </button>
                                 </div>
                             </div>
                             <select class="form-select form-select-sm d-none" id="qaHelperSessionSelect" aria-hidden="true"></select>
@@ -346,9 +343,6 @@
                         <button type="button" class="btn btn-secondary btn-sm" id="qaHelperUnlockSeedsBtn">
                             <i class="fas fa-lock-open me-1"></i><span data-i18n="qaAiHelper.unlockSeeds">解開 Seed 鎖定</span>
                         </button>
-                        <select class="form-select form-select-sm qa-helper-inline-profile-select" id="qaHelperTestcaseProfileSelect" style="width:auto;" data-i18n-title="qaAiHelper.promptProfiles.selectLabel" title="風格指引">
-                            <option value="" data-i18n="qaAiHelper.promptProfiles.systemDefault">系統預設（不使用自訂指引）</option>
-                        </select>
                         <button type="button" class="btn btn-success btn-sm" id="qaHelperStartTestcaseReviewBtn">
                             <i class="fas fa-list-check me-1"></i><span data-i18n="qaAiHelper.startTestcaseGeneration">產生 Test Case</span>
                         </button>
@@ -601,55 +595,6 @@
     </div>
 </div>
 
-<div class="modal fade" id="qaHelperPromptProfilesModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <div>
-                    <h5 class="modal-title" data-i18n="qaAiHelper.promptProfiles.manageTitle">團隊風格設定</h5>
-                    <small class="text-muted" data-i18n="qaAiHelper.promptProfiles.manageHint">自訂 Test Case 種子與 Test Case 產出的格式與風格指引，產生時可擇一套用。</small>
-                </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div id="qaHelperPromptProfilesListView">
-                    <div class="d-flex justify-content-end mb-3">
-                        <button type="button" class="btn btn-primary btn-sm" id="qaHelperPromptProfileAddBtn">
-                            <i class="fas fa-plus me-1"></i><span data-i18n="qaAiHelper.promptProfiles.addProfile">新增風格</span>
-                        </button>
-                    </div>
-                    <div class="qa-helper-empty d-none" id="qaHelperPromptProfilesEmpty" data-i18n="qaAiHelper.promptProfiles.listEmpty">尚未建立任何風格指引</div>
-                    <div class="list-group" id="qaHelperPromptProfilesList"></div>
-                </div>
-                <div id="qaHelperPromptProfilesFormView" class="d-none">
-                    <input type="hidden" id="qaHelperPromptProfileEditingId" value="">
-                    <div class="mb-3">
-                        <label class="form-label" for="qaHelperPromptProfileName" data-i18n="qaAiHelper.promptProfiles.name">名稱</label>
-                        <input type="text" class="form-control" id="qaHelperPromptProfileName" maxlength="100">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label" for="qaHelperPromptProfileDescription" data-i18n="qaAiHelper.promptProfiles.description">說明（選填）</label>
-                        <input type="text" class="form-control" id="qaHelperPromptProfileDescription">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label" for="qaHelperPromptProfileTestcaseInstructions" data-i18n="qaAiHelper.promptProfiles.testcaseInstructions">Test Case 風格指引</label>
-                        <div class="form-text" data-i18n="qaAiHelper.promptProfiles.testcaseInstructionsHelp">只會影響格式與風格（用詞、語氣、詳細程度），不會改變輸出結構。</div>
-                        <textarea class="form-control" id="qaHelperPromptProfileTestcaseInstructions" rows="4" maxlength="2000" required></textarea>
-                        <div class="form-text text-end" id="qaHelperPromptProfileTestcaseCharCount">0 / 2000</div>
-                    </div>
-                    <div class="form-check form-switch mb-2">
-                        <input class="form-check-input" type="checkbox" id="qaHelperPromptProfileIsDefault">
-                        <label class="form-check-label" for="qaHelperPromptProfileIsDefault" data-i18n="qaAiHelper.promptProfiles.setDefault">設為團隊預設</label>
-                    </div>
-                    <div class="d-flex justify-content-end gap-2">
-                        <button type="button" class="btn btn-secondary btn-sm" id="qaHelperPromptProfileCancelFormBtn" data-i18n="common.cancel">取消</button>
-                        <button type="button" class="btn btn-primary btn-sm" id="qaHelperPromptProfileSaveBtn" data-i18n="common.save">儲存</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block scripts %}

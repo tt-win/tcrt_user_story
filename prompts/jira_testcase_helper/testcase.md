@@ -32,6 +32,5 @@ GENERATION_ITEMS={generation_items_json}
 - suggestion `{"category":"credential","name":"登入憑證"}` + 需求「使用 admin/admin 登入」→ `{"category":"credential","name":"登入憑證","value":""}`（credential 強制空；一筆涵蓋帳號與密碼）
 - suggestion `{"category":"email","name":"通知收件人"}` + 需求無明示 → `{"category":"email","name":"通知收件人","value":""}`
 
-{team_style_block}
 輸出 schema:
 {"outputs":[{"item_index":0,"seed_reference_key":"","title":"","priority":"Medium","preconditions":[""],"steps":["","",""],"expected_results":[""],"test_data":[{"category":"text","name":"","value":""}]}]}

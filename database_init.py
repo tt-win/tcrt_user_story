@@ -65,6 +65,8 @@ MAIN_REQUIRED_TABLES: List[str] = [
     "active_sessions",
     "password_reset_tokens",
     "mcp_machine_credentials",
+    "team_app_tokens",
+    "app_token_pins",
     "team_automation_providers",
     "system_automation_providers",
     "automation_scripts",

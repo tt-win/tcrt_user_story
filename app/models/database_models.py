@@ -63,6 +63,13 @@ class MCPMachineCredentialStatus(PyEnum):
     REVOKED = "revoked"
 
 
+class TeamAppTokenStatus(PyEnum):
+    """Team app token 憑證狀態"""
+
+    ACTIVE = "active"
+    REVOKED = "revoked"
+
+
 class AutomationProviderSlot(PyEnum):
     """Automation Hub provider slot"""
 
@@ -1776,6 +1783,64 @@ class MCPMachineCredential(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     created_by = relationship("User")
+
+
+class TeamAppToken(Base):
+    """Team-owned app token for external non-interactive API access."""
+
+    __tablename__ = "team_app_tokens"
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="uq_team_app_tokens_token_hash"),
+        Index("ix_team_app_tokens_owner_team_id", "owner_team_id"),
+        Index("ix_team_app_tokens_status", "status"),
+        Index("ix_team_app_tokens_expires_at", "expires_at"),
+        Index("ix_team_app_tokens_created_by_user_id", "created_by_user_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    owner_team_id = Column(
+        Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False
+    )
+    token_hash = Column(String(128), nullable=False)
+    token_prefix = Column(String(16), nullable=False)
+    status = Column(
+        Enum(TeamAppTokenStatus),
+        nullable=False,
+        default=TeamAppTokenStatus.ACTIVE,
+    )
+    scopes_json = Column(Text, nullable=True, comment="允許的 operation scope 清單（JSON 陣列）")
+    expires_at = Column(DateTime, nullable=True)
+    last_used_at = Column(DateTime, nullable=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+
+    owner_team = relationship("Team")
+    created_by = relationship("User")
+
+
+class AppTokenPin(Base):
+    """Team-scoped 釘選（Pin）表格，供 /api/app/* 呼叫者（app token 或 legacy
+    machine credential）建立/刪除；同團隊所有 token 共用同一份清單，與
+    UserPin（per-user，僅供人類 Web UI 使用）完全獨立。"""
+
+    __tablename__ = "app_token_pins"
+    __table_args__ = (
+        UniqueConstraint("owner_team_id", "entity_type", "entity_id", name="uq_app_token_pin"),
+        Index("ix_app_token_pins_owner_team_id", "owner_team_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    owner_team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
+    entity_type = Column(String(50), nullable=False)
+    entity_id = Column(Integer, nullable=False)
+    created_by_credential_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    owner_team = relationship("Team")
 
 
 class _AutomationProviderColumnsMixin:

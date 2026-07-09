@@ -27,8 +27,13 @@ from .team_statistics_qa_ai_helper import router as team_statistics_qa_ai_helper
 from .test_case_sets import router as test_case_sets_router
 from .test_case_sections import router as test_case_sections_router
 from .qa_ai_helper import router as qa_ai_helper_router
-from .qa_ai_helper_prompt_profiles import router as qa_ai_helper_prompt_profiles_router
 from .mcp import router as mcp_router
+from .app_tokens import router as app_tokens_router
+from .app_read import router as app_read_router
+from .app_test_cases import router as app_test_cases_router
+from .app_test_runs import router as app_test_runs_router
+from .app_automation import router as app_automation_router
+from .app_pins import router as app_pins_router
 from .automation_providers import router as automation_providers_router
 from .system_automation_providers import router as system_automation_providers_router
 from .system_automation_hub import router as system_automation_hub_router
@@ -74,8 +79,13 @@ api_router.include_router(team_statistics_qa_ai_helper_router)  # QA AI Helper �
 api_router.include_router(test_case_sets_router)  # Test Case Set 路由
 api_router.include_router(test_case_sections_router)  # Test Case Section 路由
 api_router.include_router(qa_ai_helper_router)  # 新版 QA AI Helper 路由
-api_router.include_router(qa_ai_helper_prompt_profiles_router)  # QA AI Helper Team Prompt Profile 路由
 api_router.include_router(mcp_router)  # MCP Read 路由
+api_router.include_router(app_tokens_router)  # App Token 管理路由
+api_router.include_router(app_read_router)  # App Token Read 路由
+api_router.include_router(app_test_cases_router)  # App Token Test Case Mutation 路由
+api_router.include_router(app_test_runs_router)  # App Token Test Run Mutation 路由
+api_router.include_router(app_automation_router)  # App Token Automation 路由
+api_router.include_router(app_pins_router)  # App Token Pins 路由
 api_router.include_router(automation_providers_router)  # 團隊層 Provider 設定（僅 storage）
 api_router.include_router(system_automation_providers_router)  # 組織層 Provider 設定（CI / Result）
 api_router.include_router(system_automation_hub_router)  # 組織層 Automation Hub 入口開關

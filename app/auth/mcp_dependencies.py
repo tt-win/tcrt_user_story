@@ -2,21 +2,17 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 import hashlib
 import json
 import logging
 from typing import Optional
 
-from fastapi import Depends, HTTPException, Request, Security, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import HTTPBearer
 
 from app.audit import ActionType, AuditSeverity, ResourceType, audit_service
-from app.database import get_db
-from app.db_access.main import create_main_access_boundary_for_session
-from app.models.database_models import MCPMachineCredential, MCPMachineCredentialStatus
+from app.auth.app_token_dependencies import get_current_app_token_principal
+from app.models.app_token import READ_SCOPES, AppTokenPrincipal
 from app.models.mcp import MCPMachinePrincipal
 
 
@@ -147,120 +143,35 @@ async def log_mcp_allow(
 
 async def get_current_machine_principal(
     request: Request,
-    db: AsyncSession = Depends(get_db),
-    credentials: Optional[HTTPAuthorizationCredentials] = Security(_machine_bearer),
+    app_principal: AppTokenPrincipal = Depends(get_current_app_token_principal),
 ) -> MCPMachinePrincipal:
-    if not credentials or not credentials.credentials:
+    """Compatibility wrapper: resolve via app-token auth and convert to MCPMachinePrincipal.
+
+    This allows both legacy machine tokens and new app tokens to access
+    /api/mcp/* read endpoints during the compatibility period.
+    """
+    if not app_principal.scopes or not app_principal.has_any_scope(*READ_SCOPES):
         await _log_mcp_access(
             request,
             None,
             allowed=False,
-            reason="missing_machine_token",
+            reason="missing_mcp_read_permission",
         )
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "MCP_AUTH_REQUIRED", "message": "缺少 machine token"},
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "INSUFFICIENT_MACHINE_PERMISSION",
+                "message": "machine token 缺少 mcp_read 權限",
+            },
         )
 
-    token = credentials.credentials.strip()
-    if not token:
-        await _log_mcp_access(
-            request,
-            None,
-            allowed=False,
-            reason="empty_machine_token",
-        )
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "MCP_AUTH_REQUIRED", "message": "缺少 machine token"},
-        )
-
-    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-    main_boundary = create_main_access_boundary_for_session(db)
-
-    async def _load_principal(session: AsyncSession) -> MCPMachinePrincipal:
-        result = await session.execute(
-            select(MCPMachineCredential).where(MCPMachineCredential.token_hash == token_hash)
-        )
-        credential = result.scalar_one_or_none()
-
-        if not credential:
-            await _log_mcp_access(
-                request,
-                None,
-                allowed=False,
-                reason="invalid_machine_token",
-            )
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"code": "INVALID_MACHINE_TOKEN", "message": "machine token 無效"},
-            )
-
-        credential_status = (
-            credential.status.value
-            if hasattr(credential.status, "value")
-            else str(credential.status or "")
-        )
-        principal = MCPMachinePrincipal(
-            credential_id=credential.id,
-            credential_name=credential.name,
-            permission=credential.permission or "",
-            allow_all_teams=bool(credential.allow_all_teams),
-            team_scope_ids=_parse_team_scope_ids(credential.team_scope_json),
-        )
-
-        if credential_status != MCPMachineCredentialStatus.ACTIVE.value:
-            await _log_mcp_access(
-                request,
-                principal,
-                allowed=False,
-                reason="machine_token_revoked",
-            )
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"code": "MACHINE_TOKEN_REVOKED", "message": "machine token 已停用"},
-            )
-
-        now = datetime.utcnow()
-        if credential.expires_at and credential.expires_at <= now:
-            await _log_mcp_access(
-                request,
-                principal,
-                allowed=False,
-                reason="machine_token_expired",
-            )
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"code": "MACHINE_TOKEN_EXPIRED", "message": "machine token 已過期"},
-            )
-
-        permission_value = (credential.permission or "").strip().lower()
-        if permission_value != MCP_READ_PERMISSION:
-            await _log_mcp_access(
-                request,
-                principal,
-                allowed=False,
-                reason="missing_mcp_read_permission",
-            )
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={
-                    "code": "INSUFFICIENT_MACHINE_PERMISSION",
-                    "message": "machine token 缺少 mcp_read 權限",
-                },
-            )
-
-        credential.last_used_at = now
-        await session.flush()
-        return principal
-
-    try:
-        principal = await main_boundary.run_write(_load_principal)
-    except HTTPException:
-        raise
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("更新 machine token last_used_at 失敗: %s", exc, exc_info=True)
-        raise
+    principal = MCPMachinePrincipal(
+        credential_id=app_principal.credential_id,
+        credential_name=app_principal.credential_name,
+        permission=app_principal.legacy_permission or "",
+        allow_all_teams=app_principal.allow_all_teams,
+        team_scope_ids=app_principal.team_scope_ids,
+    )
 
     request.state.mcp_machine_principal = principal
     return principal

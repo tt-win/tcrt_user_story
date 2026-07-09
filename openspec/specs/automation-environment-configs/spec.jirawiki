@@ -1,0 +1,280 @@
+h1. automation-environment-configs Specification
+
+h2. Purpose
+
+規範 TCRT Automation Hub 集中管理自動化測試環境與其參數值的契約。模型分三層：
+
+# *環境目錄*（team 範圍、使用者自訂）：使用者在 Automation Hub 定義自己需要幾個環境（如 *dev* / *sit* / *prod*）。
+# *環境共用參數*（per-environment shared）：每個環境帶一組共用參數值（如 {code}BASE_URL{code}、{code}DB_HOST{code}），跨該 team 的所有 script 共用。
+# *per-script 覆寫值*（per-script override）：在 Scripts tab 的 Script view 以變數設定 modal，對某支 script、某環境覆寫成自己的值。
+
+有效值解析公式：某 (script, environment, key) 的**有效值** = per-script override 值（若存在），否則 environment shared 值（若存在），否則「未設定」。
+
+script 需要哪些變數的**宣告**為 per-script、由源碼 {code}TCRT_VARS{code} 宣告、由 smart-scan 逐檔 AST 解析發現。值一律存於 TCRT（不進 repo），secret 以 AES-256-GCM 加密；執行時由 TCRT 注入 CI provider。
+
+h2. Requirements
+
+h3. Requirement: System MUST provide a per-team environment catalog
+
+資料表 {code}automation_environments{code} SHALL 提供 per-team、使用者自訂的環境目錄。欄位定義：
+
+| *欄位* | *定義* |
+|------|------|
+| {code}id{code} | 整數 PK |
+| {code}team_id{code} | FK → {code}teams.id{code} ON DELETE CASCADE, NOT NULL, indexed |
+| {code}name{code} | VARCHAR(60) NOT NULL（穩定鍵，SHALL 符合 {code}^[a-z0-9][a-z0-9-]*${code}）|
+| {code}label{code} | VARCHAR(100) nullable（顯示名）|
+| {code}description{code} | TEXT nullable |
+| {code}is_default{code} | BOOLEAN default false |
+| {code}created_by{code} / {code}updated_by{code} | VARCHAR(64) nullable |
+| {code}created_at{code} / {code}updated_at{code} | DATETIME NOT NULL |
+
+UniqueConstraint: {code}(team_id, name){code}（名稱 per-team 唯一）。Index: {code}(team_id, is_default){code}（查詢預設效率）。
+
+環境目錄 SHALL 由使用者在 Automation Hub *Settings* tab 自訂。team 內至多一個 {code}is_default=true{code}。
+
+h4. Scenario: User defines environments
+- *WHEN* team admin 在 Automation Hub Settings 新增 {code}dev{code}、{code}sit{code}、{code}prod{code} 三個環境並把 {code}sit{code} 設為預設
+- *THEN* {code}automation_environments{code} SHALL 出現三筆，{code}sit{code} 的 {code}is_default=true{code}，其餘 false
+
+h4. Scenario: Environment name uniqueness per team
+- *WHEN* 同一 team 再建一個 {code}name="sit"{code}
+- *THEN* UniqueConstraint SHALL 拒絕並回 409 {code}DUPLICATE_ENVIRONMENT{code}
+
+h4. Scenario: Single default per team
+- *WHEN* team 已有預設環境，再把另一個設為預設
+- *THEN* service SHALL 把舊預設改為 false 後再設新預設，確保至多一個
+
+h3. Requirement: System MUST store shared params and per-script overrides with a two-layer value model
+
+環境參數值 SHALL 分兩層儲存：
+
+h4. Layer 1: Environment shared params（{code}automation_environment_params{code}）
+
+| *欄位* | *定義* |
+|------|------|
+| {code}id{code} | 整數 PK |
+| {code}environment_id{code} | FK → {code}automation_environments.id{code} ON DELETE CASCADE, NOT NULL, indexed |
+| {code}key{code} | VARCHAR(120) NOT NULL（{code}^[A-Za-z_][A-Za-z0-9_]*${code}）|
+| {code}is_secret{code} | BOOLEAN default false |
+| {code}value_plaintext{code} | TEXT nullable（非 secret 明碼值）|
+| {code}value_encrypted{code} | TEXT nullable（secret 值，AES-256-GCM 加密）|
+| {code}created_by{code} / {code}updated_by{code} | VARCHAR(64) nullable |
+| {code}created_at{code} / {code}updated_at{code} | DATETIME NOT NULL |
+
+UniqueConstraint: {code}(environment_id, key){code}（同環境內 key 唯一）。
+
+h4. Layer 2: Per-script override values（{code}automation_script_env_vars{code}）
+
+| *欄位* | *定義* |
+|------|------|
+| {code}id{code} | 整數 PK |
+| {code}team_id{code} | FK → {code}teams.id{code} ON DELETE CASCADE, indexed |
+| {code}automation_script_id{code} | FK → {code}automation_scripts.id{code} ON DELETE CASCADE, indexed（綁定 script 快取列）|
+| {code}script_ref_path{code} | VARCHAR(500) NOT NULL（記錄當時 ref_path，供顯示 / audit）|
+| {code}environment_id{code} | FK → {code}automation_environments.id{code} ON DELETE CASCADE, indexed |
+| {code}key{code} | VARCHAR(120) NOT NULL（{code}^[A-Za-z_][A-Za-z0-9_]*${code}）|
+| {code}is_secret{code} | BOOLEAN default false |
+| {code}value_plaintext{code} / {code}value_encrypted{code} | TEXT nullable（同上）|
+| {code}created_by{code} / {code}updated_by{code} | VARCHAR(64) nullable |
+| {code}created_at{code} / {code}updated_at{code} | DATETIME NOT NULL |
+
+UniqueConstraint: {code}(automation_script_id, environment_id, key){code}。
+
+h4. Scenario: Shared param applies to all scripts
+- *WHEN* 環境 {code}sit{code} 設共用參數 {code}BASE_URL="https://sit.example.com"{code}，且某 script 未覆寫 {code}BASE_URL{code}
+- *THEN* 該 script 在 {code}sit{code} 的 {code}BASE_URL{code} 有效值 SHALL 為 {code}"https://sit.example.com"{code}
+
+h4. Scenario: Per-script override wins
+- *WHEN* 環境 {code}sit{code} 共用 {code}BASE_URL="https://sit.example.com"{code}，但 {code}tests/test_b.py{code} 覆寫 {code}BASE_URL="https://b.sit.example.com"{code}
+- *THEN* {code}test_b.py{code} 在 {code}sit{code} 的 {code}BASE_URL{code} 有效值 SHALL 為 {code}"https://b.sit.example.com"{code}；其他未覆寫的 script 仍用共用值
+
+h4. Scenario: Override preserved across normal re-sync
+- *WHEN* script 仍存在於 repo，team 觸發 rescan（更新既有 script 列、id 不變）
+- *THEN* 該 script 既有的 per-script 覆寫值 SHALL 完整保留
+- *WHEN* 使用者顯式刪除該 script 快取列
+- *THEN* 其覆寫值 SHALL 隨 FK CASCADE 一併移除（與 marker link 行為一致）
+
+h4. Scenario: Cascade on environment delete
+- *WHEN* 刪除一個環境
+- *THEN* 其共用參數與所有 script 對該環境的覆寫值 SHALL 一併 CASCADE 刪除
+
+h3. Requirement: Secret values MUST be encrypted at rest and never returned in plaintext
+
+{code}is_secret=true{code} 的值（環境共用或 script 覆寫）SHALL 透過既有 {code}provider_credential_service{code}（AES-256-GCM，金鑰來自 {code}AUTOMATION_PROVIDER_ENCRYPTION_KEY{code}）加密存於 {code}value_encrypted{code}，{code}value_plaintext{code} 為 NULL。
+
+金鑰要求：base64 編碼的 32 bytes（256-bit）。加密封包格式：JSON envelope {code}{"v":1, "alg":"AES-256-GCM", "nonce":"base64", "ciphertext":"base64", "fingerprint":"..."}{code}。nonce 為 12 bytes 隨機值（{code}os.urandom(12){code}）。
+
+API 回應 SHALL 永不含 secret 真值：secret 只回 {code}{is_set, fingerprint}{code}（末 4 碼）；非 secret 可回 plaintext。secret 編輯時 value 留空不覆寫既有值。
+
+Bootstrap 啟動時若有任何 secret 值列但金鑰缺失：SHALL 比照既有 provider 規則阻擋啟動，並在 log 印出金鑰生成指令。
+
+h4. Scenario: Secret never returned in API response
+- *WHEN* admin 讀取環境或 script 變數設定
+- *THEN* secret 參數 SHALL 只含 {code}{key, is_secret:true, is_set:true, fingerprint:"***wxyz"}{code}，不含真值
+
+h4. Scenario: Missing encryption key blocks bootstrap
+- *WHEN* DB 中有 secret 值列但 {code}AUTOMATION_PROVIDER_ENCRYPTION_KEY{code} 環境變數缺失
+- *THEN* bootstrap SHALL 拋錯並列出金鑰生成指令，阻擋應用啟動
+
+h4. Scenario: YAML export masks secrets
+- *WHEN* admin 匯出某環境共用參數
+- *THEN* secret 值 SHALL 為 {code}"***"{code}，非 secret 為真值；匯出內容不含任何 secret 明文
+
+h3. Requirement: API MUST manage environment catalog, shared params, and per-script overrides
+
+所有寫入端點 SHALL 限制為 Admin / Super Admin 角色（{code}require_team_admin{code}），非以上角色回 403。所有寫入操作 SHALL 記錄 audit log（{code}ResourceType.AUTOMATION_ENVIRONMENT{code}），detail 含 {code}environment_name{code}、{code}script_ref_path?{code}、{code}key{code}，不含 secret 真值。
+
+h4. Environment catalog CRUD
+
+| *Method* | *Path* | *Description* |
+|---------|-------|--------------|
+| GET | {code}/teams/{team_id}/automation-environments{code} | 列出 team 所有環境（含 params）|
+| POST | {code}/teams/{team_id}/automation-environments{code} | 建立環境（含初始 params）|
+| GET | {code}/teams/{team_id}/automation-environments/{env_id}{code} | 取得單一環境 |
+| PUT | {code}/teams/{team_id}/automation-environments/{env_id}{code} | 更新環境名稱、label、描述 |
+| DELETE | {code}/teams/{team_id}/automation-environments/{env_id}{code} | 刪除環境（204 No Content；CASCADE 刪除 params + overrides）|
+| PUT | {code}/teams/{team_id}/automation-environments/{env_id}/default{code} | 設為該 team 預設（互斥）|
+
+h4. Shared params management
+
+| *Method* | *Path* | *Description* |
+|---------|-------|--------------|
+| PUT | {code}/teams/{team_id}/automation-environments/{env_id}/params/{key}{code} | 設定 / 新增共用參數（body: {code}{value, is_secret}{code}）|
+| DELETE | {code}/teams/{team_id}/automation-environments/{env_id}/params/{key}{code} | 刪除共用參數（204 No Content）|
+
+h4. Per-script override management
+
+| *Method* | *Path* | *Description* |
+|---------|-------|--------------|
+| GET | {code}/teams/{team_id}/automation-scripts/{script_id}/env-vars{code} | 該 script 各環境有效值矩陣 + 來源分析（shared / override / unset）|
+| PUT | {code}/teams/{team_id}/automation-scripts/{script_id}/env-vars/{env_id}/{key}{code} | 設定 script 覆寫值 |
+| DELETE | {code}/teams/{team_id}/automation-scripts/{script_id}/env-vars/{env_id}/{key}{code} | 清除 script 覆寫值（204 No Content，恢復為 shared value）|
+
+h4. Variable discovery & batch operations
+
+| *Method* | *Path* | *Description* |
+|---------|-------|--------------|
+| GET | {code}/teams/{team_id}/automation-environments/declared-variables{code} | 彙整 team 各 script 由 {code}TCRT_VARS{code} 宣告的變數聚合（name / secret / required / scripts 清單）|
+| POST | {code}/teams/{team_id}/automation-environments/{env_id}/import{code} | YAML 匯入共用參數（flat mapping）|
+| GET | {code}/teams/{team_id}/automation-environments/{env_id}/export{code} | YAML 匯出共用參數（secret 遮罩為 {code}***{code}）|
+
+h4. Scenario: Read resolves effective values with source annotation
+- *WHEN* admin 呼叫 {code}GET .../automation-scripts/{id}/env-vars{code}
+- *THEN* 每個 (declared var × environment) SHALL 回有效值、來源（{code}shared{code} / {code}override{code} / {code}unset{code}），secret 遮罩
+
+h4. Scenario: Add-variable UI suggests scanned declared variables
+- *WHEN* admin 在某環境點「新增變數」，且該 team 的 script 已掃描出 {code}TCRT_VARS{code}（如 {code}BASE_URL{code}、{code}API_TOKEN{code}）
+- *THEN* 變數名稱欄位 SHALL 列出這些掃描到的名稱供挑選（已在該環境設過的名稱排除）；挑 {code}API_TOKEN{code} SHALL 自動勾選 {code}is_secret{code}
+- *WHEN* admin 輸入清單中沒有的名稱
+- *THEN* SHALL 允許直接新增（自由輸入），不強制從清單選
+
+h4. Scenario: Audit excludes secret values
+- *WHEN* admin 更新一個 secret 值
+- *THEN* audit {code}AUTOMATION_ENVIRONMENT{code} + {code}UPDATE{code} SHALL 含 {code}key{code} / {code}environment_name{code}，不含 secret 真值
+
+h4. Scenario: Rename environment cascades to TestRunSet reference
+- *WHEN* admin 重新命名環境
+- *THEN* 所有參考此環境名稱的 {code}test_run_sets.default_automation_environment{code} SHALL 同步更新
+
+h3. Requirement: Script ENV vars declaration MUST be source-code-driven via TCRT_VARS
+
+Script 需要哪些變數的宣告，SHALL 由 Python 源碼中的模組層級 {code}TCRT_VARS{code} 常數提供。smart-scan 以 AST 解析此宣告，存於 {code}automation_scripts.declared_vars_json{code}。
+
+{code}TCRT_VARS{code} 支援格式：
+{code}
+TCRT_VARS = ["BASE_URL", {"name": "API_TOKEN", "secret": true, "required": true}]
+{code}
+
+- 字串元素 = {code}{name, secret=False, required=True, description=""}{code}
+- dict 元素可設 {code}secret{code}、{code}required{code}、{code}description{code}
+- 非字面量（如變數引用）fail-open：記錄 warning 但不中斷掃描
+
+init / pomify 工具 SHALL 在產生 script 框架時同時寫入 {code}TCRT_VARS{code} 宣告（撰寫當下規範變數名稱）。
+
+h4. Scenario: System discovers declared variables via AST scan
+- *WHEN* smart-scan 解析一支含 {code}TCRT_VARS=["BASE_URL", {"name":"TOKEN","secret":true}]{code} 的 script
+- *THEN* {code}declared_vars_json{code} SHALL 含兩筆宣告，{code}TOKEN{code} 標示 secret
+
+h4. Scenario: Non-literal TCRT_VARS fails open
+- *WHEN* {code}TCRT_VARS{code} 的值來自另一個變數（如 {code}TCRT_VARS = BASE_VARS + ["EXTRA"]{code}）
+- *THEN* scan SHALL 記錄 warning 但不中斷，{code}declared_vars_json{code} 為空陣列
+
+h3. Requirement: CI trigger MUST validate environment readiness and inject resolved bundle
+
+觸發流程（{code}POST /teams/{team_id}/test-run-sets/{set_id}/run-automation{code}）SHALL 依以下邏輯解析環境並驗證就緒度：
+
+# 環境解析順序：請求指定的 {code}environment{code} → {code}test_run_set.default_automation_environment{code} → team 環境目錄中的 {code}is_default{code}。
+# Suite 內各 script 的 declared required 變數聯集：
+## 聯集為空 → 不要求環境、不注入。
+## 非空但解析不出環境 → 422 {code}ENVIRONMENT_REQUIRED{code}（含可用環境列表）。
+## 解析出環境但某 script required 變數無有效值 → 422 {code}ENVIRONMENT_INCOMPLETE{code}（含 script × 缺項列表）。
+# 通過驗證後，對 suite 內每支 script 計算有效值 bundle，序列化為 JSON，以單一鍵 {code}TCRT_ENV_BUNDLE{code} 放入 {code}run_inputs{code}，以 HTTP body（form-encoded）傳遞給 CI provider。
+
+Bundle 結構：{code}{ref_path: {KEY: value}}{code}，依 script 路徑 namespace 隔離，解決 suite 多 script 同名變數不同值的問題。CI job 端把 bundle 物化成 workspace {code}tcrt-env.json{code}，測試 loader 依當下測試檔 ref_path 取對應 namespace 暴露固定變數名稱給 script。
+
+h4. Scenario: No declared vars - backward compatible
+- *WHEN* suite 內所有 script 皆未宣告 {code}TCRT_VARS{code}
+- *THEN* 觸發不要求環境、不注入 {code}TCRT_ENV_BUNDLE{code}，行為與本功能導入前一致
+
+h4. Scenario: Environment required but not configured
+- *WHEN* script 宣告 required variabless，但 team 無對應環境且未指定環境
+- *THEN* API 回 422 {code}ENVIRONMENT_REQUIRED{code}，detail 含可用環境列表
+
+h4. Scenario: Environment incomplete blocks trigger
+- *WHEN* 指定 {code}sit{code} 環境，但某 script 的 required 變數 {code}API_TOKEN{code} 無有效值
+- *THEN* API 回 422 {code}ENVIRONMENT_INCOMPLETE{code}，detail 含 {code}{script: "tests/test_login.py", missing: ["API_TOKEN"]}{code}
+
+h4. Scenario: Suite job template upgraded on-demand
+- *WHEN* 首次以帶環境方式觸發某 suite
+- *THEN* TCRT SHALL 先以含 {code}TCRT_ENV_BUNDLE{code} 參數的新模板更新 suite CI job（self-heal 冪等），再觸發執行
+- *WHEN* 不帶環境觸發（未宣告變數的情境）
+- *THEN* TCRT SHALL NOT 更新 suite job 模板，零行為變動
+
+h3. Requirement: Script env-vars matrix UI MUST visualize the overlay model
+
+Automation Hub *Scripts tab → Script view* SHALL 提供「設定變數」入口，開啟 modal 呈現每支 script 的變數矩陣：
+
+- *列*：該 script 由 smart-scan 發現的 declared variables
+- *欄*：team 的環境目錄
+- *每格*顯示有效值與來源 badge：{code}shared{code}（來自環境共用）/ {code}override{code}（此 script 覆寫）/ {code}unset{code}
+- secret 欄位：顯示 {code}is_set{code} + fingerprint（{code}***wxyz{code}），編輯時不回填真值，留空不覆寫
+- missing required 標示：標紅 declared {code}required{code} 但無有效值的格子
+- modal SHALL 明確標示「值存 TCRT、不進 git；script 只取用固定變數名稱」
+- 支援展開/收起變數使用位置（{code}os.getenv("KEY"){code}、{code}xxx["KEY"]{code} 等靜態分析結果）
+
+UI 此外在 Automation Hub *Settings tab* 提供環境目錄管理（卡片式列表）、環境共用參數編輯器（table + 新增/編輯/刪除）、YAML 匯入/匯出入口。
+
+Test Run Set 管理頁面 SHALL 提供環境選擇下拉，優先使用請求指定值，否則 set 的預設環境。
+
+h4. Scenario: Modal driven by declared vars × environment catalog
+- *WHEN* {code}tests/test_login.py{code} 宣告 {code}BASE_URL{code}（non-secret）、{code}API_TOKEN{code}（secret, required），team 有 {code}dev/sit/prod{code} 三環境
+- *THEN* modal SHALL 顯示 2 列（變數）× 3 欄（環境），{code}API_TOKEN{code} 遮罩且標 required
+
+h4. Scenario: Cell shows shared vs override source
+- *WHEN* {code}sit{code} 共用了 {code}BASE_URL{code}，此 script 未覆寫
+- *THEN* {code}BASE_URL × sit{code} 格 SHALL 標示來源 {code}shared{code} 與其值；使用者按「覆寫」可改為此 script 專屬值
+
+h4. Scenario: Secret field shows is_set not value
+- *WHEN* 開啟已設 {code}API_TOKEN{code} 的 cell
+- *THEN* SHALL 顯示「已設定 ••••wxyz」、不回填真值；留空儲存不覆寫既有值
+
+h3. Requirement: System MUST provide coverage validation per script per environment
+
+TCRT SHALL 對「script 的 declared variables」與「該環境的有效值（shared ⊕ override）」做對賬，產出每 (script, environment) 的覆蓋狀態：
+
+- *missing_required*：declared {code}required=true{code} 但有效值為 unset → 管理 UI 標紅；觸發時擋下
+- *unused_value*：設了值（shared 或 override）但 script 未宣告 → 警示（不擋）
+- *secret_flag_mismatch*：declared {code}secret{code} 與儲存型態不一致 → 警示
+
+h4. Scenario: Missing required blocks trigger
+- *WHEN* script 宣告 {code}API_TOKEN required=true{code}，但 {code}sit{code} 既無共用值也無覆寫值
+- *THEN* (script, {code}sit{code}) 覆蓋狀態 SHALL 含 {code}missing_required:["API_TOKEN"]{code}，且觸發時回 422
+
+h4. Scenario: Script with no declared vars
+- *WHEN* 某 script 未宣告任何變數
+- *THEN* 其覆蓋狀態 SHALL 無 {code}missing_required{code}，且觸發不因環境而受限（向後相容）
+
+h3. Requirement: Automation Run MUST record the environment name
+
+{code}automation_runs{code} SHALL 有 {code}environment{code} 欄位（VARCHAR(60), nullable），於觸發時記錄解析出的環境名稱（無環境則為 NULL），供 run 歷史顯示與追蹤。

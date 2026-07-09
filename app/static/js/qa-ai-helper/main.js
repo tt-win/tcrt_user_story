@@ -44,12 +44,6 @@
     sessionManagerSearchTimer: null,
     deleteSectionsModalInstance: null,
     ticketMarkdownDirty: false,
-    promptProfiles: [],
-    promptProfilesModalInstance: null,
-    promptProfileEditingId: null,
-    promptProfilesIsAdmin: false,
-    seedProfileSelection: '',
-    testcaseProfileSelection: '',
   };
 
   const PHASE_ORDER = ['fetch', 'canonical', 'plan', 'draft'];
@@ -2414,7 +2408,6 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           force_regenerate: !!forceRegenerate,
-          prompt_profile_id: selectedProfileIdOrNull('qaHelperTestcaseProfileSelect'),
         }),
       });
       if (!response.ok) {
@@ -3080,263 +3073,6 @@
     }
   }
 
-  async function refreshPromptProfilesAdminVisibility() {
-    let isAdmin = false;
-    try {
-      const userInfo = window.AuthClient && typeof window.AuthClient.getUserInfo === 'function'
-        ? await window.AuthClient.getUserInfo()
-        : (window.currentUser || null);
-      if (userInfo && userInfo.role) {
-        isAdmin = ['admin', 'super_admin'].includes(String(userInfo.role).toLowerCase());
-      }
-    } catch (_error) {
-      isAdmin = false;
-    }
-    state.promptProfilesIsAdmin = isAdmin;
-    const btn = el('qaHelperPromptProfilesBtn');
-    if (btn) btn.classList.toggle('d-none', !isAdmin);
-  }
-
-  async function loadPromptProfiles() {
-    const teamId = ensureTeamId();
-    if (!teamId) {
-      state.promptProfiles = [];
-      renderPromptProfileSelects();
-      return;
-    }
-    try {
-      const response = await authFetch(`/api/teams/${teamId}/qa-ai-helper/prompt-profiles`);
-      if (!response.ok) {
-        state.promptProfiles = [];
-        renderPromptProfileSelects();
-        return;
-      }
-      const payload = await response.json();
-      state.promptProfiles = (payload && payload.profiles) || [];
-    } catch (_error) {
-      state.promptProfiles = [];
-    }
-    renderPromptProfileSelects();
-  }
-
-  function promptProfileOptionsHtml(selectedId) {
-    const systemDefaultLabel = t('qaAiHelper.promptProfiles.systemDefault', {}, '系統預設（不使用自訂指引）');
-    const selectedValue = selectedId === null || selectedId === undefined ? '' : String(selectedId);
-    const options = [`<option value="">${escapeHtml(systemDefaultLabel)}</option>`];
-    (state.promptProfiles || []).forEach((profile) => {
-      const label = profile.is_default
-        ? `${profile.name} ${t('qaAiHelper.promptProfiles.defaultBadge', {}, '（預設）')}`
-        : profile.name;
-      options.push(`<option value="${profile.id}">${escapeHtml(label)}</option>`);
-    });
-    return { html: options.join(''), selectedValue };
-  }
-
-  function fillProfileSelect(selectId, selectedId) {
-    const selectEl = el(selectId);
-    if (!selectEl) return;
-    const { html, selectedValue } = promptProfileOptionsHtml(selectedId);
-    selectEl.innerHTML = html;
-    selectEl.value = selectedValue;
-    if (selectEl.value !== selectedValue) selectEl.value = '';
-  }
-
-  function renderPromptProfileSelects() {
-    const session = (state.workspace || {}).session || {};
-    const currentSelection = session.prompt_profile_id !== undefined && session.prompt_profile_id !== null
-      ? session.prompt_profile_id
-      : null;
-    fillProfileSelect('qaHelperTestcaseProfileSelect', currentSelection);
-
-    const testcaseDraftSet = (state.workspace || {}).testcase_draft_set;
-    const testcaseSelectEl = el('qaHelperTestcaseProfileSelect');
-    if (testcaseSelectEl && testcaseDraftSet) {
-      testcaseSelectEl.title = promptProfileAppliedLabel(testcaseDraftSet.prompt_profile_id, testcaseDraftSet.custom_instructions_snapshot)
-        || t('qaAiHelper.promptProfiles.selectLabel', {}, '風格指引');
-    }
-
-    const modalEl = el('qaHelperPromptProfilesModal');
-    if (state.promptProfilesModalInstance && modalEl && modalEl.classList.contains('show')) {
-      renderPromptProfilesList();
-    }
-  }
-
-  function selectedProfileIdOrNull(selectId) {
-    const selectEl = el(selectId);
-    if (!selectEl) return null;
-    const raw = String(selectEl.value || '').trim();
-    return raw ? Number(raw) : null;
-  }
-
-  function promptProfileAppliedLabel(profileId, snapshot) {
-    if (profileId) {
-      const profile = (state.promptProfiles || []).find((item) => Number(item.id) === Number(profileId));
-      if (profile) {
-        return t('qaAiHelper.promptProfiles.appliedProfile', { name: profile.name }, `已套用風格：${profile.name}`);
-      }
-    }
-    if (!profileId && snapshot) {
-      return t('qaAiHelper.promptProfiles.deletedProfileApplied', {}, '已套用自訂指引（風格已刪除）');
-    }
-    return '';
-  }
-
-  function openPromptProfilesModal() {
-    if (!(window.bootstrap && window.bootstrap.Modal)) return;
-    const modalEl = el('qaHelperPromptProfilesModal');
-    if (!modalEl) return;
-    if (!state.promptProfilesModalInstance) {
-      state.promptProfilesModalInstance = new window.bootstrap.Modal(modalEl);
-    }
-    hidePromptProfileForm();
-    renderPromptProfilesList();
-    state.promptProfilesModalInstance.show();
-  }
-
-  function renderPromptProfilesList() {
-    const listEl = el('qaHelperPromptProfilesList');
-    const emptyEl = el('qaHelperPromptProfilesEmpty');
-    if (!listEl) return;
-    const profiles = state.promptProfiles || [];
-    if (emptyEl) emptyEl.classList.toggle('d-none', profiles.length > 0);
-    listEl.classList.toggle('d-none', profiles.length === 0);
-    listEl.innerHTML = profiles.map((profile) => {
-      const defaultBadge = profile.is_default
-        ? `<span class="badge text-bg-primary ms-2">${escapeHtml(t('qaAiHelper.promptProfiles.defaultBadge', {}, '預設'))}</span>`
-        : '';
-      const setDefaultLabel = profile.is_default
-        ? t('qaAiHelper.promptProfiles.unsetDefault', {}, '取消預設')
-        : t('qaAiHelper.promptProfiles.setDefault', {}, '設為預設');
-      return `
-        <div class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2" data-profile-id="${profile.id}">
-          <div>
-            <div class="fw-semibold">${escapeHtml(profile.name)}${defaultBadge}</div>
-            <div class="small text-muted">${escapeHtml(profile.description || '')}</div>
-          </div>
-          <div class="d-flex gap-2">
-            <button type="button" class="btn btn-outline-secondary btn-sm" data-profile-action="toggle-default" data-profile-id="${profile.id}" data-profile-default="${profile.is_default ? '1' : '0'}">${escapeHtml(setDefaultLabel)}</button>
-            <button type="button" class="btn btn-outline-primary btn-sm" data-profile-action="edit" data-profile-id="${profile.id}"><i class="fas fa-pen"></i></button>
-            <button type="button" class="btn btn-outline-danger btn-sm" data-profile-action="delete" data-profile-id="${profile.id}"><i class="fas fa-trash"></i></button>
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  function showPromptProfileForm(profile) {
-    el('qaHelperPromptProfilesListView').classList.add('d-none');
-    el('qaHelperPromptProfilesFormView').classList.remove('d-none');
-    state.promptProfileEditingId = profile ? profile.id : null;
-    el('qaHelperPromptProfileEditingId').value = profile ? profile.id : '';
-    el('qaHelperPromptProfileName').value = profile ? profile.name : '';
-    el('qaHelperPromptProfileDescription').value = profile ? (profile.description || '') : '';
-    el('qaHelperPromptProfileTestcaseInstructions').value = profile ? (profile.testcase_instructions || '') : '';
-    el('qaHelperPromptProfileIsDefault').checked = !!(profile && profile.is_default);
-    updatePromptProfileCharCounts();
-  }
-
-  function hidePromptProfileForm() {
-    const listView = el('qaHelperPromptProfilesListView');
-    const formView = el('qaHelperPromptProfilesFormView');
-    if (listView) listView.classList.remove('d-none');
-    if (formView) formView.classList.add('d-none');
-    state.promptProfileEditingId = null;
-  }
-
-  function updatePromptProfileCharCounts() {
-    const testcaseInput = el('qaHelperPromptProfileTestcaseInstructions');
-    const testcaseCount = el('qaHelperPromptProfileTestcaseCharCount');
-    if (testcaseInput && testcaseCount) testcaseCount.textContent = `${testcaseInput.value.length} / 2000`;
-  }
-
-  async function savePromptProfile() {
-    const teamId = ensureTeamId();
-    if (!teamId) return;
-    const editingId = state.promptProfileEditingId;
-    const payload = {
-      name: String(el('qaHelperPromptProfileName').value || '').trim(),
-      description: String(el('qaHelperPromptProfileDescription').value || '').trim() || null,
-      testcase_instructions: String(el('qaHelperPromptProfileTestcaseInstructions').value || '').trim(),
-    };
-    if (!editingId) {
-      payload.is_default = !!el('qaHelperPromptProfileIsDefault').checked;
-    }
-    const url = editingId
-      ? `/api/teams/${teamId}/qa-ai-helper/prompt-profiles/${editingId}`
-      : `/api/teams/${teamId}/qa-ai-helper/prompt-profiles`;
-    const response = await authFetch(url, {
-      method: editingId ? 'PUT' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-      const text = await response.text();
-      let message = text;
-      try {
-        const parsed = JSON.parse(text);
-        if (parsed && parsed.detail && parsed.detail.code === 'PROMPT_PROFILE_NAME_DUPLICATE') {
-          message = t('qaAiHelper.promptProfiles.nameDuplicate', {}, '名稱已被使用');
-        } else if (parsed && parsed.detail) {
-          message = typeof parsed.detail === 'string' ? parsed.detail : JSON.stringify(parsed.detail);
-        }
-      } catch (_e) {
-        // keep raw text
-      }
-      throw new Error(message);
-    }
-    if (editingId && el('qaHelperPromptProfileIsDefault').checked) {
-      const profileResp = await response.json();
-      await authFetch(`/api/teams/${teamId}/qa-ai-helper/prompt-profiles/${profileResp.id}/set-default`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_default: true }),
-      });
-    } else if (editingId) {
-      const originalProfile = (state.promptProfiles || []).find((item) => Number(item.id) === Number(editingId));
-      if (originalProfile && originalProfile.is_default) {
-        await authFetch(`/api/teams/${teamId}/qa-ai-helper/prompt-profiles/${editingId}/set-default`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ is_default: false }),
-        });
-      }
-    }
-    await loadPromptProfiles();
-    hidePromptProfileForm();
-    renderPromptProfilesList();
-    setFeedback('success', t('qaAiHelper.promptProfiles.saveSuccess', {}, '已儲存風格設定'));
-  }
-
-  async function deletePromptProfile(profileId) {
-    const teamId = ensureTeamId();
-    if (!teamId) return;
-    if (!confirmAction(t('qaAiHelper.promptProfiles.deleteConfirm', {}, '確定要刪除此風格設定嗎？'))) return;
-    const response = await authFetch(`/api/teams/${teamId}/qa-ai-helper/prompt-profiles/${profileId}`, {
-      method: 'DELETE',
-    });
-    if (!response.ok) {
-      throw new Error(await response.text());
-    }
-    await loadPromptProfiles();
-    renderPromptProfilesList();
-    setFeedback('success', t('qaAiHelper.promptProfiles.deleteSuccess', {}, '已刪除風格設定'));
-  }
-
-  async function togglePromptProfileDefault(profileId, currentlyDefault) {
-    const teamId = ensureTeamId();
-    if (!teamId) return;
-    const response = await authFetch(`/api/teams/${teamId}/qa-ai-helper/prompt-profiles/${profileId}/set-default`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_default: !currentlyDefault }),
-    });
-    if (!response.ok) {
-      throw new Error(await response.text());
-    }
-    await loadPromptProfiles();
-    renderPromptProfilesList();
-  }
-
   function renderAll() {
     renderPhaseWorkflow();
     renderSessionSelect();
@@ -3348,7 +3084,6 @@
     renderTestcaseReviewWorkspace();
     renderSetSelectionWorkspace();
     renderCommitResultWorkspace();
-    renderPromptProfileSelects();
   }
 
   async function fetchTicket() {
@@ -3436,32 +3171,6 @@
     await initializeRequirementPlan();
   }
   function bindEvents() {
-    bindIfPresent('qaHelperPromptProfilesBtn', 'click', () => {
-      loadPromptProfiles().then(() => openPromptProfilesModal()).catch(handleError);
-    });
-    bindIfPresent('qaHelperPromptProfileAddBtn', 'click', () => showPromptProfileForm(null));
-    bindIfPresent('qaHelperPromptProfileCancelFormBtn', 'click', () => hidePromptProfileForm());
-    bindIfPresent('qaHelperPromptProfileSaveBtn', 'click', () => savePromptProfile().catch(handleError));
-    bindIfPresent('qaHelperPromptProfileTestcaseInstructions', 'input', updatePromptProfileCharCounts);
-    const promptProfilesList = el('qaHelperPromptProfilesList');
-    if (promptProfilesList) {
-      promptProfilesList.addEventListener('click', (event) => {
-        const target = event.target.closest('[data-profile-action]');
-        if (!target) return;
-        const action = target.getAttribute('data-profile-action');
-        const profileId = Number(target.getAttribute('data-profile-id') || 0);
-        if (!profileId) return;
-        if (action === 'edit') {
-          const profile = (state.promptProfiles || []).find((item) => Number(item.id) === profileId);
-          if (profile) showPromptProfileForm(profile);
-        } else if (action === 'delete') {
-          deletePromptProfile(profileId).catch(handleError);
-        } else if (action === 'toggle-default') {
-          const currentlyDefault = target.getAttribute('data-profile-default') === '1';
-          togglePromptProfileDefault(profileId, currentlyDefault).catch(handleError);
-        }
-      });
-    }
     bindIfPresent('qaHelperRefreshSessionsBtn', 'click', () => loadSessions().catch(handleError));
     bindIfPresent('qaHelperSessionManagerBtn', 'click', () => {
       openSessionManager();
@@ -4106,8 +3815,6 @@
     try {
       await loadSets();
       await loadSessions();
-      await loadPromptProfiles();
-      await refreshPromptProfilesAdminVisibility();
       if (state.sessionId) {
         await loadWorkspace(state.sessionId);
       } else {
@@ -4122,8 +3829,6 @@
   document.addEventListener('authReady', () => {
     loadSets().catch(handleError);
     loadSessions().catch(handleError);
-    loadPromptProfiles().catch(handleError);
-    refreshPromptProfilesAdminVisibility().catch(handleError);
   });
   document.addEventListener('i18nReady', renderAll);
   document.addEventListener('languageChanged', renderAll);

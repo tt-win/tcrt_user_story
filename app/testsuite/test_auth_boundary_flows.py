@@ -1,4 +1,3 @@
-from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
@@ -10,7 +9,8 @@ from app.auth.mcp_dependencies import get_current_machine_principal
 from app.auth.models import UserRole
 from app.auth.password_service import PasswordService
 from app.auth.permission_service import PermissionService
-from app.models.database_models import MCPMachineCredential, MCPMachineCredentialStatus, User
+from app.models.app_token import AppTokenPrincipal
+from app.models.database_models import User
 
 
 class _FakeScalarResult:
@@ -124,18 +124,22 @@ async def test_fetch_team_names_uses_main_boundary():
 
 
 @pytest.mark.asyncio
-async def test_get_current_machine_principal_updates_last_used_via_boundary():
-    credential = MCPMachineCredential(
-        id=7,
-        name="robot",
-        token_hash="hashed-token",
-        permission="mcp_read",
+async def test_get_current_machine_principal_maps_app_token_principal():
+    """`get_current_machine_principal` is now a thin compatibility wrapper: it
+    receives an already-resolved `AppTokenPrincipal` (token lookup and
+    `last_used_at` bookkeeping happen upstream in `get_current_app_token_principal`,
+    covered by test_app_token_auth.py) and maps it onto `MCPMachinePrincipal`
+    for legacy `/api/mcp/*` consumers."""
+    app_principal = AppTokenPrincipal(
+        credential_id=7,
+        credential_name="robot",
+        owner_team_id=None,
+        scopes=["test_case:read", "test_run:read"],
         allow_all_teams=True,
-        team_scope_json="[]",
-        status=MCPMachineCredentialStatus.ACTIVE,
-        expires_at=datetime.utcnow() + timedelta(hours=1),
+        team_scope_ids=[],
+        is_legacy=True,
+        legacy_permission="mcp_read",
     )
-    session = _FakeSession(execute_results=[_FakeScalarResult(credential)])
     request = SimpleNamespace(
         url=SimpleNamespace(path="/api/mcp/teams/1", query=""),
         method="GET",
@@ -144,16 +148,36 @@ async def test_get_current_machine_principal_updates_last_used_via_boundary():
         path_params={"team_id": "1"},
         state=SimpleNamespace(),
     )
-    credentials = SimpleNamespace(credentials="plain-token")
 
-    principal = await get_current_machine_principal(
-        request=request,
-        db=session,
-        credentials=credentials,
-    )
+    principal = await get_current_machine_principal(request=request, app_principal=app_principal)
 
     assert principal.credential_id == 7
-    assert credential.last_used_at is not None
-    assert session.flush_calls == 1
-    assert session.commit_calls == 1
-    assert session.rollback_calls == 0
+    assert principal.credential_name == "robot"
+    assert principal.permission == "mcp_read"
+    assert principal.allow_all_teams is True
+
+
+@pytest.mark.asyncio
+async def test_get_current_machine_principal_rejects_missing_read_scope():
+    app_principal = AppTokenPrincipal(
+        credential_id=8,
+        credential_name="write-only",
+        owner_team_id=1,
+        scopes=["test_case:write"],
+        allow_all_teams=False,
+        team_scope_ids=[1],
+        is_legacy=False,
+    )
+    request = SimpleNamespace(
+        url=SimpleNamespace(path="/api/mcp/teams/1", query=""),
+        method="GET",
+        client=SimpleNamespace(host="127.0.0.1"),
+        headers={},
+        path_params={"team_id": "1"},
+        state=SimpleNamespace(),
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        await get_current_machine_principal(request=request, app_principal=app_principal)
+
+    assert getattr(exc_info.value, "status_code", None) == 403

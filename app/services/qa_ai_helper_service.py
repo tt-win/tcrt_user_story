@@ -25,7 +25,6 @@ from app.models.database_models import (
     QAAIHelperDraftSet,
     QAAIHelperPlanSection,
     QAAIHelperPlannedRevision,
-    QAAIHelperPromptProfile,
     QAAIHelperRequirementDelta,
     QAAIHelperRequirementPlan,
     QAAIHelperSession,
@@ -44,7 +43,7 @@ from app.models.database_models import (
     TestCaseSection,
     TestCaseSet,
 )
-from app.models.test_case import TestDataCategory, TestDataItem
+from app.models.test_case import TestDataCategory
 from app.models.qa_ai_helper import (
     QAAIHelperApplicabilityStatus,
     QAAIHelperCanonicalRevisionCreateRequest,
@@ -59,7 +58,6 @@ from app.models.qa_ai_helper import (
     QAAIHelperDeleteResponse,
     QAAIHelperDraftItemResponse,
     QAAIHelperDraftSetDetailResponse,
-    QAAIHelperDraftSetResponse,
     QAAIHelperDraftSetStatus,
     QAAIHelperDraftUpdateRequest,
     QAAIHelperGenerateRequest,
@@ -72,7 +70,6 @@ from app.models.qa_ai_helper import (
     QAAIHelperPlanSectionResponse,
     QAAIHelperNewTestCaseSetPayload,
     QAAIHelperRequirementDeltaCreateRequest,
-    QAAIHelperRequirementDeltaType,
     QAAIHelperRequirementPlanResponse,
     QAAIHelperRequirementPlanSaveRequest,
     QAAIHelperRequirementPlanStatus,
@@ -129,7 +126,6 @@ from app.services.qa_ai_helper_metrics import (
 )
 from app.services.qa_ai_helper_common import (
     json_compact_dumps_nullable,
-    json_safe_loads,
     json_storage_dumps,
     json_storage_loads,
 )
@@ -570,7 +566,6 @@ class QAAIHelperService:
                 "active_requirement_plan_id": session.active_requirement_plan_id,
                 "active_seed_set_id": session.active_seed_set_id,
                 "active_testcase_draft_set_id": session.active_testcase_draft_set_id,
-                "prompt_profile_id": session.prompt_profile_id,
                 "created_at": session.created_at,
                 "updated_at": session.updated_at,
             }
@@ -929,8 +924,6 @@ class QAAIHelperService:
                 "selected_for_commit_count": int(draft_set.selected_for_commit_count or 0),
                 "adoption_rate": float(draft_set.adoption_rate or 0.0),
                 "created_by_user_id": draft_set.created_by_user_id,
-                "prompt_profile_id": draft_set.prompt_profile_id,
-                "custom_instructions_snapshot": draft_set.custom_instructions_snapshot,
                 "created_at": draft_set.created_at,
                 "updated_at": draft_set.updated_at,
                 "committed_at": draft_set.committed_at,
@@ -2481,32 +2474,6 @@ class QAAIHelperService:
         sync_db.flush()
         return validation_run
 
-    def _team_default_prompt_profile_id_sync(self, sync_db: Session, team_id: int) -> Optional[int]:
-        default_profile = (
-            sync_db.query(QAAIHelperPromptProfile.id)
-            .filter(
-                QAAIHelperPromptProfile.team_id == team_id,
-                QAAIHelperPromptProfile.is_default.is_(True),
-            )
-            .first()
-        )
-        return default_profile[0] if default_profile else None
-
-    def _resolve_team_prompt_profile_sync(
-        self, sync_db: Session, team_id: int, profile_id: int
-    ) -> QAAIHelperPromptProfile:
-        profile = (
-            sync_db.query(QAAIHelperPromptProfile)
-            .filter(
-                QAAIHelperPromptProfile.id == profile_id,
-                QAAIHelperPromptProfile.team_id == team_id,
-            )
-            .first()
-        )
-        if profile is None:
-            raise ValueError("找不到 prompt profile")
-        return profile
-
     def _persist_telemetry_sync(
         self,
         sync_db: Session,
@@ -2757,13 +2724,6 @@ class QAAIHelperService:
             if team is None:
                 raise ValueError(f"找不到 Team {team_id}")
 
-            if "prompt_profile_id" in request.model_fields_set:
-                prompt_profile_id = request.prompt_profile_id
-                if prompt_profile_id is not None:
-                    self._resolve_team_prompt_profile_sync(sync_db, team_id, prompt_profile_id)
-            else:
-                prompt_profile_id = self._team_default_prompt_profile_id_sync(sync_db, team_id)
-
             session = QAAIHelperSession(
                 team_id=team_id,
                 created_by_user_id=user_id,
@@ -2774,7 +2734,6 @@ class QAAIHelperService:
                 canonical_language=None,
                 current_phase=QAAIHelperPhase.INTAKE.value,
                 status=QAAIHelperSessionStatus.ACTIVE.value,
-                prompt_profile_id=prompt_profile_id,
                 source_payload_json=json_storage_dumps(raw_source_payload),
                 created_at=_now(),
                 updated_at=_now(),
@@ -2813,8 +2772,6 @@ class QAAIHelperService:
         user_id: int,
         section_header: str,
         output_locale: str = "zh-TW",
-        prompt_profile_id: Optional[int] = None,
-        prompt_profile_id_provided: bool = False,
     ) -> QAAIHelperWorkspaceResponse:
         """無需求單模式：建立 session 並直接進入 verification_planning。
         section_header 取代 ticket_key 的角色，作為 session 識別名稱與 section_id 前綴。"""
@@ -2823,13 +2780,6 @@ class QAAIHelperService:
             team = sync_db.query(Team).filter(Team.id == team_id).first()
             if team is None:
                 raise ValueError(f"找不到 Team {team_id}")
-
-            if prompt_profile_id_provided:
-                resolved_prompt_profile_id = prompt_profile_id
-                if resolved_prompt_profile_id is not None:
-                    self._resolve_team_prompt_profile_sync(sync_db, team_id, resolved_prompt_profile_id)
-            else:
-                resolved_prompt_profile_id = self._team_default_prompt_profile_id_sync(sync_db, team_id)
 
             session = QAAIHelperSession(
                 team_id=team_id,
@@ -2841,7 +2791,6 @@ class QAAIHelperService:
                 canonical_language=None,
                 current_phase=QAAIHelperPhase.INTAKE.value,
                 status=QAAIHelperSessionStatus.ACTIVE.value,
-                prompt_profile_id=resolved_prompt_profile_id,
                 source_payload_json=None,
                 created_at=_now(),
                 updated_at=_now(),
@@ -4009,18 +3958,6 @@ class QAAIHelperService:
         if not generation_items:
             raise ValueError("沒有可生成的 testcase seeds")
 
-        prompt_profile_id_provided = "prompt_profile_id" in request.model_fields_set
-        effective_prompt_profile_id = (
-            request.prompt_profile_id if prompt_profile_id_provided else read_snapshot.session.prompt_profile_id
-        )
-        testcase_style_text: Optional[str] = None
-        if effective_prompt_profile_id is not None:
-            def _load_profile(sync_db: Session):
-                return self._resolve_team_prompt_profile_sync(sync_db, team_id, effective_prompt_profile_id)
-
-            resolved_profile = await self._run_read(_load_profile)
-            testcase_style_text = (resolved_profile.testcase_instructions or "").strip() or None
-
         output_locale = (
             read_snapshot.session.output_locale.value
             if hasattr(read_snapshot.session.output_locale, "value")
@@ -4042,7 +3979,6 @@ class QAAIHelperService:
                 "selected_references_json": json_compact_dumps_nullable([]),
                 "generation_items_json": json_compact_dumps_nullable(generation_items),
             },
-            team_style_text=testcase_style_text,
         )
         testcase_started_at = time.perf_counter()
         llm_result = await self.llm_service.call_stage(
@@ -4110,16 +4046,11 @@ class QAAIHelperService:
                 status=QAAIHelperTestcaseDraftSetStatus.REVIEWING.value,
                 model_name=llm_result.model_name,
                 created_by_user_id=user_id,
-                prompt_profile_id=effective_prompt_profile_id,
-                custom_instructions_snapshot=testcase_style_text,
                 created_at=_now(),
                 updated_at=_now(),
             )
             sync_db.add(draft_set)
             sync_db.flush()
-
-            if prompt_profile_id_provided:
-                session.prompt_profile_id = effective_prompt_profile_id
 
             for generation_item, normalized_output in zip(generation_items, normalized_outputs):
                 sync_db.add(
@@ -4163,7 +4094,6 @@ class QAAIHelperService:
                 payload={
                     "item_count": len(generation_items),
                     "testcase_draft_set_id": draft_set.id,
-                    "prompt_profile_id": effective_prompt_profile_id,
                 },
             )
             session.active_testcase_draft_set_id = draft_set.id
@@ -4763,7 +4693,6 @@ class QAAIHelperService:
             description=_coerce_jira_text(fields.get("description")),
             comments=raw_comments,
         )
-        canonical_language = None
 
         def _save(sync_db: Session) -> QAAIHelperWorkspaceResponse:
             session = (
@@ -5796,7 +5725,7 @@ class QAAIHelperService:
                         updated_at=_now(),
                     )
                 )
-            validation_run = self._persist_validation_run_sync(
+            self._persist_validation_run_sync(
                 sync_db,
                 session=session_row,
                 planned_revision_id=planned_revision_row.id,
@@ -5926,7 +5855,7 @@ class QAAIHelperService:
             )
             draft_set.summary_json = json_storage_dumps(validation_summary)
             draft_set.updated_at = _now()
-            validation_run = self._persist_validation_run_sync(
+            self._persist_validation_run_sync(
                 sync_db,
                 session=session,
                 planned_revision_id=planned_revision.id if planned_revision else draft_set.planned_revision_id,

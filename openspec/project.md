@@ -7,7 +7,7 @@ Test Case Repository Tool（TCRT）是一個以 `FastAPI + Jinja2 + 原生 JS/CS
 - **測試執行管理**：Test Run / Config / Item 管理、多 Set 範圍、執行頁與 adhoc 執行 UI、Test Run Set 觸發自動化。
 - **Automation Hub**：端到端自動化測試整合——Storage Provider（GitHub / Local Git）、CI Provider（Jenkins）、Result Provider（Allure）、腳本自動掃描與快取、marker-derived linkage、coverage 統計、環境變數管理（AES-256-GCM 加密）、webhook 整合、Suite CI Job 觸發與狀態回流。
 - **AI Helper / QA AI Agent**：新版七畫面工作流、MAGI 多模型檢查、需求解析、驗證規劃、種子與 testcase 生成、採用率與遙測統計、session 管理。
-- **團隊與系統管理**：權限（Casbin RBAC）、稽核（audit DB）、排程服務管理、MCP machine token 管理、組織層 Automation Hub 入口開關。
+- **團隊與系統管理**：權限（Casbin RBAC）、稽核（audit DB）、排程服務管理、team-owned app token（`/api/app/*`，涵蓋 test case / test run 完整讀寫與 automation trigger；取代原本 MCP 專用 machine token 定位，`/api/mcp/*` 保留 read-only 相容期）、組織層 Automation Hub 入口開關。
 - **資料與整合**：Jira、Lark、Qdrant / embedding / LLM、HTML 報告輸出、跨資料庫遷移腳本（Alembic 三庫）。
 - **容器化部署**：Dockerfile、docker-compose（app / MySQL / PostgreSQL）、RSA 簽章金鑰持久化、leader 選舉、bootstrap lock。
 
@@ -32,7 +32,8 @@ Test Case Repository Tool（TCRT）是一個以 `FastAPI + Jinja2 + 原生 JS/CS
   - Provider：`app/services/automation/providers/`（github_storage / local_git_storage / jenkins_ci / allure_result）
   - API：`app/api/automation_*.py`（providers / scripts / links / script_groups / coverage / environments / webhooks / result）
 - **排程服務**：`app/services/scheduler.py`
-- **MCP 讀取 API / 驗證**：`app/api/mcp.py`、`app/auth/mcp_dependencies.py`
+- **MCP 讀取 API / 驗證（相容期）**：`app/api/mcp.py`、`app/auth/mcp_dependencies.py`
+- **App Token 外部 API（canonical）**：`app/api/app_tokens.py`（管理）、`app/api/app_read.py`（read）、`app/api/app_test_cases.py`、`app/api/app_test_runs.py`、`app/api/app_automation.py`（mutation / trigger）、`app/auth/app_token_dependencies.py`、`app/models/app_token.py`；詳見 `docs/app_token_auth.md` 與 `openspec/changes/add-team-app-token-apis/`
 - **報告儲存**：`app/services/html_report_service.py`，並由 `reports.root_dir` 控制輸出根目錄
 - **容器化**：`Dockerfile`、`docker-compose.app.yml`、`docker-compose.mysql.yml`、`docker-compose.postgres.yml`、`docker/app-entrypoint.sh`
 - **前端品質守衛**：stylelint（`.stylelintrc.json`）、i18n coverage linter（`scripts/check-i18n-coverage.mjs`）、inline style checker（`scripts/check-inline-styles.mjs`）
@@ -148,7 +149,7 @@ Automation Hub 的 script ↔ test case link 現況已收斂為 **marker-derived
 - `database-migration`
 - `database-operations`
 
-**QA AI Helper（12 個）：**
+**QA AI Helper（13 個）：**
 - `helper-guided-intake`
 - `helper-magi-inspection`
 - `helper-ai-progress-animation`
@@ -159,6 +160,7 @@ Automation Hub 的 script ↔ test case link 現況已收斂為 **marker-derived
 - `helper-plan-section-crud`
 - `helper-final-generation-contract`
 - `helper-prompt-file-loading`
+- `helper-team-prompt-profiles`（退役：自訂風格 runtime 不再暴露）
 - `helper-session-management`
 - `helper-team-analytics`
 

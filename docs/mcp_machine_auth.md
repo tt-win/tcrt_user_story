@@ -1,4 +1,6 @@
-# MCP Machine Auth 與 Read API 使用說明
+# MCP Machine Auth 與 Read API 使用說明（相容期）
+
+> `/api/mcp/*` 現為 read-only 相容 namespace。新的外部整合請改用正式的 team-owned app token 與 `/api/app/*`，見 [app_token_auth.md](app_token_auth.md)。既有 `mcp_read` machine token 仍可在相容期內繼續呼叫本文件描述的 read 端點。
 
 本文件說明如何在 TCRT 啟用 MCP 專用唯讀存取：
 - 使用 `machine token`（非互動式）

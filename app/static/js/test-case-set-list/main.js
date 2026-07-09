@@ -433,9 +433,17 @@ function renderCompactTestCaseSets(btnTexts, isAdmin) {
 
 // 釘選切換按鈕 HTML（卡片與精簡列表共用）。
 // 預設集合永遠置頂，因此不提供 Pin 按鈕。
+// App token 團隊共用釘選：顯示為置頂但不可在此取消（唯讀狀態，無 onclick）。
 function pinToggleHtml(set) {
   if (set.is_default) return '';
   const pinned = !!(window.PinStore && window.PinStore.isPinned('test_case_set', set.id));
+  const tokenPinned = !!(window.PinStore && window.PinStore.isTokenPinned('test_case_set', set.id));
+  if (tokenPinned) {
+    const label = getLocalizedText('common.pinnedByAppToken', {}, 'Pinned by App Token (team-shared)');
+    return `<button type="button" class="pin-toggle pinned token-pinned" title="${label}" aria-label="${label}" disabled>
+              <i class="fas fa-thumbtack"></i>
+            </button>`;
+  }
   const label = getLocalizedText(pinned ? 'common.unpin' : 'common.pin', {}, pinned ? 'Unpin' : 'Pin');
   return `<button type="button" class="pin-toggle ${pinned ? 'pinned' : ''}" title="${label}" aria-label="${label}"
             onclick="event.stopPropagation(); toggleSetPin(${set.id})">
@@ -456,6 +464,7 @@ function orderTestCaseSetsDefaultFirst(sets) {
 // 切換 Test Case Set 釘選狀態：成功後重繪卡片＋精簡列表兩種檢視
 async function toggleSetPin(setId) {
   if (!window.PinStore || !currentTeamId) return;
+  if (window.PinStore.isTokenPinned('test_case_set', setId)) return;
   const wasPinned = window.PinStore.isPinned('test_case_set', setId);
   try {
     if (wasPinned) {
