@@ -182,6 +182,16 @@ input[type="checkbox"]:indeterminate {
   color: var(--bs-warning, #ffc107);
 }
 
+.pin-toggle.token-pinned {
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
+.pin-toggle.token-pinned:hover {
+  color: var(--bs-warning, #ffc107);
+  background-color: transparent;
+}
+
 /* Pinned card gets a subtle warm accent */
 .test-case-set-card.pinned-card {
   border-color: var(--bs-warning, #ffc107);

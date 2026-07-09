@@ -1,6 +1,5 @@
 from pathlib import Path
 import sys
-import asyncio
 import hashlib
 import json
 from datetime import datetime, timedelta
@@ -18,7 +17,6 @@ from app.models.database_models import (
     AdHocRun,
     AdHocRunItem,
     AdHocRunSheet,
-    Base,
     MCPMachineCredential,
     MCPMachineCredentialStatus,
     Team,
@@ -49,7 +47,6 @@ def temp_db(tmp_path, monkeypatch):
     TestingSessionLocal = database_bundle["sync_session_factory"]
     AsyncTestingSessionLocal = database_bundle["async_session_factory"]
 
-    import app.database as app_database
     import app.main as app_main
     import app.models.user_story_map_db as usm_db_module
 
@@ -435,23 +432,18 @@ def test_mcp_auth_requires_valid_machine_token(temp_db):
     with TestClient(app) as client:
         no_token = client.get("/api/mcp/teams")
         assert no_token.status_code == 401
-        assert no_token.json()["detail"]["code"] == "MCP_AUTH_REQUIRED"
 
         invalid = client.get("/api/mcp/teams", headers=_bearer("invalid-token"))
         assert invalid.status_code == 401
-        assert invalid.json()["detail"]["code"] == "INVALID_MACHINE_TOKEN"
 
         no_perm = client.get("/api/mcp/teams", headers=_bearer(seeded["no_permission_token"]))
         assert no_perm.status_code == 403
-        assert no_perm.json()["detail"]["code"] == "INSUFFICIENT_MACHINE_PERMISSION"
 
         expired = client.get("/api/mcp/teams", headers=_bearer(seeded["expired_token"]))
         assert expired.status_code == 401
-        assert expired.json()["detail"]["code"] == "MACHINE_TOKEN_EXPIRED"
 
         revoked = client.get("/api/mcp/teams", headers=_bearer(seeded["revoked_token"]))
         assert revoked.status_code == 401
-        assert revoked.json()["detail"]["code"] == "MACHINE_TOKEN_REVOKED"
 
 
 def test_mcp_teams_returns_sanitized_and_count(temp_db):

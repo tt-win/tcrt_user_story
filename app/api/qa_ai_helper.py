@@ -128,8 +128,6 @@ async def create_no_ticket_session(
             user_id=current_user.id,
             section_header=request.section_header,
             output_locale=request.output_locale,
-            prompt_profile_id=request.prompt_profile_id,
-            prompt_profile_id_provided="prompt_profile_id" in request.model_fields_set,
         )
     except Exception as exc:  # noqa: BLE001
         raise _map_exception(exc) from exc

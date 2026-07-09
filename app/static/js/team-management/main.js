@@ -681,6 +681,12 @@ function renderTeamCards() {
                                             <i class="fas fa-project-diagram me-2"></i>User Story Map
                                         </button>
                                     </li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li>
+                                        <button class="dropdown-item" type="button" onclick="openAppTokenModal(${team.id}, '${escapeHtml(team.name)}')">
+                                            <i class="fas fa-key me-2"></i><span data-i18n="appToken.menuLabel">App Tokens</span>
+                                        </button>
+                                    </li>
                                 </ul>
                             </div>
                             <button class="btn btn-secondary btn-sm" style="flex: 1;" onclick="editTeam(${team.id})">

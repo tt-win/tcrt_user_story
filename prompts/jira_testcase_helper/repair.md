@@ -8,6 +8,5 @@ INVALID_OUTPUTS={invalid_outputs_json}
 VALIDATOR_ERRORS={validator_errors_json}
 
 輸出限制：只輸出單一 JSON 物件。
-{team_style_block}
 輸出 schema:
 {"outputs":[{"item_index":0,"title":"","priority":"Medium","preconditions":[""],"steps":["","",""],"expected_results":[""]}]}

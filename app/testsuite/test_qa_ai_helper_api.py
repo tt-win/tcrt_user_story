@@ -17,13 +17,10 @@ from app.database import get_db
 from app.main import app
 from app.models.database_models import (
     QAAIHelperCommitLink,
-    QAAIHelperPromptProfile,
-    QAAIHelperRequirementPlan,
     QAAIHelperSeedItem,
     QAAIHelperSeedSet,
     QAAIHelperSession,
     QAAIHelperTelemetryEvent,
-    QAAIHelperTestcaseDraft,
     QAAIHelperTestcaseDraftSet,
     QAAIHelperTicketSnapshot,
     Team,
@@ -1551,30 +1548,18 @@ def _install_capturing_call_stage(monkeypatch, captured: dict):
     monkeypatch.setattr(QAAIHelperLLMService, "call_stage", _fake_call_stage)
 
 
-def _create_prompt_profile(client: TestClient, team_id: int, **overrides) -> dict:
-    payload = {
-        "name": overrides.pop("name", "Style A"),
-        "testcase_instructions": overrides.pop("testcase_instructions", "expected_results 以「系統應」開頭"),
-    }
-    payload.update(overrides)
-    resp = client.post(f"/api/teams/{team_id}/qa-ai-helper/prompt-profiles", json=payload)
-    assert resp.status_code == 201, resp.text
-    return resp.json()
-
-
-def test_generate_seed_set_ignores_profile_and_has_no_style_block(qa_ai_helper_db, monkeypatch):
-    """Seed generation is not customizable — only testcase generation is."""
+def test_generate_seed_set_ignores_retired_prompt_profile_field(qa_ai_helper_db, monkeypatch):
+    """Retired custom style input must not affect seed generation."""
     client = TestClient(app)
     team_id = qa_ai_helper_db["team_id"]
     captured: dict = {}
     _install_capturing_call_stage(monkeypatch, captured)
 
-    profile = _create_prompt_profile(client, team_id)
     session_id, _locked_payload = _prepare_locked_requirement_plan(client, team_id)
 
     generated = client.post(
         f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/seed-sets",
-        json={"prompt_profile_id": profile["id"]},
+        json={"prompt_profile_id": 999999},
     )
     assert generated.status_code == 200, generated.text
     payload = generated.json()
@@ -1585,92 +1570,39 @@ def test_generate_seed_set_ignores_profile_and_has_no_style_block(qa_ai_helper_d
     for prompt in captured["seed"]:
         assert "{team_style_block}" not in prompt
         assert "團隊風格指引" not in prompt
-        assert "expected_results 以「系統應」開頭" not in prompt
 
 
-def test_generate_testcase_draft_set_with_profile_injects_guard_frame_and_snapshots(qa_ai_helper_db, monkeypatch):
+def test_generate_testcase_draft_set_ignores_retired_prompt_profile_field(qa_ai_helper_db, monkeypatch):
     client = TestClient(app)
     team_id = qa_ai_helper_db["team_id"]
     captured: dict = {}
     _install_capturing_call_stage(monkeypatch, captured)
 
-    profile = _create_prompt_profile(client, team_id)
     session_id, _locked_seed_payload = _prepare_locked_seed_set(client, team_id)
 
     generated = client.post(
         f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/testcase-draft-sets",
-        json={"force_regenerate": False, "prompt_profile_id": profile["id"]},
+        json={"force_regenerate": False, "prompt_profile_id": 999999},
     )
     assert generated.status_code == 200, generated.text
-    draft_set = generated.json()["testcase_draft_set"]
-    assert draft_set["prompt_profile_id"] == profile["id"]
-    assert draft_set["custom_instructions_snapshot"] == "expected_results 以「系統應」開頭"
+    payload = generated.json()
+    assert "prompt_profile_id" not in payload["session"]
+    draft_set = payload["testcase_draft_set"]
+    assert "prompt_profile_id" not in draft_set
+    assert "custom_instructions_snapshot" not in draft_set
 
     assert captured["testcase"], "testcase stage should have been called"
     for prompt in captured["testcase"]:
-        assert "團隊風格指引" in prompt
-        assert "expected_results 以「系統應」開頭" in prompt
-
-
-def test_generate_testcase_draft_set_explicit_null_profile_skips_injection(qa_ai_helper_db, monkeypatch):
-    client = TestClient(app)
-    team_id = qa_ai_helper_db["team_id"]
-    captured: dict = {}
-    _install_capturing_call_stage(monkeypatch, captured)
-
-    profile = _create_prompt_profile(client, team_id)
-    session_id, _locked_seed_payload = _prepare_locked_seed_set(client, team_id)
-
-    first = client.post(
-        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/testcase-draft-sets",
-        json={"force_regenerate": False, "prompt_profile_id": profile["id"]},
-    )
-    assert first.status_code == 200, first.text
-    assert first.json()["session"]["prompt_profile_id"] == profile["id"]
-
-    second = client.post(
-        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/testcase-draft-sets",
-        json={"force_regenerate": True, "prompt_profile_id": None},
-    )
-    assert second.status_code == 200, second.text
-    payload = second.json()
-    assert payload["session"]["prompt_profile_id"] is None
-    assert payload["testcase_draft_set"]["prompt_profile_id"] is None
-    assert payload["testcase_draft_set"]["custom_instructions_snapshot"] is None
-
-    assert len(captured["testcase"]) >= 2
-    assert "團隊風格指引" not in captured["testcase"][-1]
-
-
-def test_generate_testcase_draft_set_with_profile_from_other_team_returns_404(qa_ai_helper_db, monkeypatch):
-    client = TestClient(app)
-    team_id = qa_ai_helper_db["team_id"]
-    captured: dict = {}
-    _install_capturing_call_stage(monkeypatch, captured)
+        assert "{team_style_block}" not in prompt
+        assert "團隊風格指引" not in prompt
 
     with qa_ai_helper_db["sync_session_factory"]() as sync_db:
-        other_team = Team(
-            name="Other Team",
-            description="",
-            wiki_token="wiki-other-team",
-            test_case_table_id="tbl-other-team",
+        telemetry = (
+            sync_db.query(QAAIHelperTelemetryEvent)
+            .filter(QAAIHelperTelemetryEvent.stage == "testcase")
+            .order_by(QAAIHelperTelemetryEvent.id.desc())
+            .first()
         )
-        sync_db.add(other_team)
-        sync_db.commit()
-        other_team_profile = QAAIHelperPromptProfile(
-            team_id=other_team.id,
-            name="Other Team Style",
-            testcase_instructions="不應被套用",
-        )
-        sync_db.add(other_team_profile)
-        sync_db.commit()
-        other_profile_id = other_team_profile.id
-
-    session_id, _locked_seed_payload = _prepare_locked_seed_set(client, team_id)
-
-    resp = client.post(
-        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/testcase-draft-sets",
-        json={"force_regenerate": False, "prompt_profile_id": other_profile_id},
-    )
-    assert resp.status_code == 404, resp.text
-    assert "testcase" not in captured
+        assert telemetry is not None
+        telemetry_payload = json.loads(telemetry.payload_json or "{}")
+        assert "prompt_profile_id" not in telemetry_payload

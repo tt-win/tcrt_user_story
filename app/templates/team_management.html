@@ -553,6 +553,7 @@
         </div>
     </div>
 </div>
+</div>
 
 <!-- MCP Machine Token: 核發 Modal -->
 <div class="modal fade" id="mcpTokenCreateModal" tabindex="-1" aria-labelledby="mcpTokenCreateModalLabel" aria-hidden="true">
@@ -754,10 +755,149 @@
         </div>
     </div>
 </div>
+
+<!-- App Token Management Modal -->
+<div class="modal fade" id="appTokenModal" tabindex="-1" aria-labelledby="appTokenModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="appTokenModalLabel">
+                    <i class="fas fa-key me-2"></i><span data-i18n="appToken.modalTitle">App Tokens</span>
+                    <small class="text-muted ms-2" id="appTokenTeamName"></small>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="mb-0" data-i18n="appToken.tokenList">Token List</h6>
+                    <button class="btn btn-primary btn-sm" id="btnCreateAppToken" onclick="showCreateAppTokenForm()">
+                        <i class="fas fa-plus me-1"></i><span data-i18n="appToken.createButton">Create Token</span>
+                    </button>
+                </div>
+
+                <!-- Create form (hidden by default) -->
+                <div id="appTokenCreateForm" class="border rounded p-3 mb-3" style="display: none;">
+                    <div class="mb-2">
+                        <label class="form-label"><span data-i18n="appToken.tokenName">Token Name</span> <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" id="appTokenName" data-i18n-placeholder="appToken.tokenNamePlaceholder" placeholder="CI Bot Token">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label" data-i18n="appToken.description">Description</label>
+                        <input type="text" class="form-control form-control-sm" id="appTokenDescription" data-i18n-placeholder="appToken.descriptionPlaceholder" placeholder="Token for CI automation">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label" data-i18n="appToken.scopes">Scopes</label>
+                        <div class="row" id="appTokenScopesContainer">
+                            <div class="col-md-6 mb-1">
+                                <div class="form-check">
+                                    <input class="form-check-input app-token-scope" type="checkbox" value="test_case:read" id="scope_tc_read">
+                                    <label class="form-check-label small" for="scope_tc_read" data-i18n="appToken.scopeTestCaseRead">Test Case: Read</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-1">
+                                <div class="form-check">
+                                    <input class="form-check-input app-token-scope" type="checkbox" value="test_case:write" id="scope_tc_write">
+                                    <label class="form-check-label small" for="scope_tc_write" data-i18n="appToken.scopeTestCaseWrite">Test Case: Write</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-1">
+                                <div class="form-check">
+                                    <input class="form-check-input app-token-scope" type="checkbox" value="test_case:admin" id="scope_tc_admin">
+                                    <label class="form-check-label small" for="scope_tc_admin" data-i18n="appToken.scopeTestCaseAdmin">Test Case: Admin</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-1">
+                                <div class="form-check">
+                                    <input class="form-check-input app-token-scope" type="checkbox" value="test_run:read" id="scope_tr_read">
+                                    <label class="form-check-label small" for="scope_tr_read" data-i18n="appToken.scopeTestRunRead">Test Run: Read</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-1">
+                                <div class="form-check">
+                                    <input class="form-check-input app-token-scope" type="checkbox" value="test_run:write" id="scope_tr_write">
+                                    <label class="form-check-label small" for="scope_tr_write" data-i18n="appToken.scopeTestRunWrite">Test Run: Write</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-1">
+                                <div class="form-check">
+                                    <input class="form-check-input app-token-scope" type="checkbox" value="test_run:execute" id="scope_tr_execute">
+                                    <label class="form-check-label small" for="scope_tr_execute" data-i18n="appToken.scopeTestRunExecute">Test Run: Execute</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-1">
+                                <div class="form-check">
+                                    <input class="form-check-input app-token-scope" type="checkbox" value="test_run:admin" id="scope_tr_admin">
+                                    <label class="form-check-label small" for="scope_tr_admin" data-i18n="appToken.scopeTestRunAdmin">Test Run: Admin</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-1">
+                                <div class="form-check">
+                                    <input class="form-check-input app-token-scope" type="checkbox" value="automation:execute" id="scope_auto_exec">
+                                    <label class="form-check-label small" for="scope_auto_exec" data-i18n="appToken.scopeAutomationExecute">Automation: Execute</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" data-i18n="appToken.expiry">Expiry (days)</label>
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="number" class="form-control form-control-sm" style="width: 120px;" id="appTokenExpiryDays" value="90" min="0">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="appTokenNoExpiry" onchange="document.getElementById('appTokenExpiryDays').disabled = this.checked; if(this.checked) document.getElementById('appTokenExpiryDays').value = 0;">
+                                <label class="form-check-label small text-danger" for="appTokenNoExpiry" data-i18n="appToken.noExpiry">No expiry (use with caution)</label>
+                            </div>
+                        </div>
+                        <div class="form-text text-warning" id="appTokenNoExpiryWarning" style="display: none;" data-i18n="appToken.noExpiryWarning">Warning: Non-expiring tokens pose a security risk. Revoke them manually when no longer needed.</div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-primary btn-sm" onclick="createAppToken()">
+                            <i class="fas fa-check me-1"></i><span data-i18n="appToken.confirmCreate">Create</span>
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="hideCreateAppTokenForm()" data-i18n="common.cancel">Cancel</button>
+                    </div>
+                </div>
+
+                <!-- One-time raw token display -->
+                <div id="appTokenRawTokenDisplay" class="alert alert-warning" style="display: none;">
+                    <p class="fw-bold mb-1" data-i18n="appToken.rawTokenWarning">Copy this token now. It will not be shown again.</p>
+                    <div class="d-flex gap-2 align-items-center">
+                        <code id="appTokenRawToken" class="text-break small flex-grow-1"></code>
+                        <button class="btn btn-sm btn-outline-primary" onclick="copyAppTokenRawToken()">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Token list table -->
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th data-i18n="appToken.tokenName">Name</th>
+                                <th data-i18n="appToken.tokenPrefix">Prefix</th>
+                                <th data-i18n="appToken.status">Status</th>
+                                <th data-i18n="appToken.scopes">Scopes</th>
+                                <th data-i18n="appToken.expiresAt">Expires</th>
+                                <th data-i18n="appToken.lastUsedAt">Last Used</th>
+                                <th data-i18n="common.actions">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="appTokenTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script src="/static/js/team-management/main.js"></script>
+<script src="/static/js/team-management/app-tokens.js"></script>
 <script src="/static/js/team-management/org-automation-infra.js"></script>
 
 <!-- Hidden i18n texts for Organization Sync (used by JS without window.i18n.t) -->

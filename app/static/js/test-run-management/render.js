@@ -3,8 +3,17 @@
    ============================================================ */
 
 // ---- 釘選 (Pin) 共用工具（Test Run Set / Test Run / Ad-hoc Run 共用）----
+// App token 團隊共用釘選：顯示為置頂但不可在此取消（唯讀狀態，無 onclick）。
 function trmPinToggleHtml(entityType, id) {
     const pinned = !!(window.PinStore && window.PinStore.isPinned(entityType, id));
+    const tokenPinned = !!(window.PinStore && window.PinStore.isTokenPinned(entityType, id));
+    if (tokenPinned) {
+        const label = (window.i18n && window.i18n.isReady() && window.i18n.t('common.pinnedByAppToken'))
+            || 'Pinned by App Token (team-shared)';
+        return `<button type="button" class="pin-toggle pinned token-pinned" title="${label}" aria-label="${label}" disabled>
+                  <i class="fas fa-thumbtack"></i>
+                </button>`;
+    }
     const label = (window.i18n && window.i18n.isReady() && window.i18n.t(pinned ? 'common.unpin' : 'common.pin'))
         || (pinned ? 'Unpin' : 'Pin');
     return `<button type="button" class="pin-toggle ${pinned ? 'pinned' : ''}" title="${label}" aria-label="${label}"
@@ -15,6 +24,7 @@ function trmPinToggleHtml(entityType, id) {
 
 async function toggleTrmPin(entityType, id) {
     if (!window.PinStore || !currentTeamId) return;
+    if (window.PinStore.isTokenPinned(entityType, id)) return;
     const wasPinned = window.PinStore.isPinned(entityType, id);
     try {
         if (wasPinned) {
