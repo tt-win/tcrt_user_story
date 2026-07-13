@@ -14,6 +14,7 @@ from app.api.mcp import (
     _config_payload,
     _ensure_team_exists,
     _get_section_case_counts,
+    _get_team_case_counts,
     _lookup_match_type,
     _normalize_priority_filter,
     _normalize_result_filter,
@@ -91,13 +92,14 @@ async def list_app_teams(
         if principal.can_access_team(team.id):
             filtered.append(team)
 
+    team_case_counts = await _get_team_case_counts(db)
     items = [
         MCPTeamItem(
             id=team.id,
             name=team.name,
             description=team.description,
             status=team.status.value if hasattr(team.status, "value") else str(team.status),
-            test_case_count=team.test_case_count or 0,
+            test_case_count=team_case_counts.get(team.id, 0),
             created_at=team.created_at,
             updated_at=team.updated_at,
             last_sync_at=team.last_sync_at,
@@ -160,6 +162,13 @@ async def list_app_team_test_cases(
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
+    set_count_rows = await db.execute(
+        select(TestCaseLocalDB.test_case_set_id, func.count(TestCaseLocalDB.id))
+        .where(TestCaseLocalDB.team_id == team_id)
+        .group_by(TestCaseLocalDB.test_case_set_id)
+    )
+    set_count_map = {set_id_value: count for set_id_value, count in set_count_rows.all()}
+
     query = query.order_by(TestCaseLocalDB.id).offset(skip).limit(limit)
     result = await db.execute(query)
     test_cases = result.scalars().all()
@@ -182,6 +191,7 @@ async def list_app_team_test_cases(
                 name=s.name,
                 description=s.description,
                 is_default=s.is_default,
+                test_case_count=int(set_count_map.get(s.id, 0) or 0),
                 created_at=s.created_at,
                 updated_at=s.updated_at,
             )

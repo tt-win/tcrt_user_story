@@ -3,7 +3,7 @@
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, delete
+from sqlalchemy import func, select, delete
 from typing import List
 from pydantic import BaseModel
 
@@ -49,8 +49,11 @@ class ValidationResponse(BaseModel):
     message: str
 
 
-def team_db_to_model(team_db: TeamDB) -> dict:
-    """將資料庫團隊模型轉換為 API 回應字典"""
+def team_db_to_model(team_db: TeamDB, test_case_count: int = 0) -> dict:
+    """將資料庫團隊模型轉換為 API 回應字典。
+
+    `test_case_count` 由呼叫端即時計算傳入；`Team.test_case_count` 欄位無人維護，勿使用。
+    """
     from app.models.team import LarkRepoConfig, JiraConfig, TeamSettings
 
     lark_config = LarkRepoConfig(
@@ -88,7 +91,7 @@ def team_db_to_model(team_db: TeamDB) -> dict:
         ),
         "created_at": team_db.created_at,
         "updated_at": team_db.updated_at,
-        "test_case_count": team_db.test_case_count or 0,
+        "test_case_count": test_case_count,
         "last_sync_at": team_db.last_sync_at,
         "is_lark_configured": bool(team_db.wiki_token and team_db.test_case_table_id),
         "is_jira_configured": bool(team_db.jira_project_key),
@@ -134,7 +137,15 @@ async def get_teams(
             teams_db = result.scalars().all()
             if not teams_db:
                 return []
-            return [team_db_to_model(team) for team in teams_db]
+            count_rows = await session.execute(
+                select(TestCaseLocalDB.team_id, func.count(TestCaseLocalDB.id))
+                .group_by(TestCaseLocalDB.team_id)
+            )
+            case_counts = {team_id: int(count or 0) for team_id, count in count_rows.all()}
+            return [
+                team_db_to_model(team, test_case_count=case_counts.get(team.id, 0))
+                for team in teams_db
+            ]
 
         return await main_boundary.run_read(_load_teams)
     except Exception as e:
@@ -248,7 +259,10 @@ async def get_team(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"找不到團隊 ID {team_id}",
             )
-        return team_db_to_model(team_db)
+        count_result = await session.execute(
+            select(func.count(TestCaseLocalDB.id)).where(TestCaseLocalDB.team_id == team_id)
+        )
+        return team_db_to_model(team_db, test_case_count=count_result.scalar() or 0)
 
     team_payload = await main_boundary.run_read(_load_team)
 
@@ -317,7 +331,10 @@ async def update_team(
 
             await session.flush()
             await session.refresh(team_db)
-            return team_db_to_model(team_db)
+            count_result = await session.execute(
+                select(func.count(TestCaseLocalDB.id)).where(TestCaseLocalDB.team_id == team_id)
+            )
+            return team_db_to_model(team_db, test_case_count=count_result.scalar() or 0)
 
         result = await main_boundary.run_write(_update_team)
 

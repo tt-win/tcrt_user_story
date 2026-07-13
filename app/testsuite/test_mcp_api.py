@@ -461,6 +461,11 @@ def test_mcp_teams_returns_sanitized_and_count(temp_db):
         assert "wiki_token" not in first_item
         assert "test_case_table_id" not in first_item
 
+        # _seed_mcp_data creates 5 cases for team A (tc_a1/a2 + login x2 + sso x1), 1 for team B
+        counts_by_id = {item["id"]: item["test_case_count"] for item in all_payload["items"]}
+        assert counts_by_id[seeded["team_a_id"]] == 5
+        assert counts_by_id[seeded["team_b_id"]] == 1
+
         scoped_resp = client.get("/api/mcp/teams", headers=_bearer(seeded["scoped_token"]))
         assert scoped_resp.status_code == 200
         scoped_payload = scoped_resp.json()
