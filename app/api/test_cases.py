@@ -2164,6 +2164,101 @@ class BulkCloneResponse(BaseModel):
     errors: List[str] = []
 
 
+def run_bulk_clone_sync(sync_db: Session, team_id: int, request: BulkCloneRequest):
+    """批次複製測試案例的共用核心（JWT 與 app-token 路徑共用，避免邏輯漂移）。
+
+    回傳 (BulkCloneResponse, audit_context)。
+    """
+    if not request.items:
+        return BulkCloneResponse(success=False, created_count=0, errors=["空的建立清單"]), None
+
+    existing_numbers = set(
+        n[0]
+        for n in sync_db.query(TestCaseLocalDB.test_case_number)
+        .filter(TestCaseLocalDB.team_id == team_id)
+        .all()
+    )
+    req_numbers = [it.test_case_number for it in request.items]
+    duplicates = [num for num in req_numbers if num in existing_numbers]
+    if duplicates:
+        return BulkCloneResponse(success=False, created_count=0, duplicates=duplicates, errors=[]), None
+
+    source_ids = [it.source_record_id for it in request.items]
+    source_id_ints: List[int] = []
+    for source_id in source_ids:
+        try:
+            source_id_ints.append(int(source_id))
+        except (TypeError, ValueError):
+            continue
+
+    filters = [TestCaseLocalDB.lark_record_id.in_(source_ids)]
+    if source_id_ints:
+        filters.append(TestCaseLocalDB.id.in_(source_id_ints))
+
+    src_rows = (
+        sync_db.query(TestCaseLocalDB).filter(TestCaseLocalDB.team_id == team_id).filter(or_(*filters)).all()
+    )
+    src_map = {}
+    for row in src_rows:
+        if row.lark_record_id:
+            src_map[row.lark_record_id] = row
+        row_key = str(row.id)
+        if row_key not in src_map:
+            src_map[row_key] = row
+
+    created = 0
+    errors: List[str] = []
+    created_items = []
+
+    for it in request.items:
+        src = src_map.get(it.source_record_id)
+        if not src:
+            errors.append(f"來源記錄不存在: {it.source_record_id}")
+            continue
+
+        try:
+            new_title = it.title.strip() if (it.title is not None and it.title.strip()) else src.title
+            item = TestCaseLocalDB(
+                team_id=team_id,
+                lark_record_id=None,
+                test_case_number=it.test_case_number,
+                title=new_title,
+                priority=src.priority,
+                precondition=src.precondition,
+                steps=src.steps,
+                expected_result=src.expected_result,
+                test_result=None,
+                sync_status=SyncStatus.PENDING,
+                local_version=1,
+                test_case_set_id=src.test_case_set_id,
+                test_case_section_id=src.test_case_section_id,
+            )
+            sync_db.add(item)
+            created += 1
+            created_items.append(
+                {
+                    "test_case_number": it.test_case_number,
+                    "title": new_title,
+                    "source_record_id": it.source_record_id,
+                    "source_test_case_number": src.test_case_number,
+                }
+            )
+        except Exception as e:
+            errors.append(f"來源 {it.source_record_id} 複製失敗: {str(e)}")
+
+    if created == 0 and errors:
+        return BulkCloneResponse(success=False, created_count=0, duplicates=[], errors=errors), None
+
+    audit_context = None
+    if created > 0:
+        audit_context = {
+            "created_count": created,
+            "cloned_items": created_items,
+        }
+
+    return BulkCloneResponse(success=True, created_count=created, duplicates=[], errors=errors), audit_context
+
+
 @router.post("/bulk_clone", response_model=BulkCloneResponse)
 async def bulk_clone_test_cases(
     team_id: int,
@@ -2179,94 +2274,7 @@ async def bulk_clone_test_cases(
     try:
 
         def _bulk_clone(sync_db: Session):
-            if not request.items:
-                return BulkCloneResponse(success=False, created_count=0, errors=["空的建立清單"]), None
-
-            existing_numbers = set(
-                n[0]
-                for n in sync_db.query(TestCaseLocalDB.test_case_number)
-                .filter(TestCaseLocalDB.team_id == team_id)
-                .all()
-            )
-            req_numbers = [it.test_case_number for it in request.items]
-            duplicates = [num for num in req_numbers if num in existing_numbers]
-            if duplicates:
-                return BulkCloneResponse(success=False, created_count=0, duplicates=duplicates, errors=[]), None
-
-            source_ids = [it.source_record_id for it in request.items]
-            source_id_ints: List[int] = []
-            for source_id in source_ids:
-                try:
-                    source_id_ints.append(int(source_id))
-                except (TypeError, ValueError):
-                    continue
-
-            filters = [TestCaseLocalDB.lark_record_id.in_(source_ids)]
-            if source_id_ints:
-                filters.append(TestCaseLocalDB.id.in_(source_id_ints))
-
-            src_rows = (
-                sync_db.query(TestCaseLocalDB).filter(TestCaseLocalDB.team_id == team_id).filter(or_(*filters)).all()
-            )
-            src_map = {}
-            for row in src_rows:
-                if row.lark_record_id:
-                    src_map[row.lark_record_id] = row
-                row_key = str(row.id)
-                if row_key not in src_map:
-                    src_map[row_key] = row
-
-            created = 0
-            errors: List[str] = []
-            created_items = []
-
-            for it in request.items:
-                src = src_map.get(it.source_record_id)
-                if not src:
-                    errors.append(f"來源記錄不存在: {it.source_record_id}")
-                    continue
-
-                try:
-                    new_title = it.title.strip() if (it.title is not None and it.title.strip()) else src.title
-                    item = TestCaseLocalDB(
-                        team_id=team_id,
-                        lark_record_id=None,
-                        test_case_number=it.test_case_number,
-                        title=new_title,
-                        priority=src.priority,
-                        precondition=src.precondition,
-                        steps=src.steps,
-                        expected_result=src.expected_result,
-                        test_result=None,
-                        sync_status=SyncStatus.PENDING,
-                        local_version=1,
-                        test_case_set_id=src.test_case_set_id,
-                        test_case_section_id=src.test_case_section_id,
-                    )
-                    sync_db.add(item)
-                    created += 1
-                    created_items.append(
-                        {
-                            "test_case_number": it.test_case_number,
-                            "title": new_title,
-                            "source_record_id": it.source_record_id,
-                            "source_test_case_number": src.test_case_number,
-                        }
-                    )
-                except Exception as e:
-                    errors.append(f"來源 {it.source_record_id} 複製失敗: {str(e)}")
-
-            if created == 0 and errors:
-                return BulkCloneResponse(success=False, created_count=0, duplicates=[], errors=errors), None
-
-            audit_context = None
-            if created > 0:
-                audit_context = {
-                    "created_count": created,
-                    "cloned_items": created_items,
-                }
-
-            return BulkCloneResponse(success=True, created_count=created, duplicates=[], errors=errors), audit_context
+            return run_bulk_clone_sync(sync_db, team_id, request)
 
         response, audit_context = await main_boundary.run_sync_write(_bulk_clone)
 
@@ -2296,24 +2304,22 @@ async def bulk_clone_test_cases(
         return BulkCloneResponse(success=False, created_count=0, duplicates=[], errors=[str(e)])
 
 
-@router.post("/batch", response_model=TestCaseBatchResponse)
-async def batch_operation_test_cases(
+def run_test_case_batch_operation_sync(
+    sync_db: Session,
     team_id: int,
     operation: TestCaseBatchOperation,
-    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
-    current_user: User = Depends(get_current_user),
+    actor_label: str,
 ):
-    """批次操作本地測試案例（不呼叫 Lark）。
+    """批次操作本地測試案例的共用核心（JWT 與 app-token 路徑共用，避免邏輯漂移）。
+
     支援：delete、update_priority、update_tcg、update_section、update_test_set。
     record_ids 可為本地整數 id、lark_record_id 或 test_case_number。
+    回傳 (TestCaseBatchResponse, log_context)。
     """
     import json
     from pathlib import Path
 
-    if not operation.record_ids:
-        raise HTTPException(status_code=400, detail="記錄 ID 列表不能為空")
-
-    def _batch(sync_db: Session):
+    def _batch():
         def resolve_one(rid: str) -> Optional[TestCaseLocalDB]:
             try:
                 rid_int = int(rid)
@@ -2389,7 +2395,7 @@ async def batch_operation_test_cases(
 
             if success_count > 0:
                 test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
-                action_brief = f"{current_user.username} batch deleted {success_count} Test Cases"
+                action_brief = f"{actor_label} batch deleted {success_count} Test Cases"
                 if test_case_numbers[:3]:
                     action_brief += f": {', '.join(test_case_numbers[:3])}"
                     if len(test_case_numbers) > 3:
@@ -2436,7 +2442,7 @@ async def batch_operation_test_cases(
 
             if success_count > 0:
                 test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
-                action_brief = f"{current_user.username} batch updated priority to {pr} for {success_count} Test Cases"
+                action_brief = f"{actor_label} batch updated priority to {pr} for {success_count} Test Cases"
                 if test_case_numbers[:3]:
                     action_brief += f": {', '.join(test_case_numbers[:3])}"
                     if len(test_case_numbers) > 3:
@@ -2501,7 +2507,7 @@ async def batch_operation_test_cases(
             if success_count > 0:
                 test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
                 tcg_display_str = ", ".join(tcg_numbers_list[:3]) if tcg_numbers_list else "empty"
-                action_brief = f"{current_user.username} batch updated TCG for {success_count} Test Cases"
+                action_brief = f"{actor_label} batch updated TCG for {success_count} Test Cases"
                 if tcg_display_str:
                     action_brief += f" to TCG: {tcg_display_str}"
                 if len(tcg_numbers_list) > 3:
@@ -2562,7 +2568,7 @@ async def batch_operation_test_cases(
 
             if success_count > 0:
                 test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
-                action_brief = f"{current_user.username} batch reassigned {success_count} Test Cases to section {target_section.name}"
+                action_brief = f"{actor_label} batch reassigned {success_count} Test Cases to section {target_section.name}"
                 if test_case_numbers[:3]:
                     action_brief += f": {', '.join(test_case_numbers[:3])}"
                     if len(test_case_numbers) > 3:
@@ -2660,7 +2666,7 @@ async def batch_operation_test_cases(
 
             if success_count > 0:
                 test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
-                action_brief = f"{current_user.username} batch moved {success_count} Test Cases to set {target_test_set.name} (Unassigned)"
+                action_brief = f"{actor_label} batch moved {success_count} Test Cases to set {target_test_set.name} (Unassigned)"
                 if test_case_numbers[:3]:
                     action_brief += f": {', '.join(test_case_numbers[:3])}"
                     if len(test_case_numbers) > 3:
@@ -2692,6 +2698,26 @@ async def batch_operation_test_cases(
             error_messages=errors,
             cleanup_summary=cleanup_summary,
         ), log_context
+
+    return _batch()
+
+
+@router.post("/batch", response_model=TestCaseBatchResponse)
+async def batch_operation_test_cases(
+    team_id: int,
+    operation: TestCaseBatchOperation,
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
+    current_user: User = Depends(get_current_user),
+):
+    """批次操作本地測試案例（不呼叫 Lark）。
+    支援：delete、update_priority、update_tcg、update_section、update_test_set。
+    record_ids 可為本地整數 id、lark_record_id 或 test_case_number。
+    """
+    if not operation.record_ids:
+        raise HTTPException(status_code=400, detail="記錄 ID 列表不能為空")
+
+    def _batch(sync_db: Session):
+        return run_test_case_batch_operation_sync(sync_db, team_id, operation, current_user.username)
 
     try:
         response, log_context = await main_boundary.run_sync_write(_batch)

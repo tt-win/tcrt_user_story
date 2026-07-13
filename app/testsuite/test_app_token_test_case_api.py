@@ -534,3 +534,106 @@ class TestAttachmentManagement:
                 headers=_bearer(seeded["write_token"]),
             )
             assert resp.status_code == 403
+
+
+class TestBatchOperationsAndBulkClone:
+    def _create_case(self, client, seeded, number, title="Batch case"):
+        resp = client.post(
+            f"/api/app/teams/{seeded['team_id']}/test-cases",
+            json={"test_case_number": number, "title": title},
+            headers=_bearer(seeded["write_token"]),
+        )
+        assert resp.status_code == 201, resp.text
+        return resp.json()
+
+    def test_batch_update_priority(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_data(session)
+        with TestClient(app) as client:
+            self._create_case(client, seeded, "TC-BOP-001")
+            self._create_case(client, seeded, "TC-BOP-002")
+
+            resp = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-cases/batch-operations",
+                json={
+                    "operation": "update_priority",
+                    "record_ids": ["TC-BOP-001", "TC-BOP-002"],
+                    "update_data": {"priority": "High"},
+                },
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert resp.status_code == 200, resp.text
+            data = resp.json()
+            assert data["success"] is True
+            assert data["success_count"] == 2
+
+    def test_batch_delete_requires_admin_scope(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_data(session, scopes=["test_case:read", "test_case:write"])
+        with TestClient(app) as client:
+            created = self._create_case(client, seeded, "TC-BOP-DEL-1")
+
+            resp = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-cases/batch-operations",
+                json={"operation": "delete", "record_ids": [str(created["id"])]},
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert resp.status_code == 403
+
+    def test_batch_delete_with_admin_and_partial_errors(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_data(session)
+        with TestClient(app) as client:
+            created = self._create_case(client, seeded, "TC-BOP-DEL-2")
+
+            resp = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-cases/batch-operations",
+                json={"operation": "delete", "record_ids": [str(created["id"]), "TC-MISSING-999"]},
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert resp.status_code == 200, resp.text
+            data = resp.json()
+            assert data["success_count"] == 1
+            assert data["error_count"] == 1
+
+            detail = client.get(
+                f"/api/app/teams/{seeded['team_id']}/test-cases/{created['id']}",
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert detail.status_code == 404
+
+    def test_batch_unsupported_operation(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_data(session)
+        with TestClient(app) as client:
+            resp = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-cases/batch-operations",
+                json={"operation": "explode", "record_ids": ["TC-X"]},
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert resp.status_code == 400
+
+    def test_bulk_clone_success_then_duplicate_rejected(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_data(session)
+        with TestClient(app) as client:
+            source = self._create_case(client, seeded, "TC-CLONE-SRC", title="Source case")
+
+            resp = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-cases/bulk-clone",
+                json={"items": [{"source_record_id": str(source["id"]), "test_case_number": "TC-CLONE-001"}]},
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert resp.status_code == 200, resp.text
+            data = resp.json()
+            assert data["success"] is True
+            assert data["created_count"] == 1
+
+            dup = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-cases/bulk-clone",
+                json={"items": [{"source_record_id": str(source["id"]), "test_case_number": "TC-CLONE-001"}]},
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert dup.status_code == 200, dup.text
+            assert dup.json()["success"] is False
+            assert dup.json()["duplicates"] == ["TC-CLONE-001"]

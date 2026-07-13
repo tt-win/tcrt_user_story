@@ -23,11 +23,13 @@ from app.api.test_run_configs import (
     verify_team_exists,
 )
 from app.api.test_run_items import (
+    BatchUpdateResultRequest,
     TestRunItemUpdate,
     _add_result_history,
     _db_to_response,
     _to_json,
     _verify_team_and_config,
+    apply_batch_item_update_sync,
 )
 from app.api.test_run_sets import _validate_config_ids
 from app.audit import ActionType
@@ -873,6 +875,89 @@ async def update_app_test_run_item_result(
         extra_details={"item_id": item_id, "test_result": data.get("test_result")},
     )
     return response
+
+
+@router.post("/teams/{team_id}/test-run-configs/{config_id}/items/batch-update-results")
+async def batch_update_app_test_run_item_results(
+    team_id: int,
+    config_id: int,
+    payload: BatchUpdateResultRequest,
+    request: Request,
+    db=Depends(get_db),
+    principal: AppTokenPrincipal = Depends(get_current_app_token_principal),
+):
+    """Batch update run item results via app token (requires test_run:execute).
+
+    Shares the per-item update core with the JWT batch endpoint: supports
+    test_result / assignee_name / executed_at / comment per update, records
+    the same result history, and reports per-item errors without failing the batch.
+    """
+    await require_app_team_access(team_id, request, principal)
+    await _check_scope(principal, SCOPE_TEST_RUN_EXECUTE, request, team_id)
+
+    source = payload.change_source or "app-token-batch"
+    boundary = create_main_access_boundary_for_session(db)
+
+    def _batch(sync_db: Session):
+        _verify_team_and_config(team_id, config_id, sync_db)
+        success = 0
+        errors: List[str] = []
+
+        for upd in payload.updates:
+            try:
+                item_id = upd.get("id")
+                comment_raw = upd.get("comment") if "comment" in upd else None
+                comment_text = comment_raw.strip() if isinstance(comment_raw, str) else None
+                has_basic_update = any(key in upd for key in ["test_result", "assignee_name", "executed_at"])
+                if not item_id or (not has_basic_update and not comment_text):
+                    errors.append("缺少 id 或更新欄位")
+                    continue
+
+                item = (
+                    sync_db.query(TestRunItemDB)
+                    .filter(
+                        TestRunItemDB.id == item_id,
+                        TestRunItemDB.team_id == team_id,
+                        TestRunItemDB.config_id == config_id,
+                    )
+                    .first()
+                )
+                if not item:
+                    errors.append(f"項目 {item_id} 不存在")
+                    continue
+
+                apply_batch_item_update_sync(
+                    sync_db,
+                    item,
+                    upd,
+                    source=source,
+                    changed_by_id=None,
+                    changed_by_name=principal.audit_actor,
+                )
+                success += 1
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"項目 {upd.get('id')} 更新失敗: {str(e)}")
+                continue
+
+        return {"success": success, "errors": errors}
+
+    result = await boundary.run_sync_write(_batch)
+    await log_app_token_audit(
+        request, principal, allowed=True, reason="test_run_items_batch_update_results",
+        action_type=ActionType.UPDATE, team_id=team_id,
+        extra_details={
+            "config_id": config_id,
+            "success_count": result["success"],
+            "error_count": len(result["errors"]),
+        },
+    )
+    return {
+        "success": len(result["errors"]) == 0,
+        "processed_count": len(payload.updates),
+        "success_count": result["success"],
+        "error_count": len(result["errors"]),
+        "error_messages": result["errors"],
+    }
 
 
 @router.delete("/teams/{team_id}/test-run-configs/{config_id}/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)

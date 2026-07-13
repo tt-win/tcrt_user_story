@@ -870,3 +870,78 @@ class TestRunSetReport:
             )
             assert lookup_resp.status_code == 200, lookup_resp.text
             assert lookup_resp.json()["exists"] is True
+
+
+class TestBatchUpdateResults:
+    def test_batch_update_results_scope_success_and_partial_errors(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_with_case_set(
+                session, scopes=["test_run:read", "test_run:write", "test_run:execute", "test_run:admin"]
+            )
+            for i in (1, 2):
+                session.add(TestCaseLocal(
+                    team_id=seeded["team_id"], lark_record_id=f"local-bur-{i}", test_case_number=f"TC-BUR-{i}",
+                    title="Case", priority=Priority.MEDIUM, test_case_set_id=seeded["case_set_id"],
+                ))
+            session.commit()
+
+        write_only_raw, write_only_hash, write_only_prefix = generate_app_token()
+        with temp_db() as session:
+            team = session.query(Team).filter(Team.id == seeded["team_id"]).one()
+            session.add(TeamAppToken(
+                name="wo-bur", owner_team_id=team.id, token_hash=write_only_hash, token_prefix=write_only_prefix,
+                status=TeamAppTokenStatus.ACTIVE, scopes_json=json.dumps(["test_run:read", "test_run:write"]),
+                expires_at=datetime.utcnow() + timedelta(days=90),
+            ))
+            session.commit()
+
+        with TestClient(app) as client:
+            config = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-configs",
+                json={"name": "Batch Update Config", "test_case_set_ids": [seeded["case_set_id"]]},
+                headers=_bearer(seeded["write_token"]),
+            ).json()
+            client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-configs/{config['id']}/items",
+                json={"items": [{"test_case_number": "TC-BUR-1"}, {"test_case_number": "TC-BUR-2"}]},
+                headers=_bearer(seeded["write_token"]),
+            )
+            with temp_db() as session:
+                item_ids = [
+                    row.id
+                    for row in session.query(TestRunItem).filter(TestRunItem.config_id == config["id"]).all()
+                ]
+
+            url = f"/api/app/teams/{seeded['team_id']}/test-run-configs/{config['id']}/items/batch-update-results"
+
+            denied = client.post(
+                url,
+                json={"updates": [{"id": item_ids[0], "test_result": "Passed"}]},
+                headers=_bearer(write_only_raw),
+            )
+            assert denied.status_code == 403
+
+            resp = client.post(
+                url,
+                json={
+                    "updates": [
+                        {"id": item_ids[0], "test_result": "Passed"},
+                        {"id": item_ids[1], "test_result": "Failed", "comment": "flaky env"},
+                        {"id": 99999, "test_result": "Passed"},
+                    ]
+                },
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert resp.status_code == 200, resp.text
+            data = resp.json()
+            assert data["processed_count"] == 3
+            assert data["success_count"] == 2
+            assert data["error_count"] == 1
+
+            with temp_db() as session:
+                results = {
+                    row.id: row.test_result
+                    for row in session.query(TestRunItem).filter(TestRunItem.config_id == config["id"]).all()
+                }
+            assert str(results[item_ids[0]]) in ("Passed", "TestResultStatus.PASSED")
+            assert str(results[item_ids[1]]) in ("Failed", "TestResultStatus.FAILED")

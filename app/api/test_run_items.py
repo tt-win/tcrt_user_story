@@ -994,6 +994,95 @@ async def delete_item(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
+def apply_batch_item_update_sync(
+    sync_db: Session,
+    item: TestRunItemDB,
+    upd: Dict[str, Any],
+    *,
+    source: str,
+    changed_by_id: Optional[str],
+    changed_by_name: Optional[str],
+) -> None:
+    """套用單筆批次結果更新（JWT 與 app-token batch 路徑共用，避免邏輯漂移）。
+
+    支援欄位：test_result、executed_at、assignee_name、comment；
+    寫入與單筆更新相同的 result history（含 comment 歷程）。
+    """
+    comment_raw = upd.get("comment") if "comment" in upd else None
+    comment_text = comment_raw.strip() if isinstance(comment_raw, str) else None
+
+    prev_result = item.test_result
+    prev_executed_at = item.executed_at
+
+    # 更新測試結果
+    if "test_result" in upd and upd["test_result"] is not None:
+        item.test_result = upd["test_result"]
+
+    # 更新執行時間
+    if "executed_at" in upd:
+        executed_at_value = upd.get("executed_at")
+        if executed_at_value:
+            # 處理 ISO 字串格式的 datetime
+            if isinstance(executed_at_value, str):
+                try:
+                    if executed_at_value.endswith("Z"):
+                        executed_at_value = executed_at_value[:-1] + "+00:00"
+                    item.executed_at = datetime.fromisoformat(executed_at_value.replace("Z", "+00:00"))
+                except Exception:
+                    item.executed_at = datetime.utcnow()
+            else:
+                item.executed_at = executed_at_value
+        else:
+            item.executed_at = datetime.utcnow()
+
+    # 更新執行者
+    if "assignee_name" in upd:
+        assignee_name = upd.get("assignee_name")
+        if assignee_name:
+            item.assignee_name = assignee_name
+            item.assignee_id = None
+            item.assignee_en_name = None
+            item.assignee_email = None
+            item.assignee_json = None
+        else:
+            item.assignee_id = None
+            item.assignee_name = None
+            item.assignee_en_name = None
+            item.assignee_email = None
+            item.assignee_json = None
+
+    # 記錄歷程（僅在有變更時會落盤）
+    _add_result_history(
+        sync_db,
+        item,
+        prev_result,
+        prev_executed_at,
+        item.test_result,
+        item.executed_at,
+        source=source,
+        reason=upd.get("change_reason"),
+        changed_by_id=changed_by_id,
+        changed_by_name=changed_by_name,
+    )
+
+    # 記錄註釋（comment）歷程
+    if comment_text:
+        _add_result_history(
+            sync_db,
+            item,
+            item.test_result,
+            item.executed_at,
+            item.test_result,
+            item.executed_at,
+            source="comment",
+            reason=comment_text,
+            changed_by_id=changed_by_id,
+            changed_by_name=changed_by_name,
+        )
+
+    item.updated_at = datetime.utcnow()
+
+
 @router.post("/batch-update-results", response_model=Dict[str, Any])
 async def batch_update_results(
     team_id: int,
@@ -1035,76 +1124,14 @@ async def batch_update_results(
                     errors.append(f"項目 {item_id} 不存在")
                     continue
 
-                prev_result = item.test_result
-                prev_executed_at = item.executed_at
-
-                # 更新測試結果
-                if "test_result" in upd and upd["test_result"] is not None:
-                    item.test_result = upd["test_result"]
-
-                # 更新執行時間
-                if "executed_at" in upd:
-                    executed_at_value = upd.get("executed_at")
-                    if executed_at_value:
-                        # 處理 ISO 字串格式的 datetime
-                        if isinstance(executed_at_value, str):
-                            try:
-                                if executed_at_value.endswith("Z"):
-                                    executed_at_value = executed_at_value[:-1] + "+00:00"
-                                item.executed_at = datetime.fromisoformat(executed_at_value.replace("Z", "+00:00"))
-                            except Exception:
-                                item.executed_at = datetime.utcnow()
-                        else:
-                            item.executed_at = executed_at_value
-                    else:
-                        item.executed_at = datetime.utcnow()
-
-                # 更新執行者
-                if "assignee_name" in upd:
-                    assignee_name = upd.get("assignee_name")
-                    if assignee_name:
-                        item.assignee_name = assignee_name
-                        item.assignee_id = None
-                        item.assignee_en_name = None
-                        item.assignee_email = None
-                        item.assignee_json = None
-                    else:
-                        item.assignee_id = None
-                        item.assignee_name = None
-                        item.assignee_en_name = None
-                        item.assignee_email = None
-                        item.assignee_json = None
-
-                # 記錄歷程（僅在有變更時會落盤）
-                _add_result_history(
+                apply_batch_item_update_sync(
                     sync_db,
                     item,
-                    prev_result,
-                    prev_executed_at,
-                    item.test_result,
-                    item.executed_at,
+                    upd,
                     source=source,
-                    reason=upd.get("change_reason"),
                     changed_by_id=str(current_user.id) if current_user else None,
-                    changed_by_name=current_user.full_name or current_user.username if current_user else None,
+                    changed_by_name=(current_user.full_name or current_user.username) if current_user else None,
                 )
-
-                # 記錄註釋（comment）歷程
-                if has_comment_update:
-                    _add_result_history(
-                        sync_db,
-                        item,
-                        item.test_result,
-                        item.executed_at,
-                        item.test_result,
-                        item.executed_at,
-                        source="comment",
-                        reason=comment_text,
-                        changed_by_id=str(current_user.id) if current_user else None,
-                        changed_by_name=current_user.full_name or current_user.username if current_user else None,
-                    )
-
-                item.updated_at = datetime.utcnow()
                 success += 1
                 # 記錄成功更新的項目
                 success_items.append(

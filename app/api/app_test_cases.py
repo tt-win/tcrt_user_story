@@ -13,7 +13,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.api.test_cases import _delete_attachment_common
+from app.api.test_cases import (
+    BulkCloneRequest,
+    _delete_attachment_common,
+    run_bulk_clone_sync,
+    run_test_case_batch_operation_sync,
+)
 from app.auth.app_token_dependencies import (
     AppTokenErrorCodes,
     get_current_app_token_principal,
@@ -31,7 +36,12 @@ from app.models.database_models import (
     TestCaseSet as TestCaseSetDB,
 )
 from app.models.lark_types import Priority
-from app.models.test_case import TestCaseCreate, TestCaseUpdate, normalize_test_data_items
+from app.models.test_case import (
+    TestCaseBatchOperation,
+    TestCaseCreate,
+    TestCaseUpdate,
+    normalize_test_data_items,
+)
 from app.models.test_case_set import (
     TestCaseSectionCreate,
     TestCaseSectionUpdate,
@@ -439,6 +449,91 @@ async def batch_app_test_cases(
         {"batch_size": len(items), "success_count": sum(1 for r in results if r["success"])},
     )
     return {"results": results, "total": len(results), "success_count": sum(1 for r in results if r["success"])}
+
+
+@router.post("/teams/{team_id}/test-cases/batch-operations")
+async def batch_operations_app_test_cases(
+    team_id: int,
+    operation: TestCaseBatchOperation,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    principal: AppTokenPrincipal = Depends(get_current_app_token_principal),
+):
+    """Batch operate test cases via app token, sharing the JWT batch core.
+
+    Supports delete (requires test_case:admin), update_priority, update_tcg,
+    update_section, update_test_set (require test_case:write).
+    """
+    await require_app_team_access(team_id, request, principal)
+    if operation.operation == "delete":
+        await _require_admin_scope(principal, request, team_id)
+    elif not principal.has_scope(SCOPE_TEST_CASE_WRITE):
+        await log_app_token_audit(
+            request, principal, allowed=False, reason="scope_denied:test_case:write", team_id=team_id
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": AppTokenErrorCodes.SCOPE_DENIED, "message": "Missing test_case:write scope"},
+        )
+
+    if not operation.record_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="記錄 ID 列表不能為空")
+
+    main_boundary = create_main_access_boundary_for_session(db)
+
+    def _batch(sync_db: Session):
+        return run_test_case_batch_operation_sync(sync_db, team_id, operation, principal.audit_actor)
+
+    response, _log_context = await main_boundary.run_sync_write(_batch)
+    await _audit_mutation(
+        request, principal,
+        ActionType.DELETE if operation.operation == "delete" else ActionType.UPDATE,
+        team_id,
+        f"test_case:batch-{operation.operation}",
+        {
+            "operation": operation.operation,
+            "success_count": response.success_count,
+            "error_count": response.error_count,
+        },
+    )
+    return response
+
+
+@router.post("/teams/{team_id}/test-cases/bulk-clone")
+async def bulk_clone_app_test_cases(
+    team_id: int,
+    body: BulkCloneRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    principal: AppTokenPrincipal = Depends(get_current_app_token_principal),
+):
+    """Bulk clone test cases via app token (requires test_case:write), sharing the JWT core."""
+    await require_app_team_access(team_id, request, principal)
+    if not principal.has_scope(SCOPE_TEST_CASE_WRITE):
+        await log_app_token_audit(
+            request, principal, allowed=False, reason="scope_denied:test_case:write", team_id=team_id
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": AppTokenErrorCodes.SCOPE_DENIED, "message": "Missing test_case:write scope"},
+        )
+
+    main_boundary = create_main_access_boundary_for_session(db)
+
+    def _clone(sync_db: Session):
+        return run_bulk_clone_sync(sync_db, team_id, body)
+
+    response, _audit_context = await main_boundary.run_sync_write(_clone)
+    await _audit_mutation(
+        request, principal, ActionType.CREATE, team_id,
+        "test_case:bulk-clone",
+        {
+            "created_count": response.created_count,
+            "duplicates": response.duplicates,
+            "error_count": len(response.errors),
+        },
+    )
+    return response
 
 
 async def _require_admin_scope(principal: AppTokenPrincipal, request: Request, team_id: int) -> None:
