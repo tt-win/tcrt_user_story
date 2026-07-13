@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Tests for the app token pins API (/api/app/teams/{team_id}/pins)."""
 
 from __future__ import annotations
@@ -9,12 +10,14 @@ import sys
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import IntegrityError
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.auth.app_token_dependencies import generate_app_token
+import app.api.app_pins as app_pins_api
 from app.database import get_db
 from app.main import app
 from app.models.database_models import Team, TeamAppToken, TeamAppTokenStatus, User
@@ -126,9 +129,17 @@ def _bearer(token: str) -> dict:
 
 
 class TestListPins:
-    def test_list_empty_returns_all_entity_types(self, temp_db):
+    def test_list_empty_returns_all_entity_types(self, temp_db, monkeypatch):
         with temp_db() as session:
             seeded = _seed_data(session)
+
+        audit_calls = []
+
+        async def _capture_audit(*_args, **kwargs):
+            audit_calls.append(kwargs)
+
+        monkeypatch.setattr(app_pins_api, "log_app_token_audit", _capture_audit)
+
         with TestClient(app) as client:
             resp = client.get(
                 f"/api/app/teams/{seeded['team_id']}/pins", headers=_bearer(seeded["read_token"])
@@ -137,6 +148,15 @@ class TestListPins:
             data = resp.json()
             assert set(data.keys()) == {"test_case_set", "test_run_set", "test_run", "adhoc_run"}
             assert all(v == [] for v in data.values())
+            assert audit_calls == [
+                {
+                    "allowed": True,
+                    "reason": "pin_listed",
+                    "action_type": app_pins_api.ActionType.READ,
+                    "team_id": seeded["team_id"],
+                    "extra_details": {"pin_count": 0},
+                }
+            ]
 
     def test_list_after_create(self, temp_db):
         with temp_db() as session:
@@ -222,6 +242,33 @@ class TestCreatePin:
                 f"/api/app/teams/{seeded['team_id']}/pins", headers=_bearer(seeded["read_token"])
             )
             assert listed.json()["test_case_set"] == [9]
+
+    def test_create_returns_already_pinned_when_a_concurrent_create_wins(self, temp_db, monkeypatch):
+        with temp_db() as session:
+            seeded = _seed_data(session)
+
+        class ConcurrentCreateBoundary:
+            async def run_sync_write(self, _operation):
+                raise IntegrityError("INSERT", {}, Exception("unique constraint"))
+
+            async def run_sync_read(self, _operation):
+                return True
+
+        monkeypatch.setattr(
+            app_pins_api,
+            "create_main_access_boundary_for_session",
+            lambda _db: ConcurrentCreateBoundary(),
+        )
+
+        with TestClient(app) as client:
+            response = client.post(
+                f"/api/app/teams/{seeded['team_id']}/pins",
+                json={"entity_type": "test_case_set", "entity_id": 10},
+                headers=_bearer(seeded["tc_write_token"]),
+            )
+
+        assert response.status_code == 201
+        assert response.json() == {"success": True, "already_pinned": True}
 
     def test_create_test_case_set_requires_test_case_write(self, temp_db):
         with temp_db() as session:

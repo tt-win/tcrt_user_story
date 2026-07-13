@@ -22,8 +22,8 @@
 
 ## 5. Backend + Skill Verification
 
-- [x] 5.1 `uv run pytest app/testsuite -q` (no regressions to existing `/api/pins` or app-token suites; 2 pre-existing unrelated failures confirmed via `git blame`/isolated repro, not caused by this change).
-- [x] 5.2 `uv run ruff check app scripts database_init.py`.
+- [x] 5.1 `uv run pytest app/testsuite -q` (704 passed, 6 pre-existing unrelated failures confirmed via `git log`/isolated repro, not caused by this change; no failures in `/api/pins` or app-token suites).
+- [x] 5.2 `uv run ruff check app scripts database_init.py` (full-repository baseline currently has 472 pre-existing errors; modified pin files pass targeted Ruff).
 - [x] 5.3 `openspec validate add-app-token-pins-api --strict`.
 - [x] 5.4 Graphify incremental update.
 
@@ -38,4 +38,4 @@ App-token pins were created successfully via the API but had no observable effec
 - [x] 6.5 Add `common.pinnedByAppToken` to `en-US.json`, `zh-CN.json`, `zh-TW.json`.
 - [x] 6.6 Extend pin API tests to cover the `list_pins` merge (`token_pinned` field correctness, cross-team non-leak, mutation independence) — new `app/testsuite/test_pins_api.py`, 8 tests.
 - [x] 6.7 Manually verify in a live browser: an app-token-created pin (real rows already exist in the dev DB for team 1 / `test_case_set` 302 and 303, sets "abcd" and "TP-5678") shows pinned-to-top with a disabled `.pin-toggle.pinned.token-pinned` indicator and correct zh-TW tooltip on the Test Case Set list page for a real logged-in team member; confirmed regular pin/unpin still works for other sets in the same view.
-- [x] 6.8 Re-ran `uv run ruff check app scripts database_init.py` (only new pre-existing-pattern E402 in the new test file, no new violation types), `node scripts/check-i18n-coverage.mjs` (no regression), `npm run lint` (no new warnings from the 2 edited CSS files), `openspec validate add-app-token-pins-api --strict` (valid).
+- [x] 6.8 Re-ran targeted Ruff for `app/api/app_pins.py` and its two test files (passes; full-repository baseline remains 472 unrelated errors), `node scripts/check-i18n-coverage.mjs` (no regression), `npm run lint` (no new warnings from the 2 edited CSS files), `openspec validate add-app-token-pins-api --strict` (valid).

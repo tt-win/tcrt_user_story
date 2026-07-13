@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Tests for the JWT per-user pins API (/api/pins), including its merge with
 team-scoped app-token pins (AppTokenPin) in the list response."""
 
