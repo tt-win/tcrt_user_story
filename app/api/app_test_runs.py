@@ -5,12 +5,16 @@ from __future__ import annotations
 from datetime import datetime
 import json
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.test_run_configs import (
+    StatusChangeRequest,
     attach_config_to_set,
     build_config_summary,
     delete_test_run_config_cascade_sync,
@@ -50,13 +54,41 @@ from app.models.database_models import (
 )
 from app.models.test_run_config import TestRunConfigCreate, TestRunConfigUpdate, TestRunStatus
 from app.models.test_run_set import TestRunSetCreate, TestRunSetStatus, TestRunSetUpdate
+from app.services.attachment_storage import build_attachment_metadata, get_attachments_root_dir
 from app.services.test_result_cleanup_service import TestResultCleanupService
 from app.services.test_run_scope_service import TestRunScopeService
-from app.services.test_run_set_status import recalculate_set_status_sync
+from app.services.test_run_set_status import (
+    apply_config_status_transition_sync,
+    recalculate_set_status_sync,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/app", tags=["app-test-run-mutations"])
+
+
+class AppTestRunItemReadItem(BaseModel):
+    id: int
+    test_case_number: str
+    test_result: Optional[str] = None
+    executed_at: Optional[datetime] = None
+    execution_duration: Optional[int] = None
+    assignee_name: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+
+class AppTestRunItemPage(BaseModel):
+    skip: int
+    limit: int
+    total: int
+    has_next: bool
+
+
+class AppTestRunItemListResponse(BaseModel):
+    team_id: int
+    config_id: int
+    items: List[AppTestRunItemReadItem]
+    page: AppTestRunItemPage
 
 
 def _serialize_config(config: TestRunConfigDB, cleanup_summary: Optional[dict] = None) -> Dict[str, Any]:
@@ -70,6 +102,7 @@ def _serialize_config(config: TestRunConfigDB, cleanup_summary: Optional[dict] =
         "test_environment": config.test_environment,
         "build_number": config.build_number,
         "test_case_set_ids": TestRunScopeService.parse_scope_ids_json(config.test_case_set_ids_json),
+        "related_tp_tickets": json.loads(config.related_tp_tickets_json) if config.related_tp_tickets_json else [],
         "created_at": config.created_at.isoformat() if config.created_at else None,
         "updated_at": config.updated_at.isoformat() if config.updated_at else None,
         "cleanup_summary": cleanup_summary,
@@ -214,6 +247,8 @@ async def update_app_test_run_config(
             config.build_number = body.build_number
         if body.status is not None:
             config.status = body.status
+        if body.related_tp_tickets is not None:
+            config.related_tp_tickets_json = json.dumps(body.related_tp_tickets)
 
         cleanup_summary = None
         if body.test_case_set_ids is not None:
@@ -245,6 +280,58 @@ async def update_app_test_run_config(
         extra_details={"config_id": config.id, "cleanup_summary": cleanup_summary},
     )
     return _serialize_config(config, cleanup_summary=cleanup_summary)
+
+
+@router.put("/teams/{team_id}/test-run-configs/{config_id}/status")
+async def change_app_test_run_config_status(
+    team_id: int,
+    config_id: int,
+    body: StatusChangeRequest,
+    request: Request,
+    db=Depends(get_db),
+    principal: AppTokenPrincipal = Depends(get_current_app_token_principal),
+):
+    """Transition a Test Run Config through its lifecycle (requires test_run:write).
+
+    Unlike the plain PUT, this enforces the status state machine (shared with the
+    JWT endpoint), applies start/end date side-effects, and recalculates the
+    parent set status.
+    """
+    await require_app_team_access(team_id, request, principal)
+    await _check_scope(principal, SCOPE_TEST_RUN_WRITE, request, team_id)
+
+    boundary = create_main_access_boundary_for_session(db)
+
+    def _change(sync_db: Session):
+        config = sync_db.query(TestRunConfigDB).filter(
+            TestRunConfigDB.id == config_id, TestRunConfigDB.team_id == team_id
+        ).first()
+        if not config:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Test run config not found")
+
+        try:
+            apply_config_status_transition_sync(config, body.status)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+        if config.set_membership:
+            set_db = ensure_test_run_set(sync_db, team_id, config.set_membership.set_id)
+            recalculate_set_status_sync(sync_db, set_db)
+
+        sync_db.flush()
+        sync_db.refresh(config)
+        return config
+
+    config = await boundary.run_sync_write(_change)
+    await log_app_token_audit(
+        request, principal, allowed=True, reason="test_run_config_status_change",
+        action_type=ActionType.UPDATE, team_id=team_id,
+        extra_details={
+            "config_id": config_id,
+            "status": body.status.value if hasattr(body.status, "value") else str(body.status),
+        },
+    )
+    return _serialize_config(config)
 
 
 @router.delete("/teams/{team_id}/test-run-configs/{config_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -559,6 +646,64 @@ async def move_app_test_run_config_between_sets(
 # --------------------------------------------------------------------- test run items
 
 
+@router.get(
+    "/teams/{team_id}/test-run-configs/{config_id}/items",
+    response_model=AppTestRunItemListResponse,
+)
+async def list_app_test_run_items(
+    team_id: int,
+    config_id: int,
+    request: Request,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db=Depends(get_db),
+    principal: AppTokenPrincipal = Depends(get_current_app_token_principal),
+):
+    """List a Test Run Config's item execution metadata (requires test_run:read)."""
+    await require_app_team_access(team_id, request, principal)
+    await _check_scope(principal, SCOPE_TEST_RUN_READ, request, team_id)
+
+    boundary = create_main_access_boundary_for_session(db)
+
+    def _list(sync_db: Session):
+        _verify_team_and_config(team_id, config_id, sync_db)
+        filters = (TestRunItemDB.team_id == team_id, TestRunItemDB.config_id == config_id)
+        total = sync_db.query(func.count(TestRunItemDB.id)).filter(*filters).scalar() or 0
+        items = (
+            sync_db.query(TestRunItemDB)
+            .filter(*filters)
+            .order_by(TestRunItemDB.id.asc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+        return total, items
+
+    total, items = await boundary.run_sync_read(_list)
+    return AppTestRunItemListResponse(
+        team_id=team_id,
+        config_id=config_id,
+        items=[
+            AppTestRunItemReadItem(
+                id=item.id,
+                test_case_number=item.test_case_number,
+                test_result=item.test_result.value if item.test_result else None,
+                executed_at=item.executed_at,
+                execution_duration=item.execution_duration,
+                assignee_name=item.assignee_name,
+                updated_at=item.updated_at,
+            )
+            for item in items
+        ],
+        page=AppTestRunItemPage(
+            skip=skip,
+            limit=limit,
+            total=total,
+            has_next=skip + len(items) < total,
+        ),
+    )
+
+
 @router.post("/teams/{team_id}/test-run-configs/{config_id}/items", status_code=status.HTTP_201_CREATED)
 async def batch_create_app_test_run_items(
     team_id: int,
@@ -776,6 +921,104 @@ async def delete_app_test_run_item(
         action_type=ActionType.DELETE, team_id=team_id,
         extra_details={"item_id": item_id, "config_id": config_id},
     )
+
+
+@router.post(
+    "/teams/{team_id}/test-run-configs/{config_id}/items/{item_id}/upload-results",
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_app_test_run_item_results(
+    team_id: int,
+    config_id: int,
+    item_id: int,
+    request: Request,
+    files: List[UploadFile] = File(...),
+    principal: AppTokenPrincipal = Depends(get_current_app_token_principal),
+    db=Depends(get_db),
+):
+    """Upload execution result files for a Test Run Item (requires test_run:execute).
+
+    Stores files under ``<attachments>/test-runs/{team}/{config}/{item}/`` and records
+    them in the item's ``execution_results_json`` / ``result_files_*`` / ``upload_history_json``,
+    matching the JWT ``/upload-results`` schema.
+    """
+    await require_app_team_access(team_id, request, principal)
+    await _check_scope(principal, SCOPE_TEST_RUN_EXECUTE, request, team_id)
+
+    boundary = create_main_access_boundary_for_session(db)
+
+    def _load(sync_db: Session):
+        _verify_team_and_config(team_id, config_id, sync_db)
+        item = sync_db.query(TestRunItemDB).filter(
+            TestRunItemDB.id == item_id, TestRunItemDB.team_id == team_id, TestRunItemDB.config_id == config_id
+        ).first()
+        if not item:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Test run item not found")
+        existing = json.loads(item.execution_results_json) if item.execution_results_json else []
+        history = json.loads(item.upload_history_json) if item.upload_history_json else []
+        return {
+            "existing": existing if isinstance(existing, list) else [],
+            "history": history if isinstance(history, list) else [],
+        }
+
+    ctx = await boundary.run_sync_read(_load)
+    existing = ctx["existing"]
+    history = ctx["history"]
+
+    root_dir = get_attachments_root_dir()
+    target_dir = root_dir / "test-runs" / str(team_id) / str(config_id) / str(item_id)
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S-%f")
+    safe_re = re.compile(r"[^A-Za-z0-9_.\-]+")
+    uploaded: List[Dict[str, Any]] = []
+    for f in files:
+        orig_name = f.filename or "unnamed"
+        stored_name = f"{ts}-{safe_re.sub('_', orig_name)}"
+        stored_path = target_dir / stored_name
+        content = await f.read()
+        with open(stored_path, "wb") as out:
+            out.write(content)
+        meta = build_attachment_metadata(
+            root_dir=root_dir,
+            stored_path=stored_path,
+            original_name=orig_name,
+            stored_name=stored_name,
+            size=len(content),
+            content_type=f.content_type or "application/octet-stream",
+            uploaded_at=datetime.utcnow().isoformat(),
+        )
+        existing.append(meta)
+        uploaded.append(meta)
+
+    history.append({"uploaded": len(uploaded), "at": datetime.utcnow().isoformat(), "files": uploaded})
+    execution_results_json = json.dumps(existing, ensure_ascii=False)
+    upload_history_json = json.dumps(history, ensure_ascii=False)
+
+    def _save(sync_db: Session):
+        item = sync_db.query(TestRunItemDB).filter(
+            TestRunItemDB.id == item_id, TestRunItemDB.team_id == team_id, TestRunItemDB.config_id == config_id
+        ).first()
+        if not item:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Test run item not found")
+        item.execution_results_json = execution_results_json
+        item.result_files_uploaded = 1 if len(existing) > 0 else 0
+        item.result_files_count = len(existing)
+        item.upload_history_json = upload_history_json
+        item.updated_at = datetime.utcnow()
+
+    await boundary.run_sync_write(_save)
+    await log_app_token_audit(
+        request, principal, allowed=True, reason="test_run_item_results_upload",
+        action_type=ActionType.CREATE, team_id=team_id,
+        extra_details={"item_id": item_id, "config_id": config_id, "uploaded_count": len(uploaded)},
+    )
+    return {
+        "success": True,
+        "uploaded_files": len(uploaded),
+        "upload_details": uploaded,
+        "base_url": "/attachments",
+    }
 
 
 # --------------------------------------------------------------------- bug tickets

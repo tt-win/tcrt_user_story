@@ -32,7 +32,10 @@ from app.models.lark_types import TestResultStatus
 from app.models.test_run_config import TestRunStatus
 from app.services.lark_notify_service import get_lark_notify_service
 from app.services.test_run_scope_service import TestRunScopeService
-from app.services.test_run_set_status import recalculate_set_status_sync
+from app.services.test_run_set_status import (
+    apply_config_status_transition_sync,
+    recalculate_set_status_sync,
+)
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -790,43 +793,11 @@ async def change_test_run_status(
                 detail=f"找不到測試執行配置 ID {config_id}"
             )
 
-        # 驗證狀態轉換是否合法
-        old_status = config_db.status
-        new_status = status_request.status
-
-        # 定義允許的狀態轉換規則
-        allowed_transitions = {
-            TestRunStatus.DRAFT: [TestRunStatus.ACTIVE, TestRunStatus.ARCHIVED],
-            TestRunStatus.ACTIVE: [TestRunStatus.COMPLETED, TestRunStatus.ARCHIVED],  # 進行中不可回到草稿
-            TestRunStatus.COMPLETED: [TestRunStatus.ARCHIVED],  # 已完成只能歸檔
-            TestRunStatus.ARCHIVED: [TestRunStatus.ACTIVE, TestRunStatus.DRAFT]
-        }
-
-        if new_status not in allowed_transitions.get(old_status, []):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"不允許從 {old_status} 轉換到 {new_status}"
-            )
-
-        # 執行狀態變更
-        config_db.status = new_status
-
-        # 如果從 archived 狀態切換到 active，重新設定開始時間
-        if old_status == TestRunStatus.ARCHIVED and new_status == TestRunStatus.ACTIVE:
-            config_db.start_date = datetime.utcnow()
-            config_db.end_date = None
-
-        # 如果切換到 completed 狀態，設定結束時間
-        if new_status == TestRunStatus.COMPLETED and not config_db.end_date:
-            config_db.end_date = datetime.utcnow()
-
-        # 如果切換到 active 狀態，清除結束時間
-        if new_status == TestRunStatus.ACTIVE:
-            config_db.end_date = None
-            if not config_db.start_date:
-                config_db.start_date = datetime.utcnow()
-
-        config_db.updated_at = datetime.utcnow()
+        # 狀態機驗證與日期副作用（與 app-token /status 共用同一 helper）
+        try:
+            apply_config_status_transition_sync(config_db, status_request.status)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
         parent_set_id = None
         if config_db.set_membership:
