@@ -3194,7 +3194,7 @@
   },
   "appToken": {
     "menuLabel": "应用令牌",
-    "modalTitle": "应用令牌",
+    "modalTitle": "App Token",
     "tokenList": "令牌列表",
     "createButton": "创建令牌",
     "tokenName": "令牌名称",
