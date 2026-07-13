@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import List, Sequence, Union
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,39 @@ from app.models.database_models import (
 )
 from app.models.test_run_config import TestRunStatus
 from app.models.test_run_set import TestRunSetStatus
+
+
+def apply_config_status_transition_sync(
+    config_db: TestRunConfigDB, new_status: TestRunStatus
+) -> None:
+    """套用 Test Run Config 的狀態轉換（合法性驗證 + 日期副作用）。
+
+    供 JWT 與 app-token 的 ``/status`` 端點共用，確保狀態機不在兩條 auth 路徑漂移。
+    非法轉換時 raise ``ValueError``；不負責所屬 set 的狀態重算（由呼叫端處理）。
+    """
+    old_status = config_db.status
+    allowed_transitions = {
+        TestRunStatus.DRAFT: [TestRunStatus.ACTIVE, TestRunStatus.ARCHIVED],
+        TestRunStatus.ACTIVE: [TestRunStatus.COMPLETED, TestRunStatus.ARCHIVED],
+        TestRunStatus.COMPLETED: [TestRunStatus.ARCHIVED],
+        TestRunStatus.ARCHIVED: [TestRunStatus.ACTIVE, TestRunStatus.DRAFT],
+    }
+    if new_status not in allowed_transitions.get(old_status, []):
+        raise ValueError(f"不允許從 {old_status} 轉換到 {new_status}")
+
+    config_db.status = new_status
+
+    if old_status == TestRunStatus.ARCHIVED and new_status == TestRunStatus.ACTIVE:
+        config_db.start_date = datetime.utcnow()
+        config_db.end_date = None
+    if new_status == TestRunStatus.COMPLETED and not config_db.end_date:
+        config_db.end_date = datetime.utcnow()
+    if new_status == TestRunStatus.ACTIVE:
+        config_db.end_date = None
+        if not config_db.start_date:
+            config_db.start_date = datetime.utcnow()
+
+    config_db.updated_at = datetime.utcnow()
 
 
 def _normalize_status_row(row: Union[TestRunStatus, tuple]) -> TestRunStatus | None:

@@ -3243,7 +3243,7 @@
   },
   "appToken": {
     "menuLabel": "App Tokens",
-    "modalTitle": "App Tokens",
+    "modalTitle": "App Token",
     "tokenList": "Token List",
     "createButton": "Create Token",
     "tokenName": "Token Name",

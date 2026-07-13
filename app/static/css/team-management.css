@@ -32,6 +32,68 @@
     max-width: 800px;
 }
 
+#appTokenModal .modal-dialog {
+    max-width: min(1140px, calc(100% - 2rem));
+}
+
+#appTokenModal .app-token-table-responsive {
+    max-height: 56vh;
+    overflow: auto;
+}
+
+#appTokenModal .app-token-table {
+    min-width: 940px;
+    table-layout: fixed;
+}
+
+#appTokenModal .app-token-table__name {
+    width: 16%;
+}
+
+#appTokenModal .app-token-table__prefix {
+    width: 14%;
+}
+
+#appTokenModal .app-token-table__status {
+    width: 10%;
+}
+
+#appTokenModal .app-token-table__scopes {
+    width: 22%;
+}
+
+#appTokenModal .app-token-table__expires-at {
+    width: 11%;
+}
+
+#appTokenModal .app-token-table__last-used-at {
+    width: 14%;
+}
+
+#appTokenModal .app-token-table__actions {
+    width: 13%;
+}
+
+#appTokenModal .app-token-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    white-space: nowrap;
+}
+
+#appTokenModal .app-token-table td:nth-child(1),
+#appTokenModal .app-token-table td:nth-child(2),
+#appTokenModal .app-token-table td:nth-child(3),
+#appTokenModal .app-token-table td:nth-child(7) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#appTokenModal .app-token-table td:nth-child(4) {
+    overflow-wrap: anywhere;
+}
+
 /* Prevent sync action buttons from wrapping and stretching */
 .no-stretch .btn {
     flex: 0 0 auto;

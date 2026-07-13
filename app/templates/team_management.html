@@ -758,11 +758,11 @@
 
 <!-- App Token Management Modal -->
 <div class="modal fade" id="appTokenModal" tabindex="-1" aria-labelledby="appTokenModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="appTokenModalLabel">
-                    <i class="fas fa-key me-2"></i><span data-i18n="appToken.modalTitle">App Tokens</span>
+                    <i class="fas fa-key me-2"></i><span data-i18n="appToken.modalTitle">App Token</span>
                     <small class="text-muted ms-2" id="appTokenTeamName"></small>
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
@@ -869,8 +869,17 @@
                 </div>
 
                 <!-- Token list table -->
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover">
+                <div class="table-responsive app-token-table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0 app-token-table">
+                        <colgroup>
+                            <col class="app-token-table__name">
+                            <col class="app-token-table__prefix">
+                            <col class="app-token-table__status">
+                            <col class="app-token-table__scopes">
+                            <col class="app-token-table__expires-at">
+                            <col class="app-token-table__last-used-at">
+                            <col class="app-token-table__actions">
+                        </colgroup>
                         <thead>
                             <tr>
                                 <th data-i18n="appToken.tokenName">Name</th>

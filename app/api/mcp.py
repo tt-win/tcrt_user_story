@@ -309,13 +309,14 @@ async def list_teams(
         stmt = stmt.where(TeamDB.id.in_(principal.team_scope_ids))
 
     teams = (await db.execute(stmt)).scalars().all()
+    team_case_counts = await _get_team_case_counts(db)
     items = [
         MCPTeamItem(
             id=team.id,
             name=team.name,
             description=team.description,
             status=_to_text(team.status) or "active",
-            test_case_count=team.test_case_count or 0,
+            test_case_count=team_case_counts.get(team.id, 0),
             created_at=team.created_at,
             updated_at=team.updated_at,
             last_sync_at=team.last_sync_at,
@@ -873,6 +874,15 @@ async def list_team_test_runs(
         },
     )
 
+
+
+async def _get_team_case_counts(db: AsyncSession) -> dict[int, int]:
+    """回傳 {team_id: 該 team 的 test case 總數}；`Team.test_case_count` 欄位無人維護，勿使用。"""
+    rows = await db.execute(
+        select(TestCaseLocalDB.team_id, func.count(TestCaseLocalDB.id))
+        .group_by(TestCaseLocalDB.team_id)
+    )
+    return {team_id: int(count or 0) for team_id, count in rows.all()}
 
 
 async def _get_section_case_counts(

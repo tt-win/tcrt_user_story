@@ -28,7 +28,7 @@ from app.models.database_models import (
     TestRunSet,
     User,
 )
-from app.models.lark_types import Priority
+from app.models.lark_types import Priority, TestResultStatus
 from app.models.test_run_set import TestRunSetStatus
 from app.testsuite.db_test_helpers import (
     create_managed_test_database,
@@ -140,6 +140,81 @@ class TestTestRunConfig:
             )
             assert resp.status_code == 200
             assert resp.json()["name"] == "Updated Config"
+
+    def test_update_config_sets_related_tp_tickets(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_data(session)
+        with TestClient(app) as client:
+            create_resp = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-configs",
+                json={"name": "TP Config"},
+                headers=_bearer(seeded["write_token"]),
+            )
+            cid = create_resp.json()["id"]
+            assert create_resp.json()["related_tp_tickets"] == []
+
+            resp = client.put(
+                f"/api/app/teams/{seeded['team_id']}/test-run-configs/{cid}",
+                json={"related_tp_tickets": ["TP-123", "TP-456"]},
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert resp.status_code == 200
+            assert resp.json()["related_tp_tickets"] == ["TP-123", "TP-456"]
+
+    def test_update_config_preserves_tp_tickets_when_omitted(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_data(session)
+        with TestClient(app) as client:
+            create_resp = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-configs",
+                json={"name": "TP Keep", "related_tp_tickets": ["TP-789"]},
+                headers=_bearer(seeded["write_token"]),
+            )
+            cid = create_resp.json()["id"]
+            assert create_resp.json()["related_tp_tickets"] == ["TP-789"]
+
+            resp = client.put(
+                f"/api/app/teams/{seeded['team_id']}/test-run-configs/{cid}",
+                json={"name": "TP Keep Renamed"},
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert resp.status_code == 200
+            assert resp.json()["name"] == "TP Keep Renamed"
+            assert resp.json()["related_tp_tickets"] == ["TP-789"]
+
+    def test_status_transitions_and_rejects_illegal(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_data(session)
+        with TestClient(app) as client:
+            cid = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-configs",
+                json={"name": "Lifecycle"},
+                headers=_bearer(seeded["write_token"]),
+            ).json()["id"]
+
+            active = client.put(
+                f"/api/app/teams/{seeded['team_id']}/test-run-configs/{cid}/status",
+                json={"status": "active"},
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert active.status_code == 200, active.text
+            assert active.json()["status"] == "active"
+
+            completed = client.put(
+                f"/api/app/teams/{seeded['team_id']}/test-run-configs/{cid}/status",
+                json={"status": "completed"},
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert completed.status_code == 200, completed.text
+            assert completed.json()["status"] == "completed"
+
+            # completed -> active is not an allowed transition
+            illegal = client.put(
+                f"/api/app/teams/{seeded['team_id']}/test-run-configs/{cid}/status",
+                json={"status": "active"},
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert illegal.status_code == 400, illegal.text
 
     def test_delete_config_requires_admin(self, temp_db):
         with temp_db() as session:
@@ -421,6 +496,85 @@ class TestSetArchiveAndMembership:
 
 
 class TestRunItemsBatchAndExecution:
+    def test_list_items_paginates_and_enforces_read_scope(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_data(session, scopes=["test_run:write"])
+
+        with TestClient(app) as client:
+            config = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-configs",
+                json={"name": "Listable config"},
+                headers=_bearer(seeded["write_token"]),
+            ).json()
+
+            with temp_db() as session:
+                session.add_all(
+                    [
+                        TestRunItem(
+                            team_id=seeded["team_id"],
+                            config_id=config["id"],
+                            test_case_number="TC-LIST-001",
+                            test_result=TestResultStatus.PASSED,
+                            executed_at=datetime.utcnow(),
+                            execution_duration=12,
+                            assignee_name="Alice",
+                        ),
+                        TestRunItem(
+                            team_id=seeded["team_id"],
+                            config_id=config["id"],
+                            test_case_number="TC-LIST-002",
+                            test_result=TestResultStatus.PENDING,
+                        ),
+                        TestRunItem(
+                            team_id=seeded["team_id"],
+                            config_id=config["id"],
+                            test_case_number="TC-LIST-003",
+                        ),
+                    ]
+                )
+                session.commit()
+
+            url = f"/api/app/teams/{seeded['team_id']}/test-run-configs/{config['id']}/items"
+            denied = client.get(url, headers=_bearer(seeded["write_token"]))
+            assert denied.status_code == 403
+            assert denied.json()["detail"]["code"] == "APP_TOKEN_SCOPE_DENIED"
+
+            cross_team = client.get(
+                f"/api/app/teams/{seeded['other_team_id']}/test-run-configs/{config['id']}/items",
+                headers=_bearer(seeded["read_token"]),
+            )
+            assert cross_team.status_code == 403
+
+            response = client.get(url, params={"limit": 2}, headers=_bearer(seeded["read_token"]))
+            assert response.status_code == 200, response.text
+            data = response.json()
+            assert data["team_id"] == seeded["team_id"]
+            assert data["config_id"] == config["id"]
+            assert data["page"] == {"skip": 0, "limit": 2, "total": 3, "has_next": True}
+            assert [item["test_case_number"] for item in data["items"]] == [
+                "TC-LIST-001",
+                "TC-LIST-002",
+            ]
+            assert data["items"][0]["test_result"] == "Passed"
+            assert set(data["items"][0]) == {
+                "id",
+                "test_case_number",
+                "test_result",
+                "executed_at",
+                "execution_duration",
+                "assignee_name",
+                "updated_at",
+            }
+
+            next_page = client.get(
+                url,
+                params={"skip": 2, "limit": 2},
+                headers=_bearer(seeded["read_token"]),
+            )
+            assert next_page.status_code == 200
+            assert next_page.json()["page"] == {"skip": 2, "limit": 2, "total": 3, "has_next": False}
+            assert [item["test_case_number"] for item in next_page.json()["items"]] == ["TC-LIST-003"]
+
     def test_batch_create_rejects_out_of_scope_case(self, temp_db):
         with temp_db() as session:
             seeded = _seed_with_case_set(session)
@@ -535,6 +689,63 @@ class TestRunItemsBatchAndExecution:
                 headers=_bearer(seeded["write_token"]),
             )
             assert delete_resp.status_code == 204
+
+    def test_upload_results_scope_success_and_missing_item(self, temp_db, tmp_path, monkeypatch):
+        monkeypatch.setenv("ATTACHMENTS_ROOT_DIR", str(tmp_path))
+        with temp_db() as session:
+            seeded = _seed_with_case_set(
+                session, scopes=["test_run:read", "test_run:write", "test_run:execute", "test_run:admin"]
+            )
+            case = TestCaseLocal(
+                team_id=seeded["team_id"], lark_record_id="local-tri-up", test_case_number="TC-TRI-UP",
+                title="Case", priority=Priority.MEDIUM, test_case_set_id=seeded["case_set_id"],
+            )
+            session.add(case)
+            session.commit()
+
+        write_only_raw, write_only_hash, write_only_prefix = generate_app_token()
+        with temp_db() as session:
+            team = session.query(Team).filter(Team.id == seeded["team_id"]).one()
+            session.add(TeamAppToken(
+                name="wo-up", owner_team_id=team.id, token_hash=write_only_hash, token_prefix=write_only_prefix,
+                status=TeamAppTokenStatus.ACTIVE, scopes_json=json.dumps(["test_run:read", "test_run:write"]),
+                expires_at=datetime.utcnow() + timedelta(days=90),
+            ))
+            session.commit()
+
+        with TestClient(app) as client:
+            config = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-configs",
+                json={"name": "Upload Config", "test_case_set_ids": [seeded["case_set_id"]]},
+                headers=_bearer(seeded["write_token"]),
+            ).json()
+            client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-configs/{config['id']}/items",
+                json={"items": [{"test_case_number": "TC-TRI-UP"}]},
+                headers=_bearer(seeded["write_token"]),
+            )
+            with temp_db() as session:
+                item_id = session.query(TestRunItem).filter(TestRunItem.config_id == config["id"]).one().id
+
+            url = f"/api/app/teams/{seeded['team_id']}/test-run-configs/{config['id']}/items/{item_id}/upload-results"
+
+            denied = client.post(
+                url, files={"files": ("evidence.txt", b"hello", "text/plain")}, headers=_bearer(write_only_raw)
+            )
+            assert denied.status_code == 403
+
+            ok = client.post(
+                url, files={"files": ("evidence.txt", b"hello", "text/plain")}, headers=_bearer(seeded["write_token"])
+            )
+            assert ok.status_code == 201, ok.text
+            assert ok.json()["uploaded_files"] == 1
+
+            missing = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-configs/{config['id']}/items/99999/upload-results",
+                files={"files": ("evidence.txt", b"hello", "text/plain")},
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert missing.status_code == 404
 
     def test_bug_ticket_lifecycle(self, temp_db):
         with temp_db() as session:
@@ -659,3 +870,78 @@ class TestRunSetReport:
             )
             assert lookup_resp.status_code == 200, lookup_resp.text
             assert lookup_resp.json()["exists"] is True
+
+
+class TestBatchUpdateResults:
+    def test_batch_update_results_scope_success_and_partial_errors(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_with_case_set(
+                session, scopes=["test_run:read", "test_run:write", "test_run:execute", "test_run:admin"]
+            )
+            for i in (1, 2):
+                session.add(TestCaseLocal(
+                    team_id=seeded["team_id"], lark_record_id=f"local-bur-{i}", test_case_number=f"TC-BUR-{i}",
+                    title="Case", priority=Priority.MEDIUM, test_case_set_id=seeded["case_set_id"],
+                ))
+            session.commit()
+
+        write_only_raw, write_only_hash, write_only_prefix = generate_app_token()
+        with temp_db() as session:
+            team = session.query(Team).filter(Team.id == seeded["team_id"]).one()
+            session.add(TeamAppToken(
+                name="wo-bur", owner_team_id=team.id, token_hash=write_only_hash, token_prefix=write_only_prefix,
+                status=TeamAppTokenStatus.ACTIVE, scopes_json=json.dumps(["test_run:read", "test_run:write"]),
+                expires_at=datetime.utcnow() + timedelta(days=90),
+            ))
+            session.commit()
+
+        with TestClient(app) as client:
+            config = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-configs",
+                json={"name": "Batch Update Config", "test_case_set_ids": [seeded["case_set_id"]]},
+                headers=_bearer(seeded["write_token"]),
+            ).json()
+            client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-configs/{config['id']}/items",
+                json={"items": [{"test_case_number": "TC-BUR-1"}, {"test_case_number": "TC-BUR-2"}]},
+                headers=_bearer(seeded["write_token"]),
+            )
+            with temp_db() as session:
+                item_ids = [
+                    row.id
+                    for row in session.query(TestRunItem).filter(TestRunItem.config_id == config["id"]).all()
+                ]
+
+            url = f"/api/app/teams/{seeded['team_id']}/test-run-configs/{config['id']}/items/batch-update-results"
+
+            denied = client.post(
+                url,
+                json={"updates": [{"id": item_ids[0], "test_result": "Passed"}]},
+                headers=_bearer(write_only_raw),
+            )
+            assert denied.status_code == 403
+
+            resp = client.post(
+                url,
+                json={
+                    "updates": [
+                        {"id": item_ids[0], "test_result": "Passed"},
+                        {"id": item_ids[1], "test_result": "Failed", "comment": "flaky env"},
+                        {"id": 99999, "test_result": "Passed"},
+                    ]
+                },
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert resp.status_code == 200, resp.text
+            data = resp.json()
+            assert data["processed_count"] == 3
+            assert data["success_count"] == 2
+            assert data["error_count"] == 1
+
+            with temp_db() as session:
+                results = {
+                    row.id: row.test_result
+                    for row in session.query(TestRunItem).filter(TestRunItem.config_id == config["id"]).all()
+                }
+            assert str(results[item_ids[0]]) in ("Passed", "TestResultStatus.PASSED")
+            assert str(results[item_ids[1]]) in ("Failed", "TestResultStatus.FAILED")

@@ -3337,8 +3337,8 @@
     "saveFailed": "更新 Automation Hub 入口設定失敗"
   },
   "appToken": {
-    "menuLabel": "應用程式權杖",
-    "modalTitle": "應用程式權杖",
+    "menuLabel": "App Token",
+    "modalTitle": "App Token",
     "tokenList": "權杖列表",
     "createButton": "建立權杖",
     "tokenName": "權杖名稱",
@@ -3369,7 +3369,7 @@
     "revokeFailed": "撤銷權杖失敗",
     "rotateFailed": "輪替權杖失敗",
     "loadFailed": "載入權杖失敗",
-    "noTokens": "無應用程式權杖",
+    "noTokens": "無 App Token",
     "loading": "載入中...",
     "nameRequired": "權杖名稱為必填項",
     "scopeRequired": "至少需要選擇一個權限範圍"

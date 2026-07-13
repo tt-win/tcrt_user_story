@@ -12,6 +12,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -128,7 +129,17 @@ async def list_app_team_pins(
             grouped.setdefault(entity_type, []).append(entity_id)
         return grouped
 
-    return await main_boundary.run_sync_read(_load)
+    result = await main_boundary.run_sync_read(_load)
+    await log_app_token_audit(
+        request,
+        principal,
+        allowed=True,
+        reason="pin_listed",
+        action_type=ActionType.READ,
+        team_id=team_id,
+        extra_details={"pin_count": sum(len(ids) for ids in result.values())},
+    )
+    return result
 
 
 @router.post("/teams/{team_id}/pins", status_code=status.HTTP_201_CREATED)
@@ -169,7 +180,24 @@ async def create_app_team_pin(
         )
         return {"success": True, "already_pinned": False}
 
-    result = await main_boundary.run_sync_write(_create)
+    try:
+        result = await main_boundary.run_sync_write(_create)
+    except IntegrityError:
+        def _already_pinned(sync_db: Session) -> bool:
+            return (
+                sync_db.query(AppTokenPin.id)
+                .filter(
+                    AppTokenPin.owner_team_id == team_id,
+                    AppTokenPin.entity_type == body.entity_type,
+                    AppTokenPin.entity_id == body.entity_id,
+                )
+                .first()
+                is not None
+            )
+
+        if not await main_boundary.run_sync_read(_already_pinned):
+            raise
+        result = {"success": True, "already_pinned": True}
     await log_app_token_audit(
         request,
         principal,

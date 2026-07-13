@@ -207,6 +207,8 @@ class TestAppReadTeams:
             team_ids = [t["id"] for t in data["items"]]
             assert seeded["team_a_id"] in team_ids
             assert seeded["team_b_id"] not in team_ids
+            team_a_item = next(t for t in data["items"] if t["id"] == seeded["team_a_id"])
+            assert team_a_item["test_case_count"] == 1
 
     def test_app_teams_with_legacy_token(self, temp_db):
         with temp_db() as session:
@@ -236,6 +238,59 @@ class TestAppReadTestCases:
             data = resp.json()
             assert data["team_id"] == seeded["team_a_id"]
             assert len(data["test_cases"]) >= 1
+
+    def test_app_test_cases_include_team_set_counts(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_read_data(session)
+            empty_set = TestCaseSet(
+                team_id=seeded["team_a_id"],
+                name="Empty set",
+                description="No test cases",
+                is_default=False,
+            )
+            session.add(empty_set)
+            session.flush()
+            session.add(
+                TestCaseLocal(
+                    team_id=seeded["team_a_id"],
+                    test_case_number="TC-A-002",
+                    title="Second login test",
+                    priority=Priority.HIGH,
+                    test_result=TestResultStatus.PASSED,
+                    test_case_set_id=seeded["set_a_id"],
+                    test_case_section_id=seeded["section_a_id"],
+                )
+            )
+            session.commit()
+            empty_set_id = empty_set.id
+
+        with TestClient(app) as client:
+            response = client.get(
+                f"/api/app/teams/{seeded['team_a_id']}/test-cases",
+                headers=_bearer(seeded["app_token"]),
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data["page"]["total"] == 2
+            assert {item["id"]: item["test_case_count"] for item in data["sets"]} == {
+                seeded["set_a_id"]: 2,
+                empty_set_id: 0,
+            }
+
+            filtered_response = client.get(
+                f"/api/app/teams/{seeded['team_a_id']}/test-cases",
+                params={"set_id": seeded["set_a_id"]},
+                headers=_bearer(seeded["app_token"]),
+            )
+            assert filtered_response.status_code == 200
+            filtered_data = filtered_response.json()
+            assert filtered_data["page"]["total"] == 2
+            assert {
+                item["id"]: item["test_case_count"] for item in filtered_data["sets"]
+            } == {
+                seeded["set_a_id"]: 2,
+                empty_set_id: 0,
+            }
 
     def test_app_test_case_detail(self, temp_db):
         with temp_db() as session:
