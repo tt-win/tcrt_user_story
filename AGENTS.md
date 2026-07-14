@@ -6,7 +6,7 @@
 
 ## 專案輪廓
 
-- TCRT 是測試案例、Test Run、User Story Map、Automation Hub、QA AI Helper 與 Jira/Lark/Qdrant/LLM 整合的 FastAPI 系統。
+- TCRT 是測試案例、Test Run、User Story Map、Automation Hub、QA AI Helper 與 Jira/Lark/LLM 整合的 FastAPI 系統。
 - 後端主要是 Python 3.10+、FastAPI、Pydantic 2、SQLAlchemy 2 async、Alembic、Casbin、pytest；套件管理以 `uv` 與 `uv.lock` 為準。
 - 前端是 Jinja2 模板、Bootstrap 5 CDN、原生 JS/CSS 與 `app/static/locales/` i18n；`package.json` 只提供 stylelint / template guard，不是前端 build pipeline。
 - 資料庫支援 SQLite、本機/容器 MySQL 8、PostgreSQL 16。不要寫只在單一引擎可用的 SQL，除非該路徑明確限定引擎並有測試。
@@ -42,7 +42,7 @@
 - 新增/修改 schema 必須放到正確 migration 目錄，並檢查 `database_init.py`、bootstrap、測試 fixture 與跨引擎相容性。
 - Web runtime 優先使用 async session 與 `app/db_access/` boundary；同步 DB engine 只應用於 migration/bootstrap 等明確場景，`ALLOW_SYNC_DB_RUNTIME` 不可當成一般 runtime 解法。
 - 不要隨意讀取、改寫或提交本機 `*.db`、`*.sqlite3`、`generated_report/`、`attachments/`、`keys/`、`config.yaml`、`.env*`。需要碰真實或疑似真實資料時，先說明風險與回滾方案。
-- `AUTOMATION_PROVIDER_ENCRYPTION_KEY`、Jira/Lark/OpenRouter/Qdrant/GitHub/Jenkins/Allure credentials 都只能走 env/config；不要硬編碼、輸出或寫進測試 snapshot。
+- `AUTOMATION_PROVIDER_ENCRYPTION_KEY`、Jira/Lark/OpenRouter/GitHub/Jenkins/Allure credentials 都只能走 env/config；不要硬編碼、輸出或寫進測試 snapshot。
 
 ## 前端與 i18n
 
@@ -62,7 +62,7 @@
 ## QA AI Helper 與整合
 
 - QA AI Helper 跨 API、service、planner、prompt、runtime、metrics 與 team analytics；修改前先查 `app/services/qa_ai_helper*`、`app/services/test_case_helper/` 與對應 tests。
-- Qdrant、embedding、OpenRouter/LLM 設定只能透過現有 config/env 路徑。缺少必要設定時應 fail fast 或回報待設定，不要塞不安全預設值。
+- OpenRouter/LLM 設定只能透過現有 config/env 路徑。缺少必要設定時應 fail fast 或回報待設定，不要塞不安全預設值。
 - Jira/Lark/MCP 相關改動要檢查權限、audit、team scope 與 token/machine auth 測試。
 
 ## 驗證指令

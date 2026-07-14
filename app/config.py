@@ -14,7 +14,6 @@ load_dotenv()
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 LOGGER = logging.getLogger(__name__)
 
-DEFAULT_QDRANT_URL = "http://localhost:6333"
 DEFAULT_PUBLIC_BASE_URL_TEMPLATE = "http://localhost:{port}"
 LOCALHOST_HOSTNAMES = {"localhost", "127.0.0.1", "::1"}
 ENV_PLACEHOLDER_RE = re.compile(r"\$\{([A-Z0-9_]+)\}")
@@ -338,79 +337,6 @@ class AIConfig(BaseModel):
         )
 
 
-class QdrantWeightsConfig(BaseModel):
-    test_cases: float = 0.7
-    usm_nodes: float = 0.3
-
-
-class QdrantLimitConfig(BaseModel):
-    jira_referances: int = 20
-    test_cases: int = 14
-    usm_nodes: int = 6
-
-
-class QdrantConfig(BaseModel):
-    url: str = DEFAULT_QDRANT_URL
-    api_key: str = ""
-    timeout: int = 30
-    prefer_grpc: bool = False
-    pool_size: int = 32
-    max_concurrent_requests: int = 32
-    max_retries: int = 3
-    retry_backoff_seconds: float = 0.5
-    retry_backoff_max_seconds: float = 5.0
-    check_compatibility: bool = True
-    collection_jira_referances: str = "jira_references"
-    collection_test_cases: str = "test_cases"
-    collection_usm_nodes: str = "usm_nodes"
-    weights: QdrantWeightsConfig = QdrantWeightsConfig()
-    limit: QdrantLimitConfig = QdrantLimitConfig()
-
-    @classmethod
-    def from_env(cls, fallback: "QdrantConfig" = None) -> "QdrantConfig":
-        fallback_jira_collection = fallback.collection_jira_referances if fallback else "jira_references"
-        jira_collection = os.getenv(
-            "QDRANT_COLLECTION_JIRA_REFERENCES",
-            os.getenv("QDRANT_COLLECTION_JIRA_REFERANCES", fallback_jira_collection),
-        )
-        if str(jira_collection or "").strip() == "jira_referances":
-            jira_collection = "jira_references"
-
-        return cls(
-            url=os.getenv("QDRANT_URL", fallback.url if fallback else DEFAULT_QDRANT_URL),
-            api_key=os.getenv("QDRANT_API_KEY", fallback.api_key if fallback else ""),
-            timeout=int(os.getenv("QDRANT_TIMEOUT", str(fallback.timeout if fallback else 30))),
-            prefer_grpc=os.getenv("QDRANT_PREFER_GRPC", str(fallback.prefer_grpc if fallback else False)).lower()
-            == "true",
-            pool_size=int(os.getenv("QDRANT_POOL_SIZE", str(fallback.pool_size if fallback else 32))),
-            max_concurrent_requests=int(
-                os.getenv("QDRANT_MAX_CONCURRENT_REQUESTS", str(fallback.max_concurrent_requests if fallback else 32))
-            ),
-            max_retries=int(os.getenv("QDRANT_MAX_RETRIES", str(fallback.max_retries if fallback else 3))),
-            retry_backoff_seconds=float(
-                os.getenv("QDRANT_RETRY_BACKOFF_SECONDS", str(fallback.retry_backoff_seconds if fallback else 0.5))
-            ),
-            retry_backoff_max_seconds=float(
-                os.getenv(
-                    "QDRANT_RETRY_BACKOFF_MAX_SECONDS", str(fallback.retry_backoff_max_seconds if fallback else 5.0)
-                )
-            ),
-            check_compatibility=os.getenv(
-                "QDRANT_CHECK_COMPATIBILITY", str(fallback.check_compatibility if fallback else True)
-            ).lower()
-            == "true",
-            collection_jira_referances=jira_collection,
-            collection_test_cases=os.getenv(
-                "QDRANT_COLLECTION_TEST_CASES", fallback.collection_test_cases if fallback else "test_cases"
-            ),
-            collection_usm_nodes=os.getenv(
-                "QDRANT_COLLECTION_USM_NODES", fallback.collection_usm_nodes if fallback else "usm_nodes"
-            ),
-            weights=fallback.weights if fallback else QdrantWeightsConfig(),
-            limit=fallback.limit if fallback else QdrantLimitConfig(),
-        )
-
-
 class AppConfig(BaseModel):
     debug: bool = False
     host: str = "0.0.0.0"
@@ -577,7 +503,6 @@ class Settings(BaseModel):
     openrouter: OpenRouterConfig = OpenRouterConfig()
     automation_provider: AutomationProviderConfig = AutomationProviderConfig()
     ai: AIConfig = AIConfig()
-    qdrant: QdrantConfig = QdrantConfig()
     attachments: AttachmentsConfig = AttachmentsConfig()
     reports: ReportsConfig = ReportsConfig()
     auth: AuthConfig = AuthConfig()
@@ -604,7 +529,6 @@ class Settings(BaseModel):
             openrouter=OpenRouterConfig.from_env(base_settings.openrouter),
             automation_provider=AutomationProviderConfig.from_env(base_settings.automation_provider),
             ai=AIConfig.from_env(base_settings.ai),
-            qdrant=QdrantConfig.from_env(base_settings.qdrant),
             attachments=AttachmentsConfig.from_env(base_settings.attachments),
             reports=ReportsConfig.from_env(base_settings.reports),
             auth=AuthConfig.from_env(base_settings.auth),
@@ -659,8 +583,6 @@ def _warn_container_runtime_configuration(settings: Settings) -> None:
         "DATABASE_URL": settings.app.database_url,
         "AUDIT_DATABASE_URL": settings.audit.database_url,
         "USM_DATABASE_URL": settings.usm.database_url,
-        "QDRANT_URL": settings.qdrant.url,
-        "TEXT_EMBEDDING_URL": _first_non_empty_env("TEXT_EMBEDDING_URL") or "",
     }
 
     for key, value in runtime_urls.items():
@@ -723,23 +645,6 @@ def create_default_config(config_path: str = "config.yaml") -> None:
                     },
                 },
             },
-        },
-        "qdrant": {
-            "url": DEFAULT_QDRANT_URL,
-            "api_key": "",
-            "timeout": 30,
-            "prefer_grpc": False,
-            "pool_size": 32,
-            "max_concurrent_requests": 32,
-            "max_retries": 3,
-            "retry_backoff_seconds": 0.5,
-            "retry_backoff_max_seconds": 5.0,
-            "check_compatibility": True,
-            "collection_jira_referances": "jira_references",
-            "collection_test_cases": "test_cases",
-            "collection_usm_nodes": "usm_nodes",
-            "weights": {"test_cases": 0.7, "usm_nodes": 0.3},
-            "limit": {"jira_referances": 20, "test_cases": 14, "usm_nodes": 6},
         },
         "attachments": {
             "root_dir": ""  # 留空代表使用專案內 attachments 目錄

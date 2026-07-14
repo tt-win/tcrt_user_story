@@ -232,4 +232,3 @@ main→audit→usm 依序資料搬移（`scripts/db_cross_migrate.py`，一律 `
 1. summary 的 `env_summary` 區段列出四組已遮蔽密碼的目標連線設定；依此更新 app 實際使用的環境變數（`.env.docker` 或部署環境變數）。
 2. 重新部署/重啟 app，指向新的資料庫。
 3. 抽樣核對關鍵頁面（Test Case、Test Run、User Story Map）資料是否正確顯示。
-4. **Qdrant 向量索引不在此工具搬移範圍內**：若 QA AI Helper 依賴既有 embedding，需另行對新資料重建索引（見 `ai/etl_all_teams.py`）。
