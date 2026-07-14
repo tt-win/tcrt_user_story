@@ -50,7 +50,7 @@ docker compose -f docker-compose.app.yml up -d --build
 
 ## 環境變數參考
 
-以下為 `.env.docker.example` 中所有可用的環境變數。本地開發可使用 `config.yaml` 替代大部分設定。
+完整的環境變數總覽（含用途註解）見 **`.env.example`**；`.env.docker.example` 為容器部署情境的精簡子集。本地開發可使用 `config.yaml` 替代大部分設定。
 
 ### 執行環境
 
