@@ -63,7 +63,9 @@ docker compose --env-file .env.docker -f docker-compose.app.yml up -d --build
 
 容器啟動時會：
 
-1. 執行 `database_init.py`
+1. 執行 `database_init.py`（失敗時最多重試 `BOOTSTRAP_WAIT_ATTEMPTS` 次、間隔
+   `BOOTSTRAP_WAIT_SECONDS` 秒，涵蓋外部 DB 服務啟動當下還沒就緒的競態——這個 compose
+   本身不含 DB 服務，見上方「外部依賴」設定）
 2. 以前景模式啟動 `uvicorn`
 
 ## 4. 健康檢查
@@ -88,7 +90,10 @@ docker compose --env-file .env.docker -f docker-compose.app.yml down -v
 
 ## 6. 部署注意事項
 
-- `WEB_CONCURRENCY` 可視負載調大：背景服務已由 DB advisory-lock leader 選舉確保跨 worker/副本僅單一執行，`>1` 時 entrypoint 會啟用對應數量的 uvicorn worker
+- `WEB_CONCURRENCY` 可視負載調大：背景服務已由 DB advisory-lock leader 選舉確保跨 worker/副本僅單一執行，`>1` 時 entrypoint 會啟用對應數量的 uvicorn worker；登入 challenge 與權限快取清除也都已改為跨 worker 共用（見 `app/auth/session_service.py`、`app/auth/permission_service.py`），殘留限制只剩權限變更跨 worker 最多 30 秒延遲可見
+- 容器內使用 SQLite 時必須設定 `SQLITE_CONTAINER_STORAGE_ACK=1` 才能開機——容器沒有為
+  SQLite 檔案掛 volume 時，重建/重新部署會靜默遺失所有資料；正式環境建議改用
+  MySQL/PostgreSQL（見 `docs/database-cutover-readiness.md` 的 `--mode migrate`）
 - `config.yaml` 預設以唯讀方式從 host 的 `./config.yaml` 掛載進容器（`APP_CONFIG_PATH=/app/config.yaml`）；可用 `APP_CONFIG_FILE` 指定其他 host 路徑。env 變數仍優先於 config.yaml
 - 若部署在 reverse proxy 後方，請搭配：
   - `PUBLIC_BASE_URL`
@@ -116,10 +121,18 @@ docker compose --env-file .env.docker -f docker-compose.app.yml down -v
 
   之後啟動容器時，`PasswordEncryptionService.initialize()` 會走「有檔則載入」分支、不重生。可用私鑰指紋於遷移前後比對確認一致。
 
+### 開機升版備份與回退（建議持久化）
+
+- `database_init.py` 只在偵測到某資料庫有 pending Alembic 升版時才建立升版前備份；已是最新版本則略過，不產生備份檔（詳見 `docs/database-cutover-readiness.md`）。
+- 備份與連續失敗 marker 存放於 `BOOTSTRAP_BACKUP_DIR`（預設容器內 `/app/db_backups`），由 `docker-compose.app.yml` 的 named volume `tcrt-db-backups` 持久化。**若不持久化此目錄**：`BOOTSTRAP_ON_FAILURE=rollback` 仍可還原「本次啟動建立的備份」（備份物件留在記憶體內，不依賴此目錄讀取），但連續失敗計數會在每次容器重建後歸零，`BOOTSTRAP_MAX_UPGRADE_ATTEMPTS` 的防迴圈保護將失效。
+- `BOOTSTRAP_ON_FAILURE=rollback` 還原 PostgreSQL 需要應用程式的 DB 帳號擁有 `public` schema（可執行 `DROP SCHEMA` / `CREATE SCHEMA`）；還原 MySQL 需要 `DROP TABLE` / `CREATE TABLE` 權限。若帳號權限不足，回退會失敗並以 exit code 9 結束，備份檔仍保留於 volume 供人工還原。
+- runtime image 已內建 `mysqldump`/`mysql`（`default-mysql-client`）與 `pg_dump`/`pg_restore`（`postgresql-client`）。若改用自訂 base image，請確保這些工具存在，否則 `BOOTSTRAP_BACKUP_MODE=required`（預設）下備份失敗即中止啟動。
+
 ### 非 root 執行與目錄權限
 
 - 映像以固定的非 root 使用者 **uid/gid 10001（`app`）** 執行（multi-stage build，最終映像不含 `build-essential`）。
 - **金鑰 named volume（`tcrt-keys`）**：映像已預建 `/app/keys` 並 chown 給 `app`，Docker 初始化 volume 時會沿用此 ownership，故 app 可讀寫（全新部署會自動產生金鑰；遷移既有金鑰見上方 chown 步驟）。
+- **備份 named volume（`tcrt-db-backups`）**：映像已預建 `/app/db_backups` 並 chown 給 `app`，同樣沿用此 ownership，無需額外授權。
 - **附件 / 報告 bind mount**：host 上的 `ATTACHMENTS_ROOT_DIR` / `REPORTS_ROOT_DIR` 目錄必須對 uid `10001` 可寫，否則上傳會失敗。請於 host 先建立並授權，例如：
 
   ```bash

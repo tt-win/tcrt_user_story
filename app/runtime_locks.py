@@ -72,6 +72,35 @@ def _bootstrap_lock_url(sync_url: str, backend: str) -> str:
         return sync_url
 
 
+def _connect_for_bootstrap_lock(sync_url: str, backend: str):
+    """建立 bootstrap 鎖要用的連線：優先連 maintenance DB（讓鎖在 target DB 尚未建立時
+    也能運作），若帳號權限受限連不上 maintenance DB（例如企業常見的「service account
+    只給 target DB 權限、不給碰 postgres 系統庫」），退回直接連 target DB。
+
+    這個退回不會削弱鎖的語意：PostgreSQL 的 advisory lock 與 MySQL 的 GET_LOCK 都是
+    server 全域的 key 命名空間，不是「連到哪個 database 鎖就只在那個 database 生效」，
+    只差在「target DB 還不存在時能不能連得上」——連不上 maintenance DB 的帳號，本來也
+    多半沒有「自己建立 target DB」的權限，代表 target DB 十之八九已由 DBA 事先建好，
+    此時直接連 target DB 一樣能正確取得 server 全域的鎖。"""
+    maintenance_url = _bootstrap_lock_url(sync_url, backend)
+    if maintenance_url == sync_url:
+        engine = create_engine(sync_url, poolclass=NullPool, future=True)
+        return engine, engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+
+    try:
+        engine = create_engine(maintenance_url, poolclass=NullPool, future=True)
+        conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+        return engine, conn
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "無法連線 maintenance DB 取得 bootstrap 鎖（可能是帳號權限受限，只能存取 "
+            "target DB）：%s；改直接連 target DB 取得同一把 server 全域鎖。",
+            exc,
+        )
+        engine = create_engine(sync_url, poolclass=NullPool, future=True)
+        return engine, engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+
+
 def _lock_file_path(name: str) -> Path:
     return Path(tempfile.gettempdir()) / f"{name}.lock"
 
@@ -83,8 +112,7 @@ def bootstrap_lock() -> Iterator[None]:
     backend = _backend_name(sync_url)
 
     if backend in ("postgresql", "mysql", "mariadb"):
-        engine = create_engine(_bootstrap_lock_url(sync_url, backend), poolclass=NullPool, future=True)
-        conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+        engine, conn = _connect_for_bootstrap_lock(sync_url, backend)
         try:
             if backend == "postgresql":
                 conn.execute(text("SELECT pg_advisory_lock(:k)"), {"k": _BOOTSTRAP_LOCK_KEY})

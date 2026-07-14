@@ -59,10 +59,11 @@ HTML_CACHE_CONTROL = "no-store, no-cache, must-revalidate, max-age=0"
 STATIC_CACHE_CONTROL = "no-cache, must-revalidate, max-age=0"
 
 # 設置靜態文件和模板路徑 - 必須在其他路由之前
+# 錨定 PROJECT_ROOT（而非 CWD）：process 的工作目錄不保證等於專案根目錄
+# （例如透過 systemd/supervisor 啟動、未明確設定 WorkingDirectory 時）。
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-BASE_DIR = Path.cwd()
-STATIC_DIR = BASE_DIR / "app" / "static"
-TEMPLATES_DIR = BASE_DIR / "app" / "templates"
+STATIC_DIR = PROJECT_ROOT / "app" / "static"
+TEMPLATES_DIR = PROJECT_ROOT / "app" / "templates"
 DEFAULT_REPORT_DIR = PROJECT_ROOT / "generated_report"
 DEFAULT_ATTACHMENTS_DIR = PROJECT_ROOT / "attachments"
 

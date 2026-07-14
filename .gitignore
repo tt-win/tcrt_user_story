@@ -155,6 +155,9 @@ keys/*.cer
 *.db-shm
 *.db-wal
 
+# 開機升版前備份與 failure marker（本機開發預設路徑；容器部署見 BOOTSTRAP_BACKUP_DIR）
+db_backups/
+
 # PIDs
 *.pid
 server.pid

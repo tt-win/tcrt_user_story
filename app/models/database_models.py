@@ -5,6 +5,7 @@
 以及相關的關聯表格。
 """
 
+import hashlib
 import logging
 
 from sqlalchemy import (
@@ -20,6 +21,8 @@ from sqlalchemy import (
     Index,
     CheckConstraint,
     select,
+    func,
+    event,
 )
 from sqlalchemy.orm import relationship, declarative_base, column_property
 from datetime import datetime
@@ -150,10 +153,10 @@ class Team(Base):
     # 團隊設定
     enable_notifications = Column(Boolean, default=True, nullable=False)
     auto_create_bugs = Column(Boolean, default=False, nullable=False)
-    default_priority = Column(Enum(Priority), default=Priority.MEDIUM)
+    default_priority = Column(Enum(Priority, values_callable=lambda values: [item.value for item in values], native_enum=False), default=Priority.MEDIUM)
 
     # 狀態與時間
-    status = Column(Enum(TeamStatus), default=TeamStatus.ACTIVE)
+    status = Column(Enum(TeamStatus, values_callable=lambda values: [item.value for item in values], native_enum=False), default=TeamStatus.ACTIVE)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -196,7 +199,7 @@ class TestRunConfig(Base):
     notify_chats_search = Column(String(512), nullable=True, index=True, comment="群組名稱搜尋索引")
 
     # 狀態與時間
-    status = Column(Enum(TestRunStatus), default=TestRunStatus.DRAFT)
+    status = Column(Enum(TestRunStatus, values_callable=lambda values: [item.value for item in values], native_enum=False), default=TestRunStatus.DRAFT)
     start_date = Column(DateTime, nullable=True)
     end_date = Column(DateTime, nullable=True)
 
@@ -231,7 +234,7 @@ class TestRunSet(Base):
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
     name = Column(String(120), nullable=False)
     description = Column(Text, nullable=True)
-    status = Column(Enum(TestRunSetStatus), default=TestRunSetStatus.ACTIVE, nullable=False)
+    status = Column(Enum(TestRunSetStatus, values_callable=lambda values: [item.value for item in values], native_enum=False), default=TestRunSetStatus.ACTIVE, nullable=False)
     archived_at = Column(DateTime, nullable=True)
     related_tp_tickets_json = Column(Text, nullable=True, comment="相關 JIRA Tickets 票號 JSON 陣列")
     tp_tickets_search = Column(String(512), nullable=True, index=True, comment="JIRA Ticket 搜尋索引欄位")
@@ -307,7 +310,7 @@ class TestRunItem(Base):
     assignee_en_name = Column(String(255), nullable=True)
     assignee_email = Column(String(255), nullable=True)
     assignee_json = Column(Text, nullable=True)  # 原始 assignee 結構（JSON 字串）
-    test_result = Column(Enum(TestResultStatus), nullable=True)
+    test_result = Column(Enum(TestResultStatus, values_callable=lambda values: [item.value for item in values], native_enum=False), nullable=True)
     executed_at = Column(DateTime, nullable=True)
     execution_duration = Column(Integer, nullable=True)
     # 注意：環境與版本屬於 TestRunConfig 層級，不在項目層儲存
@@ -364,8 +367,8 @@ class TestRunItemResultHistory(Base):
     config_id = Column(Integer, ForeignKey("test_run_configs.id"), nullable=False, index=True)
     item_id = Column(Integer, ForeignKey("test_run_items.id", ondelete="CASCADE"), nullable=False, index=True)
 
-    prev_result = Column(Enum(TestResultStatus), nullable=True)
-    new_result = Column(Enum(TestResultStatus), nullable=True)
+    prev_result = Column(Enum(TestResultStatus, values_callable=lambda values: [item.value for item in values], native_enum=False), nullable=True)
+    new_result = Column(Enum(TestResultStatus, values_callable=lambda values: [item.value for item in values], native_enum=False), nullable=True)
     prev_executed_at = Column(DateTime, nullable=True)
     new_executed_at = Column(DateTime, nullable=True)
 
@@ -503,13 +506,13 @@ class TestCaseLocal(Base):
     # 核心欄位
     test_case_number = Column(String(100), nullable=False)
     title = Column(Text, nullable=False)
-    priority = Column(Enum(Priority), default=Priority.MEDIUM)
+    priority = Column(Enum(Priority, values_callable=lambda values: [item.value for item in values], native_enum=False), default=Priority.MEDIUM)
     precondition = Column(Text, nullable=True)
     steps = Column(Text, nullable=True)
     expected_result = Column(Text, nullable=True)
 
     # 測試結果與人員（對應 Lark 欄位，必要時使用 JSON 紀錄詳細結構）
-    test_result = Column(Enum(TestResultStatus), nullable=True)
+    test_result = Column(Enum(TestResultStatus, values_callable=lambda values: [item.value for item in values], native_enum=False), nullable=True)
     assignee_json = Column(Text, nullable=True)
 
     # 關聯與多值欄位（JSON 字串保存）
@@ -522,7 +525,7 @@ class TestCaseLocal(Base):
     test_data_json = Column(Text, nullable=True)
 
     # 版本與同步控制
-    sync_status = Column(Enum(SyncStatus), default=SyncStatus.SYNCED, nullable=False, index=True)
+    sync_status = Column(Enum(SyncStatus, values_callable=lambda values: [item.value for item in values], native_enum=False), default=SyncStatus.SYNCED, nullable=False, index=True)
     local_version = Column(Integer, default=1, nullable=False)
     lark_version = Column(Integer, nullable=True)
     checksum = Column(String(64), nullable=True, index=True)  # 可用來快速比較內容變更（例如 sha256 前 64）
@@ -1603,7 +1606,9 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
-    username = Column(String(50), unique=True, nullable=False, index=True)
+    # 大小寫不敏感唯一性由下方 uq_users_username_lower 函式索引保證(跨引擎一致),
+    # 這裡不再用 unique=True(避免與 MySQL 預設 collation 已隱含的大小寫不敏感行為疊床架屋)。
+    username = Column(String(50), nullable=False, index=True)
     email = Column(String(255), unique=True, nullable=True, index=True)
     hashed_password = Column(String(255), nullable=False)
 
@@ -1612,7 +1617,7 @@ class User(Base):
 
     # 基本資訊
     full_name = Column(String(255), nullable=True)
-    role = Column(Enum(UserRole), nullable=False, default=UserRole.USER, index=True)
+    role = Column(Enum(UserRole, values_callable=lambda values: [item.value for item in values], native_enum=False), nullable=False, default=UserRole.USER, index=True)
 
     # 狀態設定
     is_active = Column(Boolean, default=True, nullable=False, index=True)
@@ -1636,6 +1641,10 @@ class User(Base):
     __table_args__ = (
         Index("ix_users_role_active", "role", "is_active"),
         Index("ix_users_email_active", "email", "is_active"),
+        # 大小寫不敏感唯一性:對 lower(username) 建 unique index,讓 SQLite/PostgreSQL
+        # 與 MySQL(預設 collation 已是 case-insensitive)行為一致。取代原本 username 欄位上
+        # 的 unique=True(該寫法在 SQLite/PostgreSQL 上僅為大小寫敏感唯一)。
+        Index("uq_users_username_lower", func.lower(username), unique=True),
     )
 
 
@@ -1667,7 +1676,7 @@ class UserTeamPermission(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True)
-    permission = Column(Enum(PermissionType), nullable=False, index=True)
+    permission = Column(Enum(PermissionType, values_callable=lambda values: [item.value for item in values], native_enum=False), nullable=False, index=True)
 
     # 時間欄位
     granted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -1722,6 +1731,24 @@ class ActiveSession(Base):
     )
 
 
+class LoginChallenge(Base):
+    """登入 Challenge-Response 認證用的暫存 challenge（見 SessionService.store_challenge/
+    verify_challenge）。`identifier` 是 username_or_email 字串、非 FK——即使該帳號不存在也要能
+    發出 challenge（避免透過行為差異洩漏帳號是否存在），單一 identifier 同時只有一組有效
+    challenge（見 __tablename__ 唯一性，重新申請會直接覆蓋前一組）。
+
+    2026-07-14 從 in-process dict 改為 DB table：多 worker（WEB_CONCURRENCY>1）部署下，
+    `/challenge` 與後續登入驗證這兩個請求若剛好落在不同 worker，各自的記憶體字典互不可見，
+    會讓合法登入必定失敗。"""
+
+    __tablename__ = "login_challenges"
+
+    identifier = Column(String(255), primary_key=True)
+    challenge = Column(String(64), nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class PasswordResetToken(Base):
     """密碼重設令牌表格"""
 
@@ -1770,7 +1797,11 @@ class MCPMachineCredential(Base):
     token_hash = Column(String(128), nullable=False)
     permission = Column(String(32), nullable=False, default="mcp_read")
     status = Column(
-        Enum(MCPMachineCredentialStatus),
+        Enum(
+            MCPMachineCredentialStatus,
+            values_callable=lambda values: [item.value for item in values],
+            native_enum=False,
+        ),
         nullable=False,
         default=MCPMachineCredentialStatus.ACTIVE,
     )
@@ -1806,7 +1837,11 @@ class TeamAppToken(Base):
     token_hash = Column(String(128), nullable=False)
     token_prefix = Column(String(16), nullable=False)
     status = Column(
-        Enum(TeamAppTokenStatus),
+        Enum(
+            TeamAppTokenStatus,
+            values_callable=lambda values: [item.value for item in values],
+            native_enum=False,
+        ),
         nullable=False,
         default=TeamAppTokenStatus.ACTIVE,
     )
@@ -1850,7 +1885,7 @@ class _AutomationProviderColumnsMixin:
 
     id = Column(Integer, primary_key=True)
     provider_slot = Column(
-        Enum(AutomationProviderSlot, values_callable=lambda values: [item.value for item in values]),
+        Enum(AutomationProviderSlot, values_callable=lambda values: [item.value for item in values], native_enum=False),
         nullable=False,
     )
     provider_type = Column(String(60), nullable=False)
@@ -1910,17 +1945,33 @@ class SystemSetting(Base):
     updated_by = Column(String(64), nullable=True)
 
 
+def _automation_script_ref_key_hash(
+    team_id: int, provider_id: int, ref_repo: str, ref_path: str, ref_branch: str
+) -> str:
+    """SHA-256 digest of the 5 columns that logically identify a unique script ref.
+
+    MySQL 的複合唯一索引在 utf8mb4 下有 3072-byte 上限；`ref_repo(255)+ref_path(500)+
+    ref_branch(200)` 換算後遠超這個上限（見 e7c3a9d1f2b4 的修正註記）。改用固定長度的
+    hash 欄位承載唯一性，原五欄仍保留供查詢使用。分隔字元用 ASCII unit separator
+    （`\\x1f`），一般 repo/path/branch 字串不會出現這個字元，避免組合歧義
+    （例如 `("a", "b/c")` 與 `("a/b", "c")` 若直接字串相接會撞在一起）。
+    """
+    parts = "\x1f".join([str(team_id), str(provider_id), ref_repo, ref_path, ref_branch])
+    return hashlib.sha256(parts.encode("utf-8")).hexdigest()
+
+
 class AutomationScript(Base):
     """Auto-discovered automation script cache"""
 
     __tablename__ = "automation_scripts"
     __table_args__ = (
-        UniqueConstraint(
-            "team_id", "provider_id", "ref_repo", "ref_path", "ref_branch",
-            name="uq_automation_script_ref",
-        ),
+        UniqueConstraint("ref_key_hash", name="uq_automation_script_ref"),
         Index("ix_automation_scripts_team_format", "team_id", "script_format"),
         Index("ix_automation_scripts_provider_synced", "provider_id", "last_synced_at"),
+        Index(
+            "ix_automation_scripts_team_provider_repo_branch",
+            "team_id", "provider_id", "ref_repo", "ref_branch",
+        ),
     )
 
     id = Column(Integer, primary_key=True)
@@ -1934,13 +1985,18 @@ class AutomationScript(Base):
     name = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     script_format = Column(
-        Enum(AutomationScriptFormat, values_callable=lambda values: [item.value for item in values]),
+        Enum(AutomationScriptFormat, values_callable=lambda values: [item.value for item in values], native_enum=False),
         nullable=False,
         default=AutomationScriptFormat.OTHER,
     )
     ref_repo = Column(String(255), nullable=False, server_default="")
     ref_path = Column(String(500), nullable=False)
     ref_branch = Column(String(200), nullable=False)
+    # 見上方 _automation_script_ref_key_hash；由 before_insert event listener 自動計算
+    # （team_id/provider_id/ref_repo/ref_path/ref_branch 建立後不可變，見
+    # app/services/automation/script_service.py，故只需要 before_insert，不需要
+    # before_update）。
+    ref_key_hash = Column(String(64), nullable=False)
     cached_content = Column(medium_text_type(), nullable=True)
     cached_content_etag = Column(String(120), nullable=True)
     last_synced_at = Column(DateTime, nullable=True)
@@ -1970,6 +2026,16 @@ class AutomationScript(Base):
     )
 
 
+@event.listens_for(AutomationScript, "before_insert")
+def _set_automation_script_ref_key_hash(mapper, connection, target: AutomationScript) -> None:
+    # ref_repo has server_default="" — a row that never set it explicitly is still
+    # None at the Python level until the DB applies the default, so mirror that
+    # default here rather than let the hash computation see None.
+    target.ref_key_hash = _automation_script_ref_key_hash(
+        target.team_id, target.provider_id, target.ref_repo or "", target.ref_path, target.ref_branch
+    )
+
+
 class AutomationScriptCaseLink(Base):
     """Automation script to manual test case many-to-many link"""
 
@@ -1990,7 +2056,7 @@ class AutomationScriptCaseLink(Base):
     )
     test_case_id = Column(Integer, ForeignKey("test_cases.id", ondelete="CASCADE"), nullable=False)
     link_type = Column(
-        Enum(AutomationScriptLinkType, values_callable=lambda values: [item.value for item in values]),
+        Enum(AutomationScriptLinkType, values_callable=lambda values: [item.value for item in values], native_enum=False),
         nullable=False,
         default=AutomationScriptLinkType.COVERS,
     )
@@ -2132,7 +2198,7 @@ class AutomationScriptGroup(Base):
     # on the suite's first webhook trigger, so this stays NULL until then.
     ci_job_name_webhook = Column(String(200), nullable=True)
     ci_job_type = Column(
-        Enum(AutomationScriptGroupJobType, values_callable=lambda values: [item.value for item in values]),
+        Enum(AutomationScriptGroupJobType, values_callable=lambda values: [item.value for item in values], native_enum=False),
         nullable=True,
     )
     created_by = Column(String(64), nullable=True)
@@ -2188,12 +2254,12 @@ class AutomationRun(Base):
     external_run_id = Column(String(120), nullable=True, index=True)
     external_run_url = Column(String(500), nullable=True)
     status = Column(
-        Enum(AutomationRunStatus, values_callable=lambda values: [item.value for item in values]),
+        Enum(AutomationRunStatus, values_callable=lambda values: [item.value for item in values], native_enum=False),
         nullable=False,
         default=AutomationRunStatus.QUEUED,
     )
     triggered_by = Column(
-        Enum(AutomationRunTrigger, values_callable=lambda values: [item.value for item in values]),
+        Enum(AutomationRunTrigger, values_callable=lambda values: [item.value for item in values], native_enum=False),
         nullable=False,
     )
     triggered_by_user_id = Column(String(64), nullable=True)
@@ -2241,7 +2307,7 @@ class AutomationWebhook(Base):
     id = Column(Integer, primary_key=True)
     team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True)
     direction = Column(
-        Enum(AutomationWebhookDirection, values_callable=lambda values: [item.value for item in values]),
+        Enum(AutomationWebhookDirection, values_callable=lambda values: [item.value for item in values], native_enum=False),
         nullable=False,
     )
     name = Column(String(100), nullable=False)
@@ -2314,7 +2380,7 @@ class AdHocRun(Base):
     name = Column(String(120), nullable=False)
     description = Column(Text, nullable=True)
     jira_ticket = Column(String(255), nullable=True)
-    status = Column(Enum(TestRunStatus), default=TestRunStatus.ACTIVE, nullable=False)
+    status = Column(Enum(TestRunStatus, values_callable=lambda values: [item.value for item in values], native_enum=False), default=TestRunStatus.ACTIVE, nullable=False)
 
     # Enhanced Basic Settings (matching TestRunConfig)
     test_version = Column(String(50), nullable=True)
@@ -2370,7 +2436,7 @@ class AdHocRunItem(Base):
     # 測試內容欄位 (比照 Test Run Item / Test Case)
     test_case_number = Column(String(100), nullable=True)  # 可以手動輸入或留空
     title = Column(Text, nullable=True)
-    priority = Column(Enum(Priority), default=Priority.MEDIUM)
+    priority = Column(Enum(Priority, values_callable=lambda values: [item.value for item in values], native_enum=False), default=Priority.MEDIUM)
     precondition = Column(Text, nullable=True)
     steps = Column(Text, nullable=True)
     expected_result = Column(Text, nullable=True)
@@ -2379,7 +2445,7 @@ class AdHocRunItem(Base):
     bug_list = Column(Text, nullable=True)
 
     # 執行資訊
-    test_result = Column(Enum(TestResultStatus), nullable=True)
+    test_result = Column(Enum(TestResultStatus, values_callable=lambda values: [item.value for item in values], native_enum=False), nullable=True)
     assignee_name = Column(String(255), nullable=True)
     executed_at = Column(DateTime, nullable=True)
 

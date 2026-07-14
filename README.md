@@ -90,10 +90,27 @@ docker compose -f docker-compose.app.yml up -d --build
 | 變數 | 預設值 | 說明 |
 |------|--------|------|
 | `SKIP_DATABASE_BOOTSTRAP` | `0` | 設為 `1` 跳過啟動時的資料庫初始化（schema migration） |
+| `BOOTSTRAP_WAIT_ATTEMPTS` | `10` | 資料庫初始化失敗時的重試次數上限，涵蓋外部 DB 服務啟動當下還沒就緒的競態（此 compose 本身不含 DB）；與 `BOOTSTRAP_MAX_UPGRADE_ATTEMPTS` 是不同層次——這個只管單次啟動內的連線競態，那個管跨容器重建、真正持續失敗的 migration |
+| `BOOTSTRAP_WAIT_SECONDS` | `3` | 上述重試的間隔秒數 |
+| `SQLITE_CONTAINER_STORAGE_ACK` | 無 | 容器內使用 SQLite 時必須設為 `1` 才能開機——容器沒有為 SQLite 檔案掛 volume 時，重建/重新部署會靜默遺失所有資料；設定此變數代表你已確認掛好 volume 或接受資料是暫存的 |
 | `UVICORN_LOG_LEVEL` | `info` | Uvicorn 日誌等級 |
 | `UVICORN_PROXY_HEADERS` | `1` | 啟用反向代理 header 信任 |
 | `FORWARDED_ALLOW_IPS` | `*` | 允許的轉發來源 IP |
 | `WEB_CONCURRENCY` | `1` | Worker 數量。背景服務（排程器 / automation ticker）已改由 DB advisory-lock leader 選舉確保跨 worker/副本僅單一執行，故可視負載調大（`>1` 時 entrypoint 會啟用對應數量的 uvicorn worker） |
+
+### 開機升版備份與回退
+
+`database_init.py` 在偵測到某資料庫有 pending Alembic 升版時才會執行備份；已是最新版本則略過，不產生備份檔。詳見 `docs/database-cutover-readiness.md`。
+
+| 變數 | 預設值 | 說明 |
+|------|--------|------|
+| `BOOTSTRAP_BACKUP_DIR` | `<專案根>/db_backups` | 升版前備份與連續失敗 marker 的存放目錄；容器部署須掛 volume（見 `docker-compose.app.yml` 的 `tcrt-db-backups`），否則失敗 marker 每次重啟都會歸零、回退能力也不持久 |
+| `BOOTSTRAP_BACKUP_MODE` | `required` | `required`：備份失敗（含缺 `mysqldump`/`pg_dump`）即中止、不執行升版；`best-effort`：記警告後繼續升版；`off`：不備份，等同 `--no-backup` |
+| `BOOTSTRAP_BACKUP_RETENTION` | `5` | 每個資料庫（main/audit/usm 各自）保留的最近備份數量 |
+| `BOOTSTRAP_ON_FAILURE` | `abort` | `abort`：升版失敗即中止（沿用既有行為）；`rollback`：還原本次已升版的所有資料庫至升版前狀態後中止，換回舊版 image 即可立即開機 |
+| `BOOTSTRAP_MAX_UPGRADE_ATTEMPTS` | `3` | 同一 Alembic head 連續升版失敗達此次數即拒絕再嘗試（防 restart policy 造成的升版-回退無限迴圈）；`python3 database_init.py --clear-failure-markers` 可手動解鎖 |
+
+**行為變更：** SQLite 的升版前備份不再每次開機都執行、也不再寫入專案根目錄／CWD——只在偵測到 pending 升版時觸發，統一寫入 `BOOTSTRAP_BACKUP_DIR`。
 
 ### Qdrant 向量資料庫
 
@@ -348,6 +365,7 @@ jobs:                            # 搬移任務列表
 - **自參照外鍵排序**：自動處理表內自參照的外鍵順序（如 tree structure）
 - **test_cases 修補**：自動修補缺少 `test_case_set_id` 的資料（從 section 或 team default 推導）
 - **test_run_item_result_history 過濾**：自動跳過參照不存在 test_run_item 的孤兒紀錄
+- **搬移後逐表 row count 覆核**：非 dry-run 搬移完成後，對每張表重新計數來源與目標列數，`--json` 輸出的 summary 內含 `row_count_verification`（逐表 `source_rows`/`target_rows`/`matches`）與整體 `row_counts_match`；工具本身的 exit code 不受此影響（沿用既有相容行為），由呼叫端（見下方一鍵搬移）判斷是否視為失敗。
 
 #### 完整搬移範例（SQLite → MySQL）
 
@@ -370,6 +388,20 @@ uv run python scripts/db_cross_migrate.py \
   --config scripts/db_cross_migrate.yaml \
   --reset-target \
   --disable-constraints
+```
+
+#### 一鍵搬移（`scripts/run_db_cutover_workflow.py --mode migrate`）
+
+以上手動五步驟已收斂為單一指令：`--mode migrate` 會依序完成 guardrails、preflight、目標 schema bootstrap、
+main/audit/usm 三庫資料搬移、逐表 row count 覆核、`--verify-target all` 驗證、應用健康檢查，任一步驟失敗即中止並保留完整
+log。詳見 `docs/database-cutover-readiness.md` §8「一鍵搬移」。
+
+```bash
+# 對已存在的正式 MySQL/PostgreSQL server 搬移（真實密碼放在 target-env-file，不進 log）
+python3 scripts/run_db_cutover_workflow.py --mode migrate --target mysql --target-env-file /path/to/target.env
+
+# 對 disposable compose 目標演練（不需另外準備 env 檔）
+python3 scripts/run_db_cutover_workflow.py --mode migrate --target mysql --manage-services
 ```
 
 ---

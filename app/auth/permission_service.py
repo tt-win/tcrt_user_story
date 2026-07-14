@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.database_models import User, Team
 from app.auth.models import UserRole, PermissionType, PermissionCheck
-from app.config import get_settings
+from app.config import PROJECT_ROOT, get_settings
 from app.db_access.main import MainAccessBoundary, get_main_access_boundary
 
 logger = logging.getLogger(__name__)
@@ -118,11 +118,18 @@ class PermissionService:
 
     def __init__(self, main_boundary: MainAccessBoundary | None = None):
         self.settings = get_settings()
-        self.cache = PermissionCache(ttl_seconds=300)  # 5 分鐘快取
+        # 這個快取是 per-process 記憶體快取，多 worker（WEB_CONCURRENCY>1）部署時各
+        # worker 各自持有一份，clear_cache 只能清掉「當下這個 worker」的內容——別的
+        # worker 仍要等 TTL 到期才會重新查詢 DB。TTL 從 300 秒縮短為 30 秒，把這個
+        # 跨 worker 的過期權限曝光窗口壓在可接受範圍內；同一個 worker 內的即時性則
+        # 由 app/api/users.py 在角色/啟用狀態變更後呼叫 clear_permission_cache 保證。
+        self.cache = PermissionCache(ttl_seconds=30)
         self.main_boundary = main_boundary or get_main_access_boundary()
 
-        # 設定檔路徑（Casbin + constraints + ui mapping）
-        base_dir = os.path.join("config", "permissions")
+        # 設定檔路徑（Casbin + constraints + ui mapping）。錨定 PROJECT_ROOT 而非用相對
+        # 路徑：process 的 CWD 不保證等於專案根目錄（例如透過 systemd/supervisor 啟動、
+        # 未明確設定 WorkingDirectory 時），相對路徑會依啟動當下的 CWD 解析到錯誤位置。
+        base_dir = os.path.join(str(PROJECT_ROOT), "config", "permissions")
         self._model_path = os.path.join(base_dir, "model.conf")
         self._policy_path = os.path.join(base_dir, "policy.csv")
         self._constraints_path = os.path.join(base_dir, "constraints.yaml")

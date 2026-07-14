@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db_access.main import MainAccessBoundary, get_main_access_boundary
-from app.models.database_models import ActiveSession
+from app.models.database_models import ActiveSession, LoginChallenge
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +26,9 @@ class SessionService:
     def __init__(self, main_boundary: MainAccessBoundary | None = None):
         self.settings = get_settings()
         self.main_boundary = main_boundary or get_main_access_boundary()
+        # 純效能快取，DB 是唯一事實來源（is_jti_revoked 永遠有 DB fallback）：
+        # 多 worker 部署下各 worker 各自持有一份不影響正確性，頂多多幾次 DB 查詢。
         self._revoked_jtis: Set[str] = set()
-        self._challenges: dict = {}
 
     async def create_session(
         self,
@@ -167,7 +168,7 @@ class SessionService:
             return []
 
     async def cleanup_expired_sessions(self) -> int:
-        """清理過期的會話記錄"""
+        """清理過期的會話記錄，並順帶清掉過期的 login challenge。"""
         try:
             current_time = datetime.utcnow()
             cleanup_time = current_time - timedelta(days=self.settings.auth.session_cleanup_days)
@@ -184,6 +185,9 @@ class SessionService:
                         )
                     )
                 )
+                await session.execute(
+                    delete(LoginChallenge).where(LoginChallenge.expires_at < current_time)
+                )
                 return result.rowcount or 0
 
             deleted_count = await self.main_boundary.run_write(_cleanup)
@@ -197,9 +201,24 @@ class SessionService:
             return 0
 
     async def store_challenge(self, identifier: str, challenge: str, expires_at: datetime) -> bool:
-        """暫存 challenge"""
+        """暫存 challenge（DB-backed，見 LoginChallenge model 說明：多 worker 部署下
+        in-process dict 無法跨 process 共享，會讓 /challenge 與登入驗證這兩個請求
+        落在不同 worker 時必定失敗）。"""
         try:
-            self._challenges[identifier] = (challenge, expires_at)
+            async def _store(session: AsyncSession) -> bool:
+                existing = await session.get(LoginChallenge, identifier)
+                if existing is not None:
+                    existing.challenge = challenge
+                    existing.expires_at = expires_at
+                    existing.created_at = datetime.utcnow()
+                else:
+                    session.add(
+                        LoginChallenge(identifier=identifier, challenge=challenge, expires_at=expires_at)
+                    )
+                await session.flush()
+                return True
+
+            await self.main_boundary.run_write(_store)
             logger.debug("暫存 challenge for %s", identifier)
             return True
         except Exception as exc:  # noqa: BLE001
@@ -207,25 +226,31 @@ class SessionService:
             return False
 
     async def verify_challenge(self, identifier: str, challenge: str) -> bool:
-        """驗證 challenge"""
+        """驗證 challenge。驗證成功或過期皆會消耗掉這筆 challenge（單次有效）；
+        challenge 字串不符時保留原紀錄，允許在有效期限內重試（沿用既有行為）。"""
         try:
-            if identifier not in self._challenges:
-                logger.warning("找不到 challenge for %s", identifier)
-                return False
+            async def _verify(session: AsyncSession) -> bool:
+                existing = await session.get(LoginChallenge, identifier)
+                if existing is None:
+                    logger.warning("找不到 challenge for %s", identifier)
+                    return False
 
-            stored_challenge, expires_at = self._challenges[identifier]
-            if datetime.utcnow() > expires_at:
-                logger.warning("Challenge 已過期 for %s", identifier)
-                del self._challenges[identifier]
-                return False
+                if datetime.utcnow() > existing.expires_at:
+                    logger.warning("Challenge 已過期 for %s", identifier)
+                    await session.delete(existing)
+                    await session.flush()
+                    return False
 
-            if stored_challenge != challenge:
-                logger.warning("Challenge 不匹配 for %s", identifier)
-                return False
+                if existing.challenge != challenge:
+                    logger.warning("Challenge 不匹配 for %s", identifier)
+                    return False
 
-            del self._challenges[identifier]
-            logger.debug("Challenge 驗證成功 for %s", identifier)
-            return True
+                await session.delete(existing)
+                await session.flush()
+                logger.debug("Challenge 驗證成功 for %s", identifier)
+                return True
+
+            return await self.main_boundary.run_write(_verify)
         except Exception as exc:  # noqa: BLE001
             logger.error("驗證 challenge 失敗: %s", exc)
             return False
@@ -236,17 +261,6 @@ class SessionService:
             jti_list = list(self._revoked_jtis)
             self._revoked_jtis = set(jti_list[len(jti_list) // 2 :])
             logger.debug("清理了一半的 JTI 記憶體快取")
-
-        current_time = datetime.utcnow()
-        expired_identifiers = [
-            identifier
-            for identifier, (_, expires_at) in self._challenges.items()
-            if expires_at < current_time
-        ]
-        for identifier in expired_identifiers:
-            del self._challenges[identifier]
-        if expired_identifiers:
-            logger.debug("清理了 %s 個過期 challenge", len(expired_identifiers))
 
     async def get_session_statistics(self) -> dict:
         """取得會話統計資訊"""

@@ -14,6 +14,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from contextlib import asynccontextmanager
 
 from ..config import get_settings
+from ..db_sqlite_pragma import apply_sqlite_pragma
 from ..db_url import normalize_async_database_url
 
 logger = logging.getLogger(__name__)
@@ -101,25 +102,7 @@ class AuditDatabaseManager:
             """為審計數據庫設定 SQLite 優化參數"""
             if self._engine is None or self._engine.sync_engine.dialect.name != "sqlite":
                 return
-            cursor = dbapi_conn.cursor()
-            try:
-                # 啟用 WAL 模式以改善並發
-                cursor.execute("PRAGMA journal_mode=WAL")
-                # 設定 busy timeout 為 30 秒
-                cursor.execute("PRAGMA busy_timeout=30000")
-                # 設定同步模式為 NORMAL（平衡性能與安全）
-                cursor.execute("PRAGMA synchronous=NORMAL")
-                # 啟用外鍵約束
-                cursor.execute("PRAGMA foreign_keys=ON")
-                # 優化記憶體使用
-                cursor.execute("PRAGMA cache_size=-64000")  # 64MB cache
-                # 設定 temp store 在記憶體中
-                cursor.execute("PRAGMA temp_store=MEMORY")
-                logger.debug("SQLite 審計數據庫優化參數設定完成")
-            except Exception as e:
-                logger.warning(f"設定審計 SQLite PRAGMA 失敗: {e}")
-            finally:
-                cursor.close()
+            apply_sqlite_pragma(dbapi_conn, label="審計資料庫")
 
     async def cleanup(self) -> None:
         """清理資料庫連接"""
@@ -245,15 +228,40 @@ class AuditLogTable(AuditBase):
     role = Column(String(50), nullable=False, default='user', index=True)
 
     # 操作資訊
-    action_type = Column(SQLEnum(ActionType), nullable=False, index=True)
-    resource_type = Column(SQLEnum(ResourceType), nullable=False, index=True)
+    action_type = Column(
+        SQLEnum(
+            ActionType,
+            values_callable=lambda values: [item.value for item in values],
+            native_enum=False,
+        ),
+        nullable=False,
+        index=True,
+    )
+    resource_type = Column(
+        SQLEnum(
+            ResourceType,
+            values_callable=lambda values: [item.value for item in values],
+            native_enum=False,
+        ),
+        nullable=False,
+        index=True,
+    )
     resource_id = Column(String(100), nullable=False, index=True)
     team_id = Column(Integer, nullable=True, index=True)
 
     # 詳細資訊
     details = Column(Text, nullable=True)  # JSON 字串格式
     action_brief = Column(String(500), nullable=True)
-    severity = Column(SQLEnum(AuditSeverity), nullable=False, default=AuditSeverity.INFO, index=True)
+    severity = Column(
+        SQLEnum(
+            AuditSeverity,
+            values_callable=lambda values: [item.value for item in values],
+            native_enum=False,
+        ),
+        nullable=False,
+        default=AuditSeverity.INFO,
+        index=True,
+    )
 
     # 來源資訊
     ip_address = Column(String(45), nullable=True)  # 支援 IPv6

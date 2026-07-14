@@ -20,9 +20,9 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 from datetime import datetime
-import logging
 
 from app.config import get_settings
+from app.db_sqlite_pragma import apply_sqlite_pragma
 from app.db_types import MediumText as Text
 from app.db_url import normalize_async_database_url
 
@@ -110,25 +110,7 @@ def set_usm_sqlite_pragma(dbapi_conn, connection_record):
     """為 USM 數據庫異步連接設定 SQLite 優化參數"""
     if usm_engine.sync_engine.dialect.name != "sqlite":
         return
-    cursor = dbapi_conn.cursor()
-    try:
-        # 啟用 WAL 模式以改善並發
-        cursor.execute("PRAGMA journal_mode=WAL")
-        # 設定 busy timeout 為 30 秒
-        cursor.execute("PRAGMA busy_timeout=30000")
-        # 設定同步模式為 NORMAL（平衡性能與安全）
-        cursor.execute("PRAGMA synchronous=NORMAL")
-        # 啟用外鍵約束
-        cursor.execute("PRAGMA foreign_keys=ON")
-        # 優化記憶體使用
-        cursor.execute("PRAGMA cache_size=-64000")  # 64MB cache
-        # 設定 temp store 在記憶體中
-        cursor.execute("PRAGMA temp_store=MEMORY")
-        logging.debug("SQLite USM 數據庫優化參數設定完成")
-    except Exception as e:
-        logging.warning(f"設定 USM SQLite PRAGMA 失敗: {e}")
-    finally:
-        cursor.close()
+    apply_sqlite_pragma(dbapi_conn, label="USM 資料庫")
 
 async def init_usm_db():
     """初始化 User Story Map 資料庫連線；schema 由 migration 管理"""

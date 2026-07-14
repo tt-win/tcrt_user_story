@@ -11,6 +11,20 @@ This migration purges any pre-existing non-storage rows from
 team_automation_providers and any existing automation_runs so the new
 constraints / FKs apply cleanly.
 
+**2026-07-14 engine-portability fix**: the `automation_runs` FK retarget originally
+always ran through hand-rolled raw SQL (SQLite-flavored `DROP INDEX IF EXISTS`
+without `ON <table>`, and a raw `CREATE TABLE ... DATETIME ...`), which is why this
+migration could never complete on a real MySQL or PostgreSQL server — `DROP INDEX
+IF EXISTS <name>` is invalid MySQL syntax (and even corrected, MySQL then refuses to
+drop an index still backing a foreign key), and `DATETIME` is not a PostgreSQL type.
+Since this revision has never successfully run to completion against MySQL or
+PostgreSQL in any real deployment, there is no existing-environment compatibility to
+preserve for those two dialects, unlike SQLite (kept byte-for-byte identical below,
+since every SQLite deployment has already applied this exact DDL). For MySQL/
+PostgreSQL the FK retarget is expressed with portable Alembic operations instead of
+a full table rebuild — no raw SQL, no index churn, since only the FK itself needs to
+move.
+
 Revision ID: b9d4e7a3c0f2
 Revises: a8f2d6c9e0b1
 Create Date: 2026-05-21 09:00:00.000000
@@ -45,6 +59,25 @@ AUTOMATION_RUNS_INDEXES = [
     ("ix_automation_runs_group_started", "script_group_id, started_at"),
     ("ix_automation_runs_status_synced", "status, last_synced_at"),
 ]
+
+
+def _retarget_automation_runs_provider_fk_portable(
+    bind, *, referred_table: str, constraint_name: str
+) -> None:
+    """MySQL/PostgreSQL 版的 provider_id FK retarget：只移動 FK 本身，不動表結構或索引
+    （SQLite 才需要整表重建，見 upgrade()/downgrade() 的 dialect 分支說明）。"""
+    inspector = sa.inspect(bind)
+    for fk in inspector.get_foreign_keys("automation_runs"):
+        if fk.get("constrained_columns") == ["provider_id"]:
+            op.drop_constraint(fk["name"], "automation_runs", type_="foreignkey")
+            break
+    op.create_foreign_key(
+        constraint_name,
+        "automation_runs",
+        referred_table,
+        ["provider_id"],
+        ["id"],
+    )
 
 
 def upgrade() -> None:
@@ -98,57 +131,70 @@ def upgrade() -> None:
                 "provider_slot = 'storage'",
             )
 
-    # 4) Rebuild automation_runs to retarget provider_id FK. Raw DDL avoids
-    #    alembic batch_alter_table preserving the original anonymous FK.
+    # 4) Retarget automation_runs.provider_id FK to system_automation_providers.
     if "automation_runs" in existing_tables:
-        # Drop old indexes first (will be recreated on the new table)
-        for index_name, _ in AUTOMATION_RUNS_INDEXES:
-            op.execute(sa.text(f"DROP INDEX IF EXISTS {index_name}"))
+        if bind.dialect.name == "sqlite":
+            # Unchanged since first shipped: every SQLite deployment has already
+            # applied this exact DDL, so it must stay byte-for-byte identical.
+            # Raw DDL avoids alembic batch_alter_table preserving the original
+            # anonymous FK (a SQLite/batch-mode-specific limitation).
+            for index_name, _ in AUTOMATION_RUNS_INDEXES:
+                op.execute(sa.text(f"DROP INDEX IF EXISTS {index_name}"))
 
-        op.execute(sa.text("ALTER TABLE automation_runs RENAME TO automation_runs_old"))
-        op.execute(
-            sa.text(
-                """
-                CREATE TABLE automation_runs (
-                    id INTEGER NOT NULL,
-                    team_id INTEGER NOT NULL,
-                    automation_script_id INTEGER,
-                    script_group_id INTEGER,
-                    provider_id INTEGER NOT NULL,
-                    external_run_id VARCHAR(120),
-                    external_run_url VARCHAR(500),
-                    status VARCHAR(9) NOT NULL,
-                    triggered_by VARCHAR(8) NOT NULL,
-                    triggered_by_user_id VARCHAR(64),
-                    triggered_by_webhook_id INTEGER,
-                    tcrt_correlation_id VARCHAR(36) NOT NULL,
-                    ci_correlation_id VARCHAR(120),
-                    workflow_id VARCHAR(200) NOT NULL,
-                    branch VARCHAR(200) NOT NULL,
-                    inputs_json TEXT,
-                    runner_label VARCHAR(100),
-                    report_url VARCHAR(500),
-                    started_at DATETIME,
-                    finished_at DATETIME,
-                    duration_ms INTEGER,
-                    error_summary TEXT,
-                    last_synced_at DATETIME,
-                    created_at DATETIME NOT NULL,
-                    updated_at DATETIME NOT NULL,
-                    PRIMARY KEY (id),
-                    CONSTRAINT uq_automation_runs_tcrt_correlation_id UNIQUE (tcrt_correlation_id),
-                    CONSTRAINT fk_automation_runs_team_id FOREIGN KEY(team_id) REFERENCES teams (id) ON DELETE CASCADE,
-                    CONSTRAINT fk_automation_runs_automation_script_id FOREIGN KEY(automation_script_id) REFERENCES automation_scripts (id) ON DELETE SET NULL,
-                    CONSTRAINT fk_automation_runs_script_group_id FOREIGN KEY(script_group_id) REFERENCES automation_script_groups (id) ON DELETE SET NULL,
-                    CONSTRAINT fk_automation_runs_triggered_by_webhook_id FOREIGN KEY(triggered_by_webhook_id) REFERENCES automation_webhooks (id),
-                    CONSTRAINT fk_automation_runs_provider_id_system FOREIGN KEY(provider_id) REFERENCES system_automation_providers (id)
+            op.execute(sa.text("ALTER TABLE automation_runs RENAME TO automation_runs_old"))
+            op.execute(
+                sa.text(
+                    """
+                    CREATE TABLE automation_runs (
+                        id INTEGER NOT NULL,
+                        team_id INTEGER NOT NULL,
+                        automation_script_id INTEGER,
+                        script_group_id INTEGER,
+                        provider_id INTEGER NOT NULL,
+                        external_run_id VARCHAR(120),
+                        external_run_url VARCHAR(500),
+                        status VARCHAR(9) NOT NULL,
+                        triggered_by VARCHAR(8) NOT NULL,
+                        triggered_by_user_id VARCHAR(64),
+                        triggered_by_webhook_id INTEGER,
+                        tcrt_correlation_id VARCHAR(36) NOT NULL,
+                        ci_correlation_id VARCHAR(120),
+                        workflow_id VARCHAR(200) NOT NULL,
+                        branch VARCHAR(200) NOT NULL,
+                        inputs_json TEXT,
+                        runner_label VARCHAR(100),
+                        report_url VARCHAR(500),
+                        started_at DATETIME,
+                        finished_at DATETIME,
+                        duration_ms INTEGER,
+                        error_summary TEXT,
+                        last_synced_at DATETIME,
+                        created_at DATETIME NOT NULL,
+                        updated_at DATETIME NOT NULL,
+                        PRIMARY KEY (id),
+                        CONSTRAINT uq_automation_runs_tcrt_correlation_id UNIQUE (tcrt_correlation_id),
+                        CONSTRAINT fk_automation_runs_team_id FOREIGN KEY(team_id) REFERENCES teams (id) ON DELETE CASCADE,
+                        CONSTRAINT fk_automation_runs_automation_script_id FOREIGN KEY(automation_script_id) REFERENCES automation_scripts (id) ON DELETE SET NULL,
+                        CONSTRAINT fk_automation_runs_script_group_id FOREIGN KEY(script_group_id) REFERENCES automation_script_groups (id) ON DELETE SET NULL,
+                        CONSTRAINT fk_automation_runs_triggered_by_webhook_id FOREIGN KEY(triggered_by_webhook_id) REFERENCES automation_webhooks (id),
+                        CONSTRAINT fk_automation_runs_provider_id_system FOREIGN KEY(provider_id) REFERENCES system_automation_providers (id)
+                    )
+                    """
                 )
-                """
             )
-        )
-        op.execute(sa.text("DROP TABLE automation_runs_old"))
-        for index_name, columns in AUTOMATION_RUNS_INDEXES:
-            op.execute(sa.text(f"CREATE INDEX {index_name} ON automation_runs ({columns})"))
+            op.execute(sa.text("DROP TABLE automation_runs_old"))
+            for index_name, columns in AUTOMATION_RUNS_INDEXES:
+                op.execute(sa.text(f"CREATE INDEX {index_name} ON automation_runs ({columns})"))
+        else:
+            # MySQL/PostgreSQL: this revision has never successfully completed on
+            # either engine before (the raw SQL above never worked there), so there
+            # is no existing deployment behavior to preserve — only the FK itself
+            # needs to move, so retarget it directly without a table rebuild.
+            _retarget_automation_runs_provider_fk_portable(
+                bind,
+                referred_table="system_automation_providers",
+                constraint_name="fk_automation_runs_provider_id_system",
+            )
 
 
 def downgrade() -> None:
@@ -156,55 +202,63 @@ def downgrade() -> None:
     inspector = sa.inspect(bind)
     existing_tables = set(inspector.get_table_names())
 
-    # 1) Retarget automation_runs.provider_id back to team table via rebuild.
+    # 1) Retarget automation_runs.provider_id back to team table.
     if "automation_runs" in existing_tables:
-        op.execute(sa.text("DELETE FROM automation_runs"))
-        for index_name, _ in AUTOMATION_RUNS_INDEXES:
-            op.execute(sa.text(f"DROP INDEX IF EXISTS {index_name}"))
-        op.execute(sa.text("ALTER TABLE automation_runs RENAME TO automation_runs_old"))
-        op.execute(
-            sa.text(
-                """
-                CREATE TABLE automation_runs (
-                    id INTEGER NOT NULL,
-                    team_id INTEGER NOT NULL,
-                    automation_script_id INTEGER,
-                    script_group_id INTEGER,
-                    provider_id INTEGER NOT NULL,
-                    external_run_id VARCHAR(120),
-                    external_run_url VARCHAR(500),
-                    status VARCHAR(9) NOT NULL,
-                    triggered_by VARCHAR(8) NOT NULL,
-                    triggered_by_user_id VARCHAR(64),
-                    triggered_by_webhook_id INTEGER,
-                    tcrt_correlation_id VARCHAR(36) NOT NULL,
-                    ci_correlation_id VARCHAR(120),
-                    workflow_id VARCHAR(200) NOT NULL,
-                    branch VARCHAR(200) NOT NULL,
-                    inputs_json TEXT,
-                    runner_label VARCHAR(100),
-                    report_url VARCHAR(500),
-                    started_at DATETIME,
-                    finished_at DATETIME,
-                    duration_ms INTEGER,
-                    error_summary TEXT,
-                    last_synced_at DATETIME,
-                    created_at DATETIME NOT NULL,
-                    updated_at DATETIME NOT NULL,
-                    PRIMARY KEY (id),
-                    CONSTRAINT uq_automation_runs_tcrt_correlation_id UNIQUE (tcrt_correlation_id),
-                    FOREIGN KEY(team_id) REFERENCES teams (id) ON DELETE CASCADE,
-                    FOREIGN KEY(automation_script_id) REFERENCES automation_scripts (id) ON DELETE SET NULL,
-                    FOREIGN KEY(script_group_id) REFERENCES automation_script_groups (id) ON DELETE SET NULL,
-                    FOREIGN KEY(triggered_by_webhook_id) REFERENCES automation_webhooks (id),
-                    FOREIGN KEY(provider_id) REFERENCES team_automation_providers (id)
+        if bind.dialect.name == "sqlite":
+            op.execute(sa.text("DELETE FROM automation_runs"))
+            for index_name, _ in AUTOMATION_RUNS_INDEXES:
+                op.execute(sa.text(f"DROP INDEX IF EXISTS {index_name}"))
+            op.execute(sa.text("ALTER TABLE automation_runs RENAME TO automation_runs_old"))
+            op.execute(
+                sa.text(
+                    """
+                    CREATE TABLE automation_runs (
+                        id INTEGER NOT NULL,
+                        team_id INTEGER NOT NULL,
+                        automation_script_id INTEGER,
+                        script_group_id INTEGER,
+                        provider_id INTEGER NOT NULL,
+                        external_run_id VARCHAR(120),
+                        external_run_url VARCHAR(500),
+                        status VARCHAR(9) NOT NULL,
+                        triggered_by VARCHAR(8) NOT NULL,
+                        triggered_by_user_id VARCHAR(64),
+                        triggered_by_webhook_id INTEGER,
+                        tcrt_correlation_id VARCHAR(36) NOT NULL,
+                        ci_correlation_id VARCHAR(120),
+                        workflow_id VARCHAR(200) NOT NULL,
+                        branch VARCHAR(200) NOT NULL,
+                        inputs_json TEXT,
+                        runner_label VARCHAR(100),
+                        report_url VARCHAR(500),
+                        started_at DATETIME,
+                        finished_at DATETIME,
+                        duration_ms INTEGER,
+                        error_summary TEXT,
+                        last_synced_at DATETIME,
+                        created_at DATETIME NOT NULL,
+                        updated_at DATETIME NOT NULL,
+                        PRIMARY KEY (id),
+                        CONSTRAINT uq_automation_runs_tcrt_correlation_id UNIQUE (tcrt_correlation_id),
+                        FOREIGN KEY(team_id) REFERENCES teams (id) ON DELETE CASCADE,
+                        FOREIGN KEY(automation_script_id) REFERENCES automation_scripts (id) ON DELETE SET NULL,
+                        FOREIGN KEY(script_group_id) REFERENCES automation_script_groups (id) ON DELETE SET NULL,
+                        FOREIGN KEY(triggered_by_webhook_id) REFERENCES automation_webhooks (id),
+                        FOREIGN KEY(provider_id) REFERENCES team_automation_providers (id)
+                    )
+                    """
                 )
-                """
             )
-        )
-        op.execute(sa.text("DROP TABLE automation_runs_old"))
-        for index_name, columns in AUTOMATION_RUNS_INDEXES:
-            op.execute(sa.text(f"CREATE INDEX {index_name} ON automation_runs ({columns})"))
+            op.execute(sa.text("DROP TABLE automation_runs_old"))
+            for index_name, columns in AUTOMATION_RUNS_INDEXES:
+                op.execute(sa.text(f"CREATE INDEX {index_name} ON automation_runs ({columns})"))
+        else:
+            op.execute(sa.text("DELETE FROM automation_runs"))
+            _retarget_automation_runs_provider_fk_portable(
+                bind,
+                referred_table="team_automation_providers",
+                constraint_name="fk_automation_runs_provider_id",
+            )
 
     # 2) Drop CHECK on team table.
     inspector = sa.inspect(bind)

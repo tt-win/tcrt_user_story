@@ -12,6 +12,7 @@ import time
 from typing import Any, Iterable
 
 import requests
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +29,14 @@ DEFAULT_SERVER_PORTS = {
     "mysql": 19999,
 }
 TARGET_ORDER = ("main", "audit", "usm")
+MIGRATE_URL_KEYS = ("DATABASE_URL", "SYNC_DATABASE_URL", "AUDIT_DATABASE_URL", "USM_DATABASE_URL")
+MIGRATE_JOB_SPECS = (
+    ("main", "SYNC_DATABASE_URL"),
+    ("audit", "AUDIT_DATABASE_URL"),
+    ("usm", "USM_DATABASE_URL"),
+)
+NON_EMPTY_EXCLUDE_TABLES = ("alembic_version", "migration_history")
+MAX_NON_EMPTY_TABLES_REPORTED = 20
 
 
 @dataclass(frozen=True)
@@ -58,6 +67,155 @@ class CommandResult:
             "stderr": self.stderr,
             "log_path": self.log_path,
         }
+
+
+@dataclass(frozen=True)
+class MigrateEndpoints:
+    source: dict[str, str]
+    target: dict[str, str]
+
+
+def parse_env_file(path: Path) -> dict[str, str]:
+    """解析簡單的 `KEY=VALUE` env 檔（跳過空行/`#` 開頭，去除值的首尾引號）。"""
+    values: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, sep, value = line.partition("=")
+        if not sep:
+            continue
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        values[key] = value
+    return values
+
+
+def _require_migrate_url_keys(values: dict[str, str], source_label: str) -> dict[str, str]:
+    missing = [key for key in MIGRATE_URL_KEYS if not values.get(key)]
+    if missing:
+        raise ValueError(f"{source_label} 缺少必要鍵：{missing}")
+    return {key: values[key] for key in MIGRATE_URL_KEYS}
+
+
+def resolve_migrate_source_endpoints(source_env_file: str | None) -> dict[str, str]:
+    if source_env_file:
+        values = parse_env_file(Path(source_env_file))
+        return _require_migrate_url_keys(values, f"--source-env-file={source_env_file}")
+
+    from app.db_migrations import (
+        resolve_audit_database_url,
+        resolve_main_database_url,
+        resolve_usm_database_url,
+    )
+    from app.db_url import normalize_sync_database_url
+
+    main_url = resolve_main_database_url()
+    return {
+        "DATABASE_URL": main_url,
+        "SYNC_DATABASE_URL": normalize_sync_database_url(main_url),
+        "AUDIT_DATABASE_URL": resolve_audit_database_url(),
+        "USM_DATABASE_URL": resolve_usm_database_url(),
+    }
+
+
+def resolve_migrate_target_endpoints(
+    target_env_file: str | None,
+    target: "WorkflowTarget",
+) -> dict[str, str]:
+    """未提供 --target-env-file 時，使用 build_workflow_target() 的 disposable 環境
+    （sqlite 為 run-dir 隔離檔案；mysql/postgres 為固定 tcrt/tcrt@fixed-port，無論該服務是本次
+    workflow 以 --manage-services 啟動、或操作者自行手動啟動 docker-compose.*.yml）。"""
+    if target_env_file:
+        values = parse_env_file(Path(target_env_file))
+        return _require_migrate_url_keys(values, f"--target-env-file={target_env_file}")
+    return dict(target.environment)
+
+
+def _endpoint_identity(url: str) -> tuple[str, str, int | None, str | None]:
+    parsed = make_url(url)
+    backend = parsed.get_backend_name()
+    if backend == "sqlite":
+        database = str(Path(parsed.database).resolve()) if parsed.database else None
+        return (backend, "", None, database)
+    return (backend, parsed.host or "", parsed.port, parsed.database)
+
+
+def _reject_same_database(source: dict[str, str], target: dict[str, str]) -> None:
+    for key in MIGRATE_URL_KEYS:
+        if _endpoint_identity(source[key]) == _endpoint_identity(target[key]):
+            raise ValueError(f"{key} 的來源與目標解析為同一資料庫，拒絕執行：{source[key]}")
+
+
+def resolve_migrate_endpoints(
+    *,
+    target: "WorkflowTarget",
+    target_env_file: str | None,
+    source_env_file: str | None,
+) -> MigrateEndpoints:
+    source = resolve_migrate_source_endpoints(source_env_file)
+    target_endpoints = resolve_migrate_target_endpoints(target_env_file, target)
+    _reject_same_database(source, target_endpoints)
+    return MigrateEndpoints(source=source, target=target_endpoints)
+
+
+def detect_non_empty_targets(endpoints: MigrateEndpoints) -> dict[str, list[dict[str, Any]]]:
+    """搬移前偵測目標三庫是否已有業務資料（排除 migration 版控表）。database 不存在或無法連線視為空。"""
+    from app.db_url import normalize_sync_database_url
+
+    non_empty: dict[str, list[dict[str, Any]]] = {}
+    for label, url_key in MIGRATE_JOB_SPECS:
+        sync_url = normalize_sync_database_url(endpoints.target[url_key])
+        try:
+            engine = create_engine(sync_url, future=True)
+        except Exception:  # noqa: BLE001
+            continue
+        try:
+            inspector = inspect(engine)
+            table_names = [name for name in inspector.get_table_names() if name not in NON_EMPTY_EXCLUDE_TABLES]
+            preparer = engine.dialect.identifier_preparer
+            rows: list[dict[str, Any]] = []
+            with engine.connect() as connection:
+                for table_name in table_names:
+                    count = connection.execute(text(f"SELECT COUNT(*) FROM {preparer.quote(table_name)}")).scalar()
+                    if count:
+                        rows.append({"table": table_name, "rows": int(count)})
+            if rows:
+                non_empty[label] = rows[:MAX_NON_EMPTY_TABLES_REPORTED]
+        except Exception:  # noqa: BLE001
+            continue
+        finally:
+            engine.dispose()
+    return non_empty
+
+
+def _run_cross_migrate(
+    *,
+    job_name: str,
+    source_url: str,
+    target_url: str,
+    log_path: Path,
+    disable_constraints: bool,
+) -> CommandResult:
+    from app.db_url import normalize_sync_database_url
+
+    arguments = [
+        "--name",
+        job_name,
+        "--source-url",
+        normalize_sync_database_url(source_url),
+        "--target-url",
+        normalize_sync_database_url(target_url),
+        "--reset-target",
+        "--json",
+        "--quiet",
+    ]
+    if disable_constraints:
+        arguments.append("--disable-constraints")
+    command = [sys.executable, str(PROJECT_ROOT / "scripts" / "db_cross_migrate.py"), *arguments]
+    return _run_command(command=command, environment=os.environ.copy(), log_path=log_path)
 
 
 def build_workflow_target(target_name: str, run_dir: Path) -> WorkflowTarget:
@@ -240,22 +398,24 @@ def render_markdown_summary(summary: dict[str, Any]) -> str:
         "## Environment",
         "",
     ]
-    for key, value in summary["environment"].items():
+    for key, value in summary.get("environment", {}).items():
         lines.append(f"- {key}: `{value}`")
 
+    guardrails = summary.get("guardrails") or {}
+    steps = summary.get("steps") or {}
     lines.extend(
         [
             "",
             "## Guardrails",
             "",
-            f"- passed: `{'yes' if summary['guardrails']['passed'] else 'no'}`",
-            f"- violations: `{len(summary['guardrails']['violations'])}`",
+            f"- passed: `{'yes' if guardrails.get('passed') else 'no'}`",
+            f"- violations: `{len(guardrails.get('violations', []))}`",
             "",
             "## Steps",
             "",
-            f"- preflight: `rc={summary['steps']['preflight']['returncode']}`",
-            f"- bootstrap: `rc={summary['steps']['bootstrap']['returncode']}`",
-            f"- verify: `rc={summary['steps']['verify']['returncode']}`",
+            f"- preflight: `rc={steps.get('preflight', {}).get('returncode', 'n/a')}`",
+            f"- bootstrap: `rc={steps.get('bootstrap', {}).get('returncode', 'n/a')}`",
+            f"- verify: `rc={steps.get('verify', {}).get('returncode', 'n/a')}`",
         ]
     )
     if summary.get("health_check"):
@@ -264,7 +424,7 @@ def render_markdown_summary(summary: dict[str, Any]) -> str:
         lines.append(f"- health_url: `{health_check['url']}`")
 
     lines.extend(["", "## Verification", ""])
-    for target_summary in summary["verification"].get("targets", []):
+    for target_summary in summary.get("verification", {}).get("targets", []):
         lines.append(
             f"- {target_summary['target']}: ready=`{'yes' if target_summary['ready'] else 'no'}`, "
             f"revision=`{target_summary['current_revision']}/{target_summary['head_revision']}`"
@@ -281,6 +441,41 @@ def render_markdown_summary(summary: dict[str, Any]) -> str:
             lines.append(
                 f"- {target_result['target']}: `{'match' if target_result['matches'] else 'mismatch'}`"
             )
+
+    non_empty_tables = summary.get("non_empty_tables")
+    if non_empty_tables:
+        lines.extend(["", "## Non-Empty Target Tables", ""])
+        for target_label, rows in non_empty_tables.items():
+            lines.append(f"- {target_label}:")
+            for row in rows:
+                lines.append(f"  - {row['table']}: `{row['rows']}`")
+
+    migration = summary.get("migration")
+    if migration:
+        lines.extend(["", "## Migration", ""])
+        lines.append(f"- row_counts_match: `{'yes' if migration.get('row_counts_match') else 'no'}`")
+        lines.append(f"- duration_seconds: `{migration.get('duration_seconds')}`")
+        for job in migration.get("jobs", []):
+            table_rows = job.get("tables", [])
+            total_rows = sum(int(item.get("rows", 0)) for item in table_rows)
+            lines.append(
+                f"- {job.get('job', '?')}: tables=`{len(table_rows)}`, rows=`{total_rows}`, "
+                f"row_counts_match=`{'yes' if job.get('row_counts_match') else 'no'}`"
+            )
+
+    env_summary = summary.get("env_summary")
+    if env_summary:
+        lines.extend(
+            [
+                "",
+                "## Env Summary",
+                "",
+                "實際密碼請直接取自 --target-env-file，本檔不含明文密碼。",
+                "",
+            ]
+        )
+        for key, value in env_summary.items():
+            lines.append(f"- {key}: `{value}`")
 
     lines.extend(
         [
@@ -304,7 +499,24 @@ def run_cutover_workflow(
     keep_services: bool,
     health_timeout: int,
     baseline_summary_path: Path | None = None,
+    target_env_file: str | None = None,
+    source_env_file: str | None = None,
+    force_reset_target: bool = False,
+    migrate_disable_constraints: bool = False,
 ) -> dict[str, Any]:
+    if mode == "migrate":
+        return _run_migrate_workflow(
+            target_name=target_name,
+            output_root=output_root,
+            manage_services=manage_services,
+            keep_services=keep_services,
+            health_timeout=health_timeout,
+            target_env_file=target_env_file,
+            source_env_file=source_env_file,
+            force_reset_target=force_reset_target,
+            migrate_disable_constraints=migrate_disable_constraints,
+        )
+
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_dir = (output_root / f"{timestamp}-{target_name}-{mode}").resolve()
     logs_dir = run_dir / "logs"
@@ -402,6 +614,169 @@ def run_cutover_workflow(
             _write_summary_files(run_dir, summary)
 
 
+def _run_migrate_workflow(
+    *,
+    target_name: str,
+    output_root: Path,
+    manage_services: bool,
+    keep_services: bool,
+    health_timeout: int,
+    target_env_file: str | None,
+    source_env_file: str | None,
+    force_reset_target: bool,
+    migrate_disable_constraints: bool,
+) -> dict[str, Any]:
+    """一鍵搬移：schema bootstrap → 三庫資料搬移 → 逐表覆核 → 驗證 → 健康檢查（design D2）。"""
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    run_dir = (output_root / f"{timestamp}-{target_name}-migrate").resolve()
+    logs_dir = run_dir / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+
+    target = build_workflow_target(target_name, run_dir)
+    pid_file = run_dir / "server.pid"
+    summary: dict[str, Any] = {
+        "target": target_name,
+        "mode": "migrate",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "run_dir": str(run_dir),
+        "environment": {},
+        "compose_file": target.compose_file,
+        "guardrails": {},
+        "steps": {},
+        "preflight": {},
+        "verification": {},
+        "health_check": None,
+        "migration": {},
+        "env_summary": {},
+        "success": False,
+    }
+    current_started_services = False
+    environment: dict[str, str] | None = None
+
+    try:
+        if manage_services and target.manages_services:
+            compose_environment = build_runtime_environment(target, pid_file)
+            compose_result = _run_compose_up(target, compose_environment, logs_dir / "compose-up.log")
+            summary["steps"]["compose_up"] = compose_result.as_json()
+            if compose_result.returncode != 0:
+                return _finalize_summary(summary, run_dir, None)
+            current_started_services = True
+
+        try:
+            endpoints = resolve_migrate_endpoints(
+                target=target,
+                target_env_file=target_env_file,
+                source_env_file=source_env_file,
+            )
+        except ValueError as exc:
+            summary["error"] = str(exc)
+            return _finalize_summary(summary, run_dir, None)
+
+        environment = build_runtime_environment(target, pid_file)
+        environment.update(endpoints.target)
+        summary["environment"] = redact_environment(environment)
+
+        guardrail_result = _run_guardrails()
+        summary["guardrails"] = guardrail_result
+        if not guardrail_result["passed"]:
+            return _finalize_summary(summary, run_dir, None)
+
+        preflight_result = _run_database_init_command(
+            arguments=["--preflight", "--json", "--quiet"],
+            environment=environment,
+            log_path=logs_dir / "preflight.log",
+        )
+        summary["steps"]["preflight"] = preflight_result.as_json()
+        if preflight_result.stdout:
+            summary["preflight"] = extract_json_payload(preflight_result.stdout)
+        if preflight_result.returncode != 0:
+            return _finalize_summary(summary, run_dir, None)
+
+        non_empty = detect_non_empty_targets(endpoints)
+        if non_empty and not force_reset_target:
+            summary["non_empty_tables"] = non_empty
+            summary["error"] = "目標資料庫已有業務資料，且未帶 --force-reset-target，中止 migrate"
+            return _finalize_summary(summary, run_dir, None)
+
+        bootstrap_result = _run_database_init_command(
+            arguments=["--no-backup", "--quiet"],
+            environment=environment,
+            log_path=logs_dir / "bootstrap.log",
+        )
+        summary["steps"]["bootstrap"] = bootstrap_result.as_json()
+        if bootstrap_result.returncode != 0:
+            return _finalize_summary(summary, run_dir, None)
+
+        migration_started = time.monotonic()
+        migration_jobs: list[dict[str, Any]] = []
+        migration_ok = True
+        for job_name, url_key in MIGRATE_JOB_SPECS:
+            migrate_result = _run_cross_migrate(
+                job_name=job_name,
+                source_url=endpoints.source[url_key],
+                target_url=endpoints.target[url_key],
+                log_path=logs_dir / f"migrate-{job_name}.log",
+                disable_constraints=migrate_disable_constraints,
+            )
+            summary["steps"][f"migrate_{job_name}"] = migrate_result.as_json()
+            if migrate_result.returncode != 0:
+                migration_ok = False
+                migration_jobs.append({"job": job_name, "returncode": migrate_result.returncode, "status": "error"})
+                break
+            payload = extract_json_payload(migrate_result.stdout) if migrate_result.stdout else {}
+            job_summary = (payload.get("jobs") or [{}])[0]
+            job_summary["source_url"] = redact_url(job_summary.get("source_url", endpoints.source[url_key]))
+            job_summary["target_url"] = redact_url(job_summary.get("target_url", endpoints.target[url_key]))
+            migration_jobs.append(job_summary)
+            if not job_summary.get("row_counts_match", False):
+                migration_ok = False
+
+        summary["migration"] = {
+            "jobs": migration_jobs,
+            "row_counts_match": migration_ok,
+            "duration_seconds": round(time.monotonic() - migration_started, 3),
+        }
+        if not migration_ok:
+            return _finalize_summary(summary, run_dir, None)
+
+        verify_result = _run_database_init_command(
+            arguments=["--verify-target", "all", "--json", "--quiet"],
+            environment=environment,
+            log_path=logs_dir / "verify.log",
+        )
+        summary["steps"]["verify"] = verify_result.as_json()
+        if verify_result.stdout:
+            summary["verification"] = extract_json_payload(verify_result.stdout)
+        if verify_result.returncode != 0:
+            return _finalize_summary(summary, run_dir, None)
+
+        health_result = _run_health_check(
+            environment=environment,
+            pid_file=pid_file,
+            timeout_seconds=health_timeout,
+            log_path=logs_dir / "start.log",
+        )
+        summary["steps"]["start_app"] = health_result["start_command"].as_json()
+        summary["health_check"] = health_result["health"]
+        if not health_result["health"]["ok"]:
+            return _finalize_summary(summary, run_dir, None)
+
+        summary["env_summary"] = {key: redact_url(value) for key, value in endpoints.target.items()}
+
+        return _finalize_summary(summary, run_dir, None)
+    finally:
+        _stop_server_if_running(pid_file)
+        if current_started_services and target.manages_services and not keep_services:
+            compose_down_environment = environment or build_runtime_environment(target, pid_file)
+            compose_down_result = _run_compose_down(
+                target,
+                compose_down_environment,
+                logs_dir / "compose-down.log",
+            )
+            summary["steps"]["compose_down"] = compose_down_result.as_json()
+            _write_summary_files(run_dir, summary)
+
+
 def parse_args(argv: list[str] | None = None) -> Any:
     import argparse
 
@@ -414,9 +789,9 @@ def parse_args(argv: list[str] | None = None) -> Any:
     )
     parser.add_argument(
         "--mode",
-        choices=["preflight", "smoke", "rehearsal"],
+        choices=["preflight", "smoke", "rehearsal", "migrate"],
         default="smoke",
-        help="workflow 模式",
+        help="workflow 模式；migrate 為單一指令端到端搬移（schema bootstrap + 資料搬移 + 逐表覆核 + 驗證 + 健康檢查）",
     )
     parser.add_argument(
         "--output-root",
@@ -441,13 +816,43 @@ def parse_args(argv: list[str] | None = None) -> Any:
     )
     parser.add_argument(
         "--baseline-summary",
-        help="rehearsal 比對用的 baseline summary.json 路徑",
+        help="rehearsal 比對用的 baseline summary.json 路徑（僅適用 rehearsal，不可與 --mode migrate 併用）",
+    )
+    parser.add_argument(
+        "--target-env-file",
+        help="migrate 模式：指向目標資料庫連線設定的 env 檔"
+        "（含 DATABASE_URL/SYNC_DATABASE_URL/AUDIT_DATABASE_URL/USM_DATABASE_URL）；"
+        "未提供且帶 --manage-services 時退回 disposable compose 目標",
+    )
+    parser.add_argument(
+        "--source-env-file",
+        help="migrate 模式：指向來源資料庫連線設定的 env 檔；未提供時使用目前 app 環境實際解析到的來源",
+    )
+    parser.add_argument(
+        "--force-reset-target",
+        action="store_true",
+        help="migrate 模式：目標三庫已有業務資料時仍強制清空重灌"
+        "（破壞性操作，會清空目標 main/audit/usm 三庫全部既有業務資料）",
+    )
+    parser.add_argument(
+        "--migrate-disable-constraints",
+        action="store_true",
+        help="migrate 模式：搬移時透傳 db_cross_migrate 的 --disable-constraints（來源存在循環 FK 時使用）",
     )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.mode == "migrate" and args.baseline_summary:
+        print(
+            json.dumps(
+                {"error": "--baseline-summary 僅適用於 rehearsal 模式，不可與 --mode migrate 併用"},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 1
     summary = run_cutover_workflow(
         target_name=args.target,
         mode=args.mode,
@@ -458,6 +863,10 @@ def main(argv: list[str] | None = None) -> int:
         baseline_summary_path=Path(args.baseline_summary).resolve()
         if args.baseline_summary
         else None,
+        target_env_file=args.target_env_file,
+        source_env_file=args.source_env_file,
+        force_reset_target=bool(args.force_reset_target),
+        migrate_disable_constraints=bool(args.migrate_disable_constraints),
     )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0 if summary["success"] else 1
@@ -688,7 +1097,7 @@ def _compute_success(summary: dict[str, Any]) -> bool:
 
     bootstrap_rc = int(summary.get("steps", {}).get("bootstrap", {}).get("returncode", 1))
     verify_rc = int(summary.get("steps", {}).get("verify", {}).get("returncode", 1))
-    health_ok = bool(summary.get("health_check", {}).get("ok"))
+    health_ok = bool((summary.get("health_check") or {}).get("ok"))
     comparison_ok = bool(summary.get("comparison", {}).get("matches", True))
     return (
         guardrails_passed

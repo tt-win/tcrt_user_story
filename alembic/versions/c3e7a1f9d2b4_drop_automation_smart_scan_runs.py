@@ -4,6 +4,14 @@ Removes the Smart Scan (智慧掃描) feature's run table. The feature and all i
 code/UI/endpoints were removed; this drops its now-orphaned persistence table.
 Mirrors the create block from a8f2d6c9e0b1 in downgrade() for reversibility.
 
+**2026-07-14 engine-portability fix**: `upgrade()` used to drop each index
+individually before `op.drop_table(...)` — entirely redundant (dropping a table
+already drops its own indexes/constraints on every engine) and actively broken on
+MySQL, which refuses to `DROP INDEX` on the auto-created index backing a still-live
+foreign key (`ix_automation_smart_scan_runs_provider_id` backs the `provider_id` FK),
+so this revision could never complete on a real MySQL server. Removed the redundant
+index-drop loop; `op.drop_table(...)` alone is sufficient and portable.
+
 Revision ID: c3e7a1f9d2b4
 Revises: f1a2b3c4d5e6
 Create Date: 2026-06-16 12:00:00.000000
@@ -40,15 +48,6 @@ def upgrade() -> None:
     inspector = sa.inspect(bind)
     if "automation_smart_scan_runs" not in set(inspector.get_table_names()):
         return
-    indexes = {ix["name"] for ix in inspector.get_indexes("automation_smart_scan_runs")}
-    for name in (
-        "ix_automation_smart_scan_runs_provider_hash",
-        "ix_automation_smart_scan_runs_team_status",
-        "ix_automation_smart_scan_runs_provider_id",
-        "ix_automation_smart_scan_runs_team_id",
-    ):
-        if name in indexes:
-            op.drop_index(name, table_name="automation_smart_scan_runs")
     op.drop_table("automation_smart_scan_runs")
 
 

@@ -22,11 +22,11 @@ from pathlib import Path
 from typing import Any, Iterator
 
 import yaml
-from sqlalchemy import MetaData, create_engine, inspect, select
+from sqlalchemy import MetaData, create_engine, func, inspect, select
 from sqlalchemy.dialects import mysql
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.sql.sqltypes import JSON as SQLAlchemyJSON
-from sqlalchemy.sql.sqltypes import String, Text
+from sqlalchemy.sql.sqltypes import Integer, String, Text
 
 
 DEFAULT_EXCLUDE_TABLES = ["alembic_version", "migration_history"]
@@ -568,83 +568,6 @@ def _sort_rows_for_self_references(
     )
 
 
-def _build_test_case_repair_context(target_connection: Connection) -> dict[str, Any]:
-    section_to_set: dict[int, int] = {}
-    for row in target_connection.exec_driver_sql(
-        "SELECT id, test_case_set_id FROM test_case_sections"
-    ):
-        section_to_set[int(row[0])] = int(row[1])
-
-    default_by_team: dict[int, dict[str, int | None]] = {}
-    for row in target_connection.exec_driver_sql(
-        """
-        SELECT s.team_id, s.id AS set_id, sec.id AS section_id
-        FROM test_case_sets s
-        LEFT JOIN test_case_sections sec
-          ON sec.test_case_set_id = s.id
-         AND sec.name = 'Unassigned'
-        WHERE s.is_default = 1
-        """
-    ):
-        default_by_team[int(row[0])] = {
-            "set_id": int(row[1]),
-            "section_id": int(row[2]) if row[2] is not None else None,
-        }
-
-    return {
-        "section_to_set": section_to_set,
-        "default_by_team": default_by_team,
-    }
-
-
-def _repair_test_cases_payload(
-    payload: list[dict[str, Any]],
-    target_connection: Connection,
-    context_cache: dict[str, Any],
-) -> tuple[list[dict[str, Any]], dict[str, int]]:
-    repair_context = context_cache.get("test_cases")
-    if repair_context is None:
-        repair_context = _build_test_case_repair_context(target_connection)
-        context_cache["test_cases"] = repair_context
-
-    repaired_missing_set = 0
-    repaired_missing_section = 0
-    for row in payload:
-        if row.get("test_case_set_id") is not None:
-            continue
-
-        section_id = row.get("test_case_section_id")
-        if section_id is not None:
-            derived_set_id = repair_context["section_to_set"].get(int(section_id))
-            if derived_set_id is None:
-                raise RuntimeError(
-                    "test_cases.test_case_set_id 缺值，但無法從 test_case_section_id "
-                    f"{section_id} 反推出對應 set。"
-                )
-            row["test_case_set_id"] = derived_set_id
-            repaired_missing_set += 1
-            continue
-
-        team_id = row.get("team_id")
-        if team_id is None:
-            raise RuntimeError("test_cases 缺少 team_id，無法自動修補 test_case_set_id")
-        default_entry = repair_context["default_by_team"].get(int(team_id))
-        if not default_entry:
-            raise RuntimeError(
-                f"team_id={team_id} 找不到 default test case set，無法修補 test_cases.test_case_set_id"
-            )
-        row["test_case_set_id"] = default_entry["set_id"]
-        repaired_missing_set += 1
-        if row.get("test_case_section_id") is None and default_entry.get("section_id") is not None:
-            row["test_case_section_id"] = default_entry["section_id"]
-            repaired_missing_section += 1
-
-    return payload, {
-        "repaired_missing_set": repaired_missing_set,
-        "repaired_missing_section": repaired_missing_section,
-    }
-
-
 def _load_primary_key_values(
     target_connection: Connection,
     table_name: str,
@@ -694,102 +617,16 @@ def _filter_test_run_item_result_history_payload(
     }
 
 
-def _dedup_users_payload_case_insensitive(
-    payload: list[dict[str, Any]],
-    context_cache: dict[str, Any],
-) -> tuple[list[dict[str, Any]], dict[str, int]]:
-    """Deduplicate users by case-insensitive username, keeping the most complete record.
-
-    SQLite allows 'nikki' and 'Nikki' as separate rows, but MySQL's unique index
-    is case-insensitive by default, causing duplicate key errors.
-
-    Completeness score: lark_user_id present (+3), is_verified (+2), last_login_at (+1),
-    more recent updated_at as tiebreaker.
-
-    Dropped user IDs are stored in context_cache["dropped_user_ids"] so downstream
-    tables referencing users.id can filter out orphan rows.
-    """
-
-    def _completeness(row: dict[str, Any]) -> tuple:
-        score = 0
-        if row.get("lark_user_id"):
-            score += 3
-        if row.get("is_verified"):
-            score += 2
-        if row.get("last_login_at"):
-            score += 1
-        updated = row.get("updated_at") or row.get("created_at")
-        return (score, updated or "")
-
-    seen: dict[str, dict[str, Any]] = {}  # username_lower → best row
-    losers: dict[str, dict[str, Any]] = {}  # username_lower → dropped row
-    duplicates_dropped = 0
-    for row in payload:
-        username_lower = (row.get("username") or "").strip().lower()
-        if not username_lower:
-            continue
-        if username_lower in seen:
-            existing = seen[username_lower]
-            if _completeness(row) > _completeness(existing):
-                losers[username_lower] = existing
-                seen[username_lower] = row
-            else:
-                losers[username_lower] = row
-            duplicates_dropped += 1
-        else:
-            seen[username_lower] = row
-
-    dropped_ids: set[int] = set()
-    for loser_row in losers.values():
-        uid = loser_row.get("id")
-        if uid is not None:
-            dropped_ids.add(int(uid))
-
-    context_cache["dropped_user_ids"] = dropped_ids
-
-    deduped = list(seen.values())
-    return deduped, {"case_insensitive_username_dedup": duplicates_dropped}
-
-
-def _filter_orphan_user_refs(
-    payload: list[dict[str, Any]],
-    context_cache: dict[str, Any],
-) -> tuple[list[dict[str, Any]], dict[str, int]]:
-    """Filter out rows whose user_id was dropped during users dedup."""
-    dropped_ids: set[int] = context_cache.get("dropped_user_ids") or set()
-    if not dropped_ids:
-        return payload, {}
-    filtered = []
-    skipped = 0
-    for row in payload:
-        uid = row.get("user_id")
-        if uid is not None and int(uid) in dropped_ids:
-            skipped += 1
-            continue
-        filtered.append(row)
-    return filtered, {"skipped_dropped_user_refs": skipped}
-
-
-# Tables that have a user_id FK referencing users.id
-_TABLES_WITH_USER_FK = frozenset({
-    "active_sessions",
-    "user_team_permissions",
-    "ai_tc_helper_sessions",
-})
-
-
 def repair_payload_for_target(
     table_name: str,
     payload: list[dict[str, Any]],
     target_connection: Connection,
     context_cache: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
-    if table_name == "users":
-        return _dedup_users_payload_case_insensitive(payload, context_cache)
-    if table_name in _TABLES_WITH_USER_FK:
-        return _filter_orphan_user_refs(payload, context_cache)
-    if table_name == "test_cases":
-        return _repair_test_cases_payload(payload, target_connection, context_cache)
+    # `users`（大小寫不敏感唯一性）與 `test_cases`（test_case_set_id NOT NULL）過去在此
+    # 即時修補，現在改由 schema migration 保證（見 alembic/versions/f5f2d075fd93_*、
+    # 9cd6393a4da6_*）：source 若已在該 migration 之後，資料本身就不會出現這兩種問題，
+    # 不需要在搬遷腳本重複修補。
     if table_name == "test_run_item_result_history":
         return _filter_test_run_item_result_history_payload(
             payload,
@@ -1034,6 +871,48 @@ def verify_legacy_helper_purge(target_url: str) -> dict[str, Any]:
         target_engine.dispose()
 
 
+def reset_postgresql_sequences(
+    target_connection: Connection,
+    target_metadata: MetaData,
+    table_names: list[str],
+) -> list[dict[str, Any]]:
+    """顯式 PK 資料載入完成後，把每個表的 identity/serial sequence 重置為目前最大 PK 值。
+
+    `copy_table_data` 搬移資料時保留來源的 PK 值（不是讓 PostgreSQL 自動產生），這不會
+    推進該欄位背後的 sequence，導致之後應用程式正常 INSERT（不指定 PK）產生的新 id 會
+    從 sequence 目前值開始、與剛搬入的資料撞鍵。只對 PostgreSQL 呼叫：SQLite 的
+    AUTOINCREMENT 與 MySQL 的 AUTO_INCREMENT 都是欄位本身的屬性、依表內實際最大值續號，
+    沒有獨立的 sequence 物件、不需要這個步驟。
+    """
+    reset_results: list[dict[str, Any]] = []
+    for table_name in table_names:
+        table = target_metadata.tables[table_name]
+        quoted_table = quote_ident(target_connection.engine, table_name)
+        for column in table.primary_key.columns:
+            if not isinstance(column.type, Integer):
+                continue
+            seq_name = target_connection.exec_driver_sql(
+                f"SELECT pg_get_serial_sequence('{table_name}', '{column.name}')"
+            ).scalar()
+            if not seq_name:
+                continue
+            quoted_column = quote_ident(target_connection.engine, column.name)
+            new_value = target_connection.exec_driver_sql(
+                f"SELECT setval('{seq_name}', "
+                f"COALESCE((SELECT MAX({quoted_column}) FROM {quoted_table}), 1), "
+                f"(SELECT MAX({quoted_column}) FROM {quoted_table}) IS NOT NULL)"
+            ).scalar()
+            reset_results.append(
+                {
+                    "table": table_name,
+                    "column": column.name,
+                    "sequence": seq_name,
+                    "reset_to": new_value,
+                }
+            )
+    return reset_results
+
+
 def run_job(job: TransferJob, logger: Logger) -> dict[str, Any]:
     logger.info(f"開始執行 job={job.name}")
     source_engine = build_engine(job.source_url)
@@ -1052,6 +931,11 @@ def run_job(job: TransferJob, logger: Logger) -> dict[str, Any]:
             logger.info(f"job={job.name} 先建立目標缺少的 schema")
             if target_engine.dialect.name == "mysql":
                 apply_mysql_mediumtext_defaults(source_metadata)
+            # 注意：SQLAlchemy reflect() 無法還原 expression-based index（例如
+            # users.uq_users_username_lower 這種 lower(username) 唯一索引），這裡建出的
+            # target 不會有該索引。正式 cutover-migrate 流程（app/db_cutover_workflow.py）
+            # 一律先用真正的 Alembic migration 建立 target schema，不受此限制；只有
+            # 直接用這個 flag 當 quick-start 捷徑時才需要注意這個落差。
             source_metadata.create_all(target_engine)
 
         target_metadata, _ = reflect_selected_metadata(
@@ -1126,6 +1010,33 @@ def run_job(job: TransferJob, logger: Logger) -> dict[str, Any]:
                             "rows": copied_rows,
                         }
                     )
+
+                if target_engine.dialect.name == "postgresql":
+                    sequence_resets = reset_postgresql_sequences(
+                        target_connection,
+                        target_metadata,
+                        ordered_tables,
+                    )
+                    if sequence_resets:
+                        summary["postgresql_sequence_resets"] = sequence_resets
+
+        row_count_verification: list[dict[str, Any]] = []
+        with source_engine.connect() as verify_source_conn, target_engine.connect() as verify_target_conn:
+            for table_name in ordered_tables:
+                source_table = source_metadata.tables[table_name]
+                target_table = target_metadata.tables[table_name]
+                source_rows = int(verify_source_conn.execute(select(func.count()).select_from(source_table)).scalar_one())
+                target_rows = int(verify_target_conn.execute(select(func.count()).select_from(target_table)).scalar_one())
+                row_count_verification.append(
+                    {
+                        "table": table_name,
+                        "source_rows": source_rows,
+                        "target_rows": target_rows,
+                        "matches": source_rows == target_rows,
+                    }
+                )
+        summary["row_count_verification"] = row_count_verification
+        summary["row_counts_match"] = all(item["matches"] for item in row_count_verification)
 
         summary["status"] = "completed"
         return summary
