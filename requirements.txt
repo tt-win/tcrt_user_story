@@ -36,12 +36,7 @@ cryptography==46.0.4
 # Access Control
 casbin==1.43.0
 
-# AI / RAG / CLI
-qdrant-client==1.16.2
-prompt-toolkit==3.0.52
-rich==14.3.2
-textual==7.5.0
-pyperclip==1.11.0
+# Runtime metrics
 psutil==7.2.2
 
 # Testing
@@ -60,7 +55,6 @@ httpx==0.28.1
 # - greenlet is required by SQLAlchemy async bridge (used in database initialization)
 # - aiohttp is required for async HTTP requests in lark_client
 # - casbin is required for role-based access control (RBAC)
-# - qdrant-client/prompt-toolkit/rich/textual/pyperclip are used by AI and CLI tooling under ai/
 # - psutil is used by admin runtime metrics endpoints
 # - pytest and pytest-asyncio are required for running test suites
 # - httpx is required for async HTTP testing and API client testing

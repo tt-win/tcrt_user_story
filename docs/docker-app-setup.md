@@ -5,8 +5,7 @@
 注意：
 
 - 本文件只容器化 `app`
-- `DB`、`Qdrant`、`Text Embedding` 都視為外部服務
-- 目前內建 scheduler 為 app process 內 thread loop，建議單 worker、單 replica 部署
+- `DB` 視為外部服務
 
 ## 1. 前置條件
 
@@ -15,8 +14,6 @@
 - 主資料庫 (`main`)
 - audit 資料庫 (`audit`)
 - USM 資料庫 (`usm`)
-- Qdrant
-- Text Embedding service
 
 並確認 app 容器可連到它們。
 
@@ -35,8 +32,6 @@ cp .env.docker.example .env.docker
 - `SYNC_DATABASE_URL`
 - `AUDIT_DATABASE_URL`
 - `USM_DATABASE_URL`
-- `QDRANT_URL`
-- `TEXT_EMBEDDING_URL`
 - `JWT_SECRET_KEY`
 
 若外部服務目前就跑在你宿主機本機，可直接使用：
@@ -46,8 +41,6 @@ cp .env.docker.example .env.docker
 例如：
 
 - `DATABASE_URL=mysql+asyncmy://user:pass@host.docker.internal:3306/tcrt_main`
-- `QDRANT_URL=http://host.docker.internal:6333`
-- `TEXT_EMBEDDING_URL=http://host.docker.internal:1234/v1/embeddings`
 
 如需啟動時略過 bootstrap，可設定：
 
@@ -103,7 +96,7 @@ docker compose --env-file .env.docker -f docker-compose.app.yml down -v
 - `ATTACHMENTS_ROOT_DIR` 與 `REPORTS_ROOT_DIR` 由 `.env.docker` 指定，`docker-compose.app.yml` 會以「同路徑」bind mount 進 container（不再寫死任何本機路徑）：
   - 例如 `ATTACHMENTS_ROOT_DIR=/srv/tcrt/attachments` 會 mount 成 `/srv/tcrt/attachments:/srv/tcrt/attachments`
   - 這樣可保留既有資料庫中的 `absolute_path` 相容性；若資料庫已存舊路徑，container 內仍能直接讀到檔案
-- 若外部 DB / Qdrant / Embedding 跑在宿主機，容器內不要用 `localhost`，請改用 `host.docker.internal`
+- 若外部 DB 跑在宿主機，容器內不要用 `localhost`，請改用 `host.docker.internal`
 
 ### RSA 簽章金鑰持久化（必要）
 

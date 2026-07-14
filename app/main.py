@@ -132,14 +132,12 @@ from app.api import api_router
 from app.api.system import router as system_router
 from app.api.user_story_maps import router as usm_router
 from app.api.usm_import import router as usm_import_router
-from app.api.llm_context import router as llm_context_router
 from app.api.adhoc import router as adhoc_router
 
 app.include_router(api_router, prefix="/api")
 app.include_router(system_router)
 app.include_router(usm_router, prefix="/api")
 app.include_router(usm_import_router)
-app.include_router(llm_context_router, prefix="/api")
 app.include_router(adhoc_router, prefix="/api")
 
 
@@ -445,18 +443,6 @@ async def _run_startup():
         # 背景服務（排程器 + automation ticker）僅由單一 leader 行程執行，
         # 使 web 層可多 worker / 多副本而不重複扇出。
         await _try_become_leader_and_start_background()
-
-        # 初始化 Qdrant Async Client（若連線失敗不阻止服務啟動，後續請求會自動重試）
-        try:
-            from app.services.qdrant_client import get_qdrant_client
-
-            qdrant_client = get_qdrant_client()
-            if await qdrant_client.health_check():
-                logging.info("Qdrant client 初始化與健康檢查成功")
-            else:
-                logging.warning("Qdrant client 健康檢查失敗，將於實際請求時重試")
-        except Exception as qdrant_err:
-            logging.warning("Qdrant client 初始化失敗（不阻止啟動）: %s", qdrant_err)
     except Exception as e:
         logging.error(f"啟動服務失敗: {e}")
 
@@ -489,13 +475,6 @@ async def _run_shutdown():
         logging.info("Automation Hub 背景 ticker 已停止")
     except Exception as e:
         logging.error(f"停止 Automation Hub 背景 ticker 失敗: {e}")
-
-    try:
-        from app.services.qdrant_client import close_qdrant_client
-
-        await close_qdrant_client()
-    except Exception as e:
-        logging.error(f"關閉 Qdrant client 失敗: {e}")
 
     try:
         await audit_service.force_flush()

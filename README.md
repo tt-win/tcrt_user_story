@@ -112,31 +112,6 @@ docker compose -f docker-compose.app.yml up -d --build
 
 **行為變更：** SQLite 的升版前備份不再每次開機都執行、也不再寫入專案根目錄／CWD——只在偵測到 pending 升版時觸發，統一寫入 `BOOTSTRAP_BACKUP_DIR`。
 
-### Qdrant 向量資料庫
-
-| 變數 | 預設值 | 說明 |
-|------|--------|------|
-| `QDRANT_URL` | — | Qdrant 服務位址 |
-| `QDRANT_API_KEY` | — | Qdrant API 金鑰 |
-| `QDRANT_TIMEOUT` | `30` | 連線逾時（秒） |
-| `QDRANT_PREFER_GRPC` | `false` | 是否優先使用 gRPC 連線 |
-| `QDRANT_POOL_SIZE` | `32` | 連線池大小 |
-| `QDRANT_MAX_CONCURRENT_REQUESTS` | `32` | 最大併發請求數 |
-| `QDRANT_MAX_RETRIES` | `3` | 失敗重試次數 |
-| `QDRANT_RETRY_BACKOFF_SECONDS` | `0.5` | 重試退避初始間隔（秒） |
-| `QDRANT_RETRY_BACKOFF_MAX_SECONDS` | `5.0` | 重試退避最大間隔（秒） |
-| `QDRANT_CHECK_COMPATIBILITY` | `true` | 啟動時檢查版本相容性 |
-| `QDRANT_COLLECTION_JIRA_REFERENCES` | `jira_references` | Jira 參考資料的 collection 名稱 |
-| `QDRANT_COLLECTION_TEST_CASES` | `test_cases` | 測試案例的 collection 名稱 |
-| `QDRANT_COLLECTION_USM_NODES` | `usm_nodes` | USM 節點的 collection 名稱 |
-
-### Embedding 服務
-
-| 變數 | 說明 |
-|------|------|
-| `TEXT_EMBEDDING_URL` | 文字向量化 API 位址（OpenAI 相容格式） |
-| `EMBEDDING_API_URL` | `TEXT_EMBEDDING_URL` 的舊名別稱（已棄用） |
-
 ### 檔案儲存
 
 | 變數 | 預設值 | 說明 |

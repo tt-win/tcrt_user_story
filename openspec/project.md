@@ -8,7 +8,7 @@ Test Case Repository Tool（TCRT）是一個以 `FastAPI + Jinja2 + 原生 JS/CS
 - **Automation Hub**：端到端自動化測試整合——Storage Provider（GitHub / Local Git）、CI Provider（Jenkins）、Result Provider（Allure）、腳本自動掃描與快取、marker-derived linkage、coverage 統計、環境變數管理（AES-256-GCM 加密）、webhook 整合、Suite CI Job 觸發與狀態回流。
 - **AI Helper / QA AI Agent**：新版七畫面工作流、MAGI 多模型檢查、需求解析、驗證規劃、種子與 testcase 生成、採用率與遙測統計、session 管理。
 - **團隊與系統管理**：權限（Casbin RBAC）、稽核（audit DB）、排程服務管理、team-owned app token（`/api/app/*`，涵蓋 test case / test run 完整讀寫與 automation trigger；取代原本 MCP 專用 machine token 定位，`/api/mcp/*` 保留 read-only 相容期）、組織層 Automation Hub 入口開關。
-- **資料與整合**：Jira、Lark、Qdrant / embedding / LLM、HTML 報告輸出、跨資料庫遷移腳本（Alembic 三庫）。
+- **資料與整合**：Jira、Lark、LLM、HTML 報告輸出、跨資料庫遷移腳本（Alembic 三庫）。
 - **容器化部署**：Dockerfile、docker-compose（app / MySQL / PostgreSQL）、RSA 簽章金鑰持久化、leader 選舉、bootstrap lock。
 
 ### 目前技術架構
