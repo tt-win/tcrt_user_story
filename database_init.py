@@ -21,8 +21,8 @@ import base64
 import binascii
 import json
 import os
-import shutil
 import sys
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -30,21 +30,35 @@ from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
-from sqlalchemy.sql import sqltypes
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 from app.auth.models import UserRole
+from app.db_backup import (
+    BackupError,
+    BackupResult,
+    apply_retention,
+    clear_all_failure_markers,
+    clear_failure_marker,
+    create_backup,
+    read_failure_marker,
+    record_upgrade_failure,
+    restore_backup,
+)
 from app.db_migrations import (
     adopt_legacy_audit_database,
     collect_target_preflight,
     collect_target_verification_summary,
     create_database_if_missing,
+    get_head_revision,
+    get_migration_target,
+    get_pending_status,
     LegacyDatabaseAdoptionRequiredError,
     LegacyDatabaseValidationError,
     adopt_legacy_main_database,
     adopt_legacy_usm_database,
     get_sync_engine_for_target,
+    resolve_database_url,
     upgrade_audit_database,
     upgrade_legacy_audit_database,
     upgrade_legacy_main_database,
@@ -55,6 +69,8 @@ from app.db_migrations import (
     validate_legacy_main_database,
     validate_legacy_usm_database,
 )
+from app.db_types import MediumText
+from app.db_url import normalize_sync_database_url
 from app.auth.models import UserCreate
 from app.services.user_service import UserService
 from app.models.database_models import User
@@ -144,6 +160,82 @@ TARGET_LEGACY_UPGRADERS = {
     "usm": upgrade_legacy_usm_database,
 }
 
+_VALID_BACKUP_MODES = {"required", "best-effort", "off"}
+_VALID_ON_FAILURE_MODES = {"abort", "rollback"}
+
+
+@dataclass(frozen=True)
+class BootstrapPolicies:
+    backup_dir: Path
+    backup_mode: str
+    backup_retention: int
+    on_failure: str
+    max_upgrade_attempts: int
+
+
+class BootstrapTargetFailure(Exception):
+    """單一 target 的升版或升版後驗證失敗；攜帶 main() 執行回退所需的資訊。"""
+
+    def __init__(
+        self,
+        target_name: str,
+        head: str,
+        from_revision: Optional[str],
+        backup: Optional[BackupResult],
+        reason: str,
+    ) -> None:
+        super().__init__(reason)
+        self.target_name = target_name
+        self.head = head
+        self.from_revision = from_revision
+        self.backup = backup
+        self.reason = reason
+
+
+def _default_backup_dir() -> Path:
+    raw = os.getenv("BOOTSTRAP_BACKUP_DIR")
+    return Path(raw) if raw else (Path(__file__).resolve().parent / "db_backups")
+
+
+def read_bootstrap_policies(*, no_backup_flag: bool) -> BootstrapPolicies:
+    backup_mode = os.getenv("BOOTSTRAP_BACKUP_MODE", "required").strip().lower()
+    if backup_mode not in _VALID_BACKUP_MODES:
+        raise RuntimeError(
+            f"BOOTSTRAP_BACKUP_MODE={backup_mode!r} 不合法，需為 {sorted(_VALID_BACKUP_MODES)} 其一"
+        )
+    if no_backup_flag:
+        backup_mode = "off"
+
+    retention_raw = os.getenv("BOOTSTRAP_BACKUP_RETENTION", "5").strip()
+    try:
+        backup_retention = int(retention_raw)
+    except ValueError as exc:
+        raise RuntimeError(f"BOOTSTRAP_BACKUP_RETENTION={retention_raw!r} 必須是整數") from exc
+    if backup_retention < 1:
+        raise RuntimeError(f"BOOTSTRAP_BACKUP_RETENTION={backup_retention} 必須 >= 1")
+
+    on_failure = os.getenv("BOOTSTRAP_ON_FAILURE", "abort").strip().lower()
+    if on_failure not in _VALID_ON_FAILURE_MODES:
+        raise RuntimeError(
+            f"BOOTSTRAP_ON_FAILURE={on_failure!r} 不合法，需為 {sorted(_VALID_ON_FAILURE_MODES)} 其一"
+        )
+
+    attempts_raw = os.getenv("BOOTSTRAP_MAX_UPGRADE_ATTEMPTS", "3").strip()
+    try:
+        max_upgrade_attempts = int(attempts_raw)
+    except ValueError as exc:
+        raise RuntimeError(f"BOOTSTRAP_MAX_UPGRADE_ATTEMPTS={attempts_raw!r} 必須是整數") from exc
+    if max_upgrade_attempts < 1:
+        raise RuntimeError(f"BOOTSTRAP_MAX_UPGRADE_ATTEMPTS={max_upgrade_attempts} 必須 >= 1")
+
+    return BootstrapPolicies(
+        backup_dir=_default_backup_dir(),
+        backup_mode=backup_mode,
+        backup_retention=backup_retention,
+        on_failure=on_failure,
+        max_upgrade_attempts=max_upgrade_attempts,
+    )
+
 
 class Logger:
     def __init__(self, verbose: bool = False, quiet: bool = False):
@@ -165,39 +257,23 @@ class Logger:
         print(f"[ERROR] {msg}")
 
 
-def is_sqlite(engine: Engine) -> bool:
-    return str(engine.dialect.name or "").lower() == "sqlite"
-
-
 def quote_ident(engine: Engine, name: str) -> str:
     return engine.dialect.identifier_preparer.quote(name)
 
 
-def backup_sqlite_if_needed(engine: Engine, logger: Logger, label: str) -> Optional[str]:
-    if not is_sqlite(engine):
-        logger.debug(f"{label} 非 SQLite，略過備份")
-        return None
-
-    db_path = engine.url.database
-    if not db_path or db_path == ":memory:":
-        logger.debug(f"{label} 為 SQLite 記憶體資料庫，略過備份")
-        return None
-
-    if not Path(db_path).exists():
-        logger.debug(f"{label} 的 SQLite 檔案不存在，略過備份：{db_path}")
-        return None
-
-    backup_path = Path(
-        f"backup_{engine.url.database and Path(engine.url.database).stem or 'db'}_"
-        f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
-    )
+def _legacy_backup(target_name: str, database_url: str, logger: Logger, label: str, *, to_revision: str) -> None:
+    """既有未納管資料庫的 adopt/upgrade 專用備份：一律嘗試（不看 pending），失敗不中斷流程。"""
     try:
-        shutil.copy2(db_path, backup_path)
-        logger.info(f"已建立 {label} SQLite 備份：{backup_path}")
-        return str(backup_path)
-    except Exception as exc:
-        logger.warn(f"建立 {label} SQLite 備份失敗（不中斷）：{exc}")
-        return None
+        result = create_backup(
+            target_name,
+            database_url=database_url,
+            from_revision=None,
+            to_revision=to_revision,
+            backup_dir=_default_backup_dir(),
+        )
+        logger.info(f"已建立 {label} 備份：{result.path}")
+    except BackupError as exc:
+        logger.warn(f"建立 {label} 備份失敗（不中斷）：{exc}")
 
 
 def verify_required_tables(
@@ -216,33 +292,50 @@ def verify_required_tables(
     return True, []
 
 
-def verify_mysql_mediumtext_defaults(
+def verify_large_text_columns(
     engine: Engine,
+    target_name: str,
     logger: Logger,
     label: str,
 ) -> Tuple[bool, List[str]]:
+    """引擎對稱檢查：model 端宣告為可攜大型文字型別（``app.db_types.MediumText``）的欄位，
+    在 MySQL 上的實際物理型別必須是 MEDIUMTEXT/LONGTEXT。
+
+    取代舊有 verify_mysql_mediumtext_defaults：舊版對 DB 內「任何」Text-affinity 欄位一視同仁，
+    本版改以 model metadata 為準，只檢查 model 明確宣告為 MediumText 的欄位，避免誤判本來就
+    設計為一般 TEXT 的欄位；SQLite/PostgreSQL 的 TEXT 無容量分級問題，此檢查在該二引擎上恆為
+    no-op（迴圈執行但不會有違規），不需要為其硬編碼特例。
+
+    刻意不採用 Alembic `compare_metadata` 做全表結構比對：目前 schema 與 model 之間存在其他
+    既有、與大型文字型別無關的歷史落差（見 make-schema-engine-portable 的驗證紀錄），若在開機
+    路徑加入無範圍限縮的全量 drift gate 會讓現有部署直接無法啟動。
+    """
     if str(engine.dialect.name or "").lower() != "mysql":
         return True, []
 
+    target = get_migration_target(target_name)
     inspector = inspect(engine)
+    existing_tables = {name.lower() for name in inspector.get_table_names()}
     violations: List[str] = []
-    for table_name in inspector.get_table_names():
-        if table_name == "alembic_version":
+    for table in target.metadata.tables.values():
+        if table.name.lower() not in existing_tables:
             continue
-        for column in inspector.get_columns(table_name):
-            column_type = column.get("type")
-            type_name = getattr(column_type.__class__, "__name__", "").upper()
-            if not isinstance(column_type, sqltypes.Text):
+        actual_columns = {column["name"]: column for column in inspector.get_columns(table.name)}
+        for column in table.columns:
+            if not isinstance(column.type, MediumText):
                 continue
-            if type_name in {"MEDIUMTEXT", "LONGTEXT"}:
+            actual = actual_columns.get(column.name)
+            if actual is None:
                 continue
-            violations.append(f"{table_name}.{column['name']}={type_name or 'TEXT'}")
+            actual_type_name = getattr(actual["type"].__class__, "__name__", "").upper()
+            if actual_type_name not in {"MEDIUMTEXT", "LONGTEXT"}:
+                violations.append(f"{table.name}.{column.name}={actual_type_name or 'TEXT'}")
 
     if violations:
-        logger.error(f"{label} 存在未升級為 MEDIUMTEXT 的文字欄位：{violations}")
+        logger.error(f"{label} 存在未升級為 MEDIUMTEXT 的可攜文字欄位：{violations}")
         return False, violations
 
-    logger.debug(f"{label} MySQL 文字欄位皆為 MEDIUMTEXT/LONGTEXT")
+    logger.debug(f"{label} 可攜大型文字欄位皆為 MEDIUMTEXT/LONGTEXT（或非 MySQL，無需檢查）")
     return True, []
 
 
@@ -306,6 +399,29 @@ def verify_automation_provider_encryption_key(engine: Engine, logger: Logger) ->
         return False, message
 
     logger.debug("Automation provider encryption key 檢查通過")
+    return True, None
+
+
+def _run_verification_chain(
+    engine: Engine,
+    logger: Logger,
+    target_name: str,
+    label: str,
+) -> Tuple[bool, Optional[str]]:
+    """既有表 + 大型文字型別（MySQL MEDIUMTEXT）+ （main）automation key 的共用驗證鏈。"""
+    ok, _missing = verify_required_tables(engine, logger, TARGET_REQUIRED_TABLES[target_name], label)
+    if not ok:
+        return False, f"{label} 仍缺少重要表"
+
+    text_ok, _violations = verify_large_text_columns(engine, target_name, logger, label)
+    if not text_ok:
+        return False, f"{label} 存在未升級為 MEDIUMTEXT 的可攜文字欄位"
+
+    if target_name == "main":
+        automation_key_ok, _error = verify_automation_provider_encryption_key(engine, logger)
+        if not automation_key_ok:
+            return False, "Automation provider credential encryption key 檢查失敗"
+
     return True, None
 
 
@@ -409,10 +525,11 @@ def validate_legacy_target(target_name: str, logger: Logger) -> int:
 
 def adopt_legacy_target(target_name: str, logger: Logger, no_backup: bool) -> int:
     label = TARGET_LABELS[target_name]
-    engine = get_sync_engine_for_target(target_name)
+    database_url = resolve_database_url(target_name)
+    engine = get_sync_engine_for_target(target_name, database_url=database_url)
     try:
         if not no_backup:
-            backup_sqlite_if_needed(engine, logger, label)
+            _legacy_backup(target_name, database_url, logger, label, to_revision="legacy-baseline-adoption")
         baseline_revision = TARGET_ADOPTERS[target_name]()
         logger.info(f"已將既有{label}納入 Alembic 管理，baseline={baseline_revision}")
         if target_name == "main":
@@ -431,10 +548,11 @@ def adopt_legacy_target(target_name: str, logger: Logger, no_backup: bool) -> in
 
 def upgrade_legacy_target(target_name: str, logger: Logger, no_backup: bool) -> int:
     label = TARGET_LABELS[target_name]
-    engine = get_sync_engine_for_target(target_name)
+    database_url = resolve_database_url(target_name)
+    engine = get_sync_engine_for_target(target_name, database_url=database_url)
     try:
         if not no_backup:
-            backup_sqlite_if_needed(engine, logger, label)
+            _legacy_backup(target_name, database_url, logger, label, to_revision="legacy-auto-upgrade")
 
         detected_rev, final_rev = TARGET_LEGACY_UPGRADERS[target_name]()
         logger.info(
@@ -466,7 +584,16 @@ def upgrade_legacy_target(target_name: str, logger: Logger, no_backup: bool) -> 
         engine.dispose()
 
 
-def bootstrap_target(target_name: str, logger: Logger, no_backup: bool) -> Tuple[Engine, Optional[str]]:
+def bootstrap_target(
+    target_name: str,
+    logger: Logger,
+    policies: BootstrapPolicies,
+) -> Tuple[Engine, Optional[BackupResult]]:
+    """執行單一 target 的 bootstrap：偵測 pending → （視需要）備份 → 升版 → 驗證。
+
+    失敗時一律拋出 ``BootstrapTargetFailure``（攜帶 target/head/backup 供 main() 判斷是否回退），
+    不在此處處理跨 target 回退——回退需要 main() 手上其他 target 已建立的備份清單。
+    """
     label = TARGET_LABELS[target_name]
     engine = get_sync_engine_for_target(target_name)
     try:
@@ -474,42 +601,70 @@ def bootstrap_target(target_name: str, logger: Logger, no_backup: bool) -> Tuple
         if create_database_if_missing(engine.url):
             logger.info(f"已建立 {label} database：{engine.url.database}")
 
-        backup_path = None
-        if not no_backup:
-            backup_path = backup_sqlite_if_needed(engine, logger, label)
+        database_url = engine.url.render_as_string(hide_password=False)
+        pending = get_pending_status(target_name, database_url=database_url)
+        logger.info(
+            f"{label} pending 檢查：current={pending.current} head={pending.head} "
+            f"pending={pending.is_pending} fresh={pending.is_fresh}"
+        )
+
+        if not pending.is_pending:
+            logger.info(f"{label} 已是最新版本，略過備份與升版，僅執行驗證")
+            ok, error = _run_verification_chain(engine, logger, target_name, label)
+            if not ok:
+                raise BootstrapTargetFailure(target_name, pending.head, pending.current, None, error)
+            print_verification_summary(
+                collect_target_verification_summary(
+                    target_name,
+                    required_tables=TARGET_REQUIRED_TABLES[target_name],
+                    critical_tables=TARGET_CRITICAL_TABLES[target_name],
+                )
+            )
+            return engine, None
+
+        backup_result: Optional[BackupResult] = None
+        if pending.is_fresh:
+            logger.debug(f"{label} 為全新資料庫，略過升版前備份")
+        elif policies.backup_mode == "off":
+            logger.info(f"{label} 備份政策為 off，略過升版前備份")
+        else:
+            try:
+                backup_result = create_backup(
+                    target_name,
+                    database_url=database_url,
+                    from_revision=pending.current,
+                    to_revision=pending.head,
+                    backup_dir=policies.backup_dir,
+                )
+                logger.info(f"已建立 {label} 升版前備份：{backup_result.path}")
+            except BackupError as exc:
+                if policies.backup_mode == "required":
+                    raise BootstrapTargetFailure(
+                        target_name, pending.head, pending.current, None, f"升版前備份失敗：{exc}"
+                    ) from exc
+                logger.warn(f"{label} 升版前備份失敗（best-effort，繼續升版）：{exc}")
 
         logger.info(f"執行 {label} Alembic migration：upgrade head")
         try:
-            TARGET_UPGRADERS[target_name]()
-        except LegacyDatabaseAdoptionRequiredError:
-            logger.info(
-                f"偵測到{label}尚未納入 Alembic 版控，"
-                "改為自動偵測 schema 版本、stamp baseline 後升級至 head"
-            )
-            detected_rev, final_rev = TARGET_LEGACY_UPGRADERS[target_name]()
-            logger.info(
-                f"已自動將{label}從偵測到的版本 {detected_rev} 升級至 {final_rev}"
-            )
+            try:
+                TARGET_UPGRADERS[target_name]()
+            except LegacyDatabaseAdoptionRequiredError:
+                logger.info(
+                    f"偵測到{label}尚未納入 Alembic 版控，"
+                    "改為自動偵測 schema 版本、stamp baseline 後升級至 head"
+                )
+                detected_rev, final_rev = TARGET_LEGACY_UPGRADERS[target_name]()
+                logger.info(
+                    f"已自動將{label}從偵測到的版本 {detected_rev} 升級至 {final_rev}"
+                )
+        except Exception as exc:
+            raise BootstrapTargetFailure(
+                target_name, pending.head, pending.current, backup_result, str(exc)
+            ) from exc
 
-        ok, _missing = verify_required_tables(
-            engine,
-            logger,
-            TARGET_REQUIRED_TABLES[target_name],
-            label,
-        )
+        ok, error = _run_verification_chain(engine, logger, target_name, label)
         if not ok:
-            raise RuntimeError(f"{label} migration 完成後仍缺少重要表")
-        mysql_text_ok, _text_violations = verify_mysql_mediumtext_defaults(
-            engine,
-            logger,
-            label,
-        )
-        if not mysql_text_ok:
-            raise RuntimeError(f"{label} migration 完成後仍存在未升級的 TEXT 欄位")
-        if target_name == "main":
-            automation_key_ok, _automation_key_error = verify_automation_provider_encryption_key(engine, logger)
-            if not automation_key_ok:
-                raise RuntimeError("Automation provider credential encryption key 檢查失敗")
+            raise BootstrapTargetFailure(target_name, pending.head, pending.current, backup_result, error)
 
         logger.info(f"✅ {label} bootstrap 完成")
         print_verification_summary(
@@ -519,10 +674,85 @@ def bootstrap_target(target_name: str, logger: Logger, no_backup: bool) -> Tuple
                 critical_tables=TARGET_CRITICAL_TABLES[target_name],
             )
         )
-        return engine, backup_path
+        return engine, backup_result
     except Exception:
         engine.dispose()
         raise
+
+
+def _handle_bootstrap_failure(
+    failure: BootstrapTargetFailure,
+    upgraded: List[BackupResult],
+    policies: BootstrapPolicies,
+    logger: Logger,
+) -> int:
+    """依 BOOTSTRAP_ON_FAILURE 政策處理單一 target 的升版失敗：abort 或 rollback。
+
+    rollback 還原「本次已成功 target 的備份」＋「失敗 target 自己的備份（若有）」，
+    反序執行；若失敗 target 本身無備份（fresh 資料庫或 best-effort 備份失敗），
+    該 target 自身不還原，但仍會還原其他已成功 target，以維持三庫一致、可換回舊版 image。
+    """
+    label = TARGET_LABELS[failure.target_name]
+    logger.error(f"{label} bootstrap 失敗：{failure.reason}")
+
+    restorable: List[BackupResult] = list(upgraded)
+    if failure.backup is not None:
+        restorable.append(failure.backup)
+
+    if policies.on_failure != "rollback" or not restorable:
+        if policies.on_failure == "rollback" and not restorable:
+            logger.error("回退政策為 rollback，但沒有任何可用備份可還原（fresh 資料庫或 best-effort 備份失敗），視同 abort")
+        record_upgrade_failure(
+            policies.backup_dir,
+            failure.target_name,
+            head=failure.head,
+            from_revision=failure.from_revision,
+            error=failure.reason,
+            rolled_back=False,
+        )
+        return 1
+
+    if failure.backup is None:
+        logger.warn(
+            f"{label} 沒有備份可還原（fresh 資料庫或備份失敗），其目前狀態可能不完整，"
+            "請人工檢查或視需要清空後重新啟動 bootstrap。"
+        )
+
+    logger.info(f"BOOTSTRAP_ON_FAILURE=rollback：開始還原 {len(restorable)} 個 target 至升版前狀態")
+    try:
+        for result in reversed(restorable):
+            # resolve_database_url 回傳 async URL；備份/還原走 sync engine，需正規化為 sync driver。
+            restore_url = normalize_sync_database_url(resolve_database_url(result.target))
+            restore_backup(result, database_url=restore_url)
+            logger.info(f"{TARGET_LABELS[result.target]} 已還原至升版前狀態（備份：{result.path}）")
+    except Exception as restore_exc:  # noqa: BLE001
+        logger.error(
+            f"回退還原失敗，需人工介入：{restore_exc}\n"
+            f"備份檔位置：{[str(r.path) for r in restorable]}"
+        )
+        record_upgrade_failure(
+            policies.backup_dir,
+            failure.target_name,
+            head=failure.head,
+            from_revision=failure.from_revision,
+            error=f"{failure.reason}；回退亦失敗：{restore_exc}",
+            rolled_back=False,
+        )
+        return 9
+
+    record_upgrade_failure(
+        policies.backup_dir,
+        failure.target_name,
+        head=failure.head,
+        from_revision=failure.from_revision,
+        error=failure.reason,
+        rolled_back=True,
+    )
+    logger.error(
+        "資料庫已回到升版前狀態。此次升版失敗，容器不會啟動 web 服務；"
+        "可換回舊版 image 立即開機，或排除問題後重試。"
+    )
+    return 8
 
 
 def run_preflight(target_name: str, logger: Logger, json_output: bool) -> int:
@@ -647,7 +877,12 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--no-backup",
         action="store_true",
-        help="SQLite 模式下跳過 migration 前備份",
+        help="跳過 migration 前備份（所有引擎），等效 BOOTSTRAP_BACKUP_MODE=off",
+    )
+    parser.add_argument(
+        "--clear-failure-markers",
+        action="store_true",
+        help="清除三套資料庫的連續升版失敗 marker（人工排除問題後解鎖再次嘗試升版）",
     )
     parser.add_argument(
         "--stats-only",
@@ -740,6 +975,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     print("=" * 60)
 
     try:
+        if args.clear_failure_markers:
+            backup_dir = _default_backup_dir()
+            cleared = clear_all_failure_markers(backup_dir, MIGRATION_ORDER)
+            if cleared:
+                logger.info(f"已清除 failure marker：{cleared}")
+            else:
+                logger.info("沒有找到任何 failure marker")
+            return 0
+
         if args.stats_only:
             for target_name in MIGRATION_ORDER:
                 engine = get_sync_engine_for_target(target_name)
@@ -802,13 +1046,14 @@ def main(argv: Optional[List[str]] = None) -> int:
                     if not ok:
                         logger.error(f"{TARGET_LABELS[target_name]} bootstrap 檢查未通過")
                         return 2
-                    mysql_text_ok, _text_violations = verify_mysql_mediumtext_defaults(
+                    text_ok, _violations = verify_large_text_columns(
                         engine,
+                        target_name,
                         logger,
                         TARGET_LABELS[target_name],
                     )
-                    if not mysql_text_ok:
-                        logger.error(f"{TARGET_LABELS[target_name]} 仍存在未升級的 TEXT 欄位")
+                    if not text_ok:
+                        logger.error(f"{TARGET_LABELS[target_name]} 仍存在未升級的可攜文字欄位")
                         return 2
                     if target_name == "main":
                         automation_key_ok, _automation_key_error = verify_automation_provider_encryption_key(
@@ -824,15 +1069,52 @@ def main(argv: Optional[List[str]] = None) -> int:
         else:
             from app.runtime_locks import bootstrap_lock
 
+            policies = read_bootstrap_policies(no_backup_flag=args.no_backup)
+
+            # Failure marker 檢查在 bootstrap_lock 之外、任何備份/升版之前：純讀取本機檔案與
+            # Alembic script directory（不需資料庫連線），達上限即拒絕整個 bootstrap。
+            for target_name in MIGRATION_ORDER:
+                head = get_head_revision(target_name)
+                marker = read_failure_marker(policies.backup_dir, target_name)
+                if (
+                    marker
+                    and marker.get("head") == head
+                    and int(marker.get("attempts", 0)) >= policies.max_upgrade_attempts
+                ):
+                    logger.error(
+                        f"{TARGET_LABELS[target_name]} 針對 head={head} 已連續失敗 "
+                        f"{marker['attempts']} 次，拒絕再次嘗試升版。"
+                        "請人工介入排除問題，或執行 `python3 database_init.py --clear-failure-markers` 後重試。"
+                    )
+                    return 10
+
             # 以 DB advisory lock（SQLite 為檔案鎖）序列化平行啟動下的 schema 變更，避免雙重 Alembic upgrade。
             with bootstrap_lock():
                 backup_paths: Dict[str, Optional[str]] = {}
                 main_engine: Optional[Engine] = None
                 aux_engines: List[Engine] = []
+                upgraded: List[BackupResult] = []
                 try:
                     for target_name in MIGRATION_ORDER:
-                        engine, backup_path = bootstrap_target(target_name, logger, args.no_backup)
-                        backup_paths[target_name] = backup_path
+                        try:
+                            engine, backup_result = bootstrap_target(target_name, logger, policies)
+                        except BootstrapTargetFailure as failure:
+                            # 還原前先釋放本次已成功 target 的連線，避免與 restore（尤其 SQLite
+                            # 檔案層級還原、MySQL/PG schema 重建）衝突。
+                            if main_engine is not None:
+                                main_engine.dispose()
+                            for aux_engine in aux_engines:
+                                aux_engine.dispose()
+                            return _handle_bootstrap_failure(failure, upgraded, policies, logger)
+
+                        clear_failure_marker(policies.backup_dir, target_name)
+                        if backup_result is not None:
+                            backup_paths[target_name] = str(backup_result.path)
+                            apply_retention(policies.backup_dir, target_name, policies.backup_retention)
+                            upgraded.append(backup_result)
+                        else:
+                            backup_paths[target_name] = None
+
                         if target_name == "main":
                             main_engine = engine
                         else:

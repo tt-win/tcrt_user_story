@@ -21,6 +21,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 from .config import get_settings
+from .db_sqlite_pragma import apply_sqlite_pragma
 from .db_url import normalize_async_database_url, normalize_sync_database_url
 
 logger = logging.getLogger(__name__)
@@ -81,23 +82,7 @@ def set_sqlite_pragma(dbapi_conn, connection_record):
     """為異步連接設定 SQLite 優化參數"""
     if not _is_sqlite_engine(engine.sync_engine):
         return
-    cursor = dbapi_conn.cursor()
-    try:
-        # 啟用 WAL 模式以改善並發
-        cursor.execute("PRAGMA journal_mode=WAL")
-        # 設定 busy timeout 為 30 秒
-        cursor.execute("PRAGMA busy_timeout=30000")
-        # 設定同步模式為 NORMAL（平衡性能與安全）
-        cursor.execute("PRAGMA synchronous=NORMAL")
-        # 啟用外鍵約束
-        cursor.execute("PRAGMA foreign_keys=ON")
-        # 優化記憶體使用
-        cursor.execute("PRAGMA cache_size=-64000")  # 64MB cache
-        # 設定 temp store 在記憶體中
-        cursor.execute("PRAGMA temp_store=MEMORY")
-        logger.debug("SQLite 異步連接優化參數設定完成")
-    finally:
-        cursor.close()
+    apply_sqlite_pragma(dbapi_conn, label="主資料庫異步連接")
 
 
 # ===================== 異步會話管理 =====================
@@ -220,12 +205,7 @@ def get_sync_engine():
         def set_sync_sqlite_pragma(dbapi_conn, connection_record):
             if not _is_sqlite_engine(_sync_engine):
                 return
-            cursor = dbapi_conn.cursor()
-            cursor.execute("PRAGMA journal_mode=WAL")
-            cursor.execute("PRAGMA busy_timeout=30000")
-            cursor.execute("PRAGMA synchronous=NORMAL")
-            cursor.execute("PRAGMA foreign_keys=ON")
-            cursor.close()
+            apply_sqlite_pragma(dbapi_conn, label="主資料庫同步連接")
             
     return _sync_engine
 

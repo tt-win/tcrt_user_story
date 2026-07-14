@@ -11,6 +11,7 @@ services:
       APP_PUBLISHED_PORT: ${APP_PUBLISHED_PORT:-9999}
       RSA_KEY_DIR: ${RSA_KEY_DIR:-/app/keys}
       APP_CONFIG_PATH: ${APP_CONFIG_PATH:-/app/config.yaml}
+      BOOTSTRAP_BACKUP_DIR: ${BOOTSTRAP_BACKUP_DIR:-/app/db_backups}
     ports:
       - "${APP_PUBLISHED_PORT:-9999}:9999"
     volumes:
@@ -19,6 +20,9 @@ services:
       - ${REPORTS_ROOT_DIR}:${REPORTS_ROOT_DIR}
       # RSA 簽章金鑰：named volume 持久化，使容器重建後金鑰不重生（否則既有加密 payload 將無法解密）
       - tcrt-keys:${RSA_KEY_DIR:-/app/keys}
+      # 開機升版前備份與連續失敗 marker：named volume 持久化，使 rollback 與 failure-marker
+      # 防迴圈機制能跨容器重建生效（見 BOOTSTRAP_BACKUP_MODE / BOOTSTRAP_ON_FAILURE）。
+      - tcrt-db-backups:${BOOTSTRAP_BACKUP_DIR:-/app/db_backups}
       # config.yaml：image 未含（見 .dockerignore），以唯讀掛載提供使 AI helper 等進階調校於容器內生效。
       # 預設掛 host 的 ./config.yaml；可用 APP_CONFIG_FILE 指定其他 host 路徑。
       - ${APP_CONFIG_FILE:-./config.yaml}:/app/config.yaml:ro
@@ -31,3 +35,4 @@ services:
 
 volumes:
   tcrt-keys:
+  tcrt-db-backups:

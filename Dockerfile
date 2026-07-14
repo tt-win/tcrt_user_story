@@ -26,9 +26,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# curl 供 HEALTHCHECK 使用；建立固定 uid/gid 的非 root 使用者（10001）
+# curl 供 HEALTHCHECK 使用；default-mysql-client/postgresql-client 供開機升版前備份/回退
+# （mysqldump/mysql、pg_dump/pg_restore）使用；建立固定 uid/gid 的非 root 使用者（10001）
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends curl default-mysql-client postgresql-client \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 app \
     && useradd --uid 10001 --gid 10001 --home-dir /app --shell /usr/sbin/nologin app
@@ -37,9 +38,10 @@ RUN apt-get update \
 COPY . .
 COPY --from=builder /app/.venv /app/.venv
 
-# 預建金鑰目錄並把 /app 交給非 root 使用者；named volume 掛到 /app/keys 時會沿用此 ownership
+# 預建金鑰目錄與升版前備份目錄並把 /app 交給非 root 使用者；
+# named volume 掛到 /app/keys、/app/db_backups 時會沿用此 ownership
 RUN chmod +x docker/app-entrypoint.sh \
-    && mkdir -p /app/keys \
+    && mkdir -p /app/keys /app/db_backups \
     && chown -R app:app /app
 
 USER app

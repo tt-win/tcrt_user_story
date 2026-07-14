@@ -420,6 +420,55 @@ def _get_current_revision(database_url: str) -> str | None:
         engine.dispose()
 
 
+@dataclass(frozen=True)
+class PendingStatus:
+    """比對資料庫目前 Alembic revision 與 migration script head 的結果。
+
+    ``is_fresh``：資料庫不存在任何業務表（``_get_database_state`` == ``"empty"``），
+    沒有可保護的既有資料，開機 bootstrap 據此判斷可跳過升版前備份。
+    """
+
+    target: str
+    current: str | None
+    head: str
+    is_pending: bool
+    is_fresh: bool
+
+
+def get_pending_status(target_name: str = "main", *, database_url: str | None = None) -> PendingStatus:
+    """偵測某 target 是否存在 pending Alembic 升版。
+
+    呼叫前必須確保目標 database 本身已存在（見 ``create_database_if_missing``）；
+    對不存在的 database 呼叫 ``_get_database_state`` 會因連線失敗而拋出例外。
+    """
+    target = get_migration_target(target_name)
+    resolved_url = normalize_async_database_url(database_url or target.resolve_url())
+    cfg = build_alembic_config(resolved_url, target_name=target_name)
+    head = _get_head_revision(cfg)
+
+    state = _get_database_state(resolved_url)
+    if state == "empty":
+        return PendingStatus(target=target_name, current=None, head=head, is_pending=True, is_fresh=True)
+
+    if state == "legacy_unmanaged":
+        return PendingStatus(target=target_name, current=None, head=head, is_pending=True, is_fresh=False)
+
+    current = _get_current_revision(resolved_url)
+    return PendingStatus(
+        target=target_name,
+        current=current,
+        head=head,
+        is_pending=current != head,
+        is_fresh=False,
+    )
+
+
+def get_head_revision(target_name: str = "main") -> str:
+    """回傳 target 的 Alembic script head revision；純讀取 script directory，不需資料庫連線。"""
+    cfg = build_alembic_config(target_name=target_name)
+    return _get_head_revision(cfg)
+
+
 def _quote_ident_for_engine(engine, name: str) -> str:
     return engine.dialect.identifier_preparer.quote(name)
 

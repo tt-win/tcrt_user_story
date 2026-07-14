@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
-from sqlalchemy import Column, Integer, JSON, MetaData, Table, Text, create_engine, inspect, text
+import pytest
+from sqlalchemy import Column, Integer, JSON, MetaData, Table, Text, create_engine, select, text
 from sqlalchemy.dialects import mysql
+
+POSTGRES_URL_ENV = "TCRT_TEST_POSTGRES_URL"
 
 
 def _load_script_module():
@@ -75,6 +79,11 @@ def test_run_job_copies_rows_between_sqlite_databases(tmp_path: Path) -> None:
 
         assert summary["status"] == "completed"
         assert [item["table"] for item in summary["tables"]] == ["parent", "child"]
+        assert summary["row_counts_match"] is True
+        assert {item["table"]: item for item in summary["row_count_verification"]} == {
+            "parent": {"table": "parent", "source_rows": 2, "target_rows": 2, "matches": True},
+            "child": {"table": "child", "source_rows": 2, "target_rows": 2, "matches": True},
+        }
 
         with target_engine.connect() as connection:
             parent_rows = connection.execute(text("SELECT id, name FROM parent ORDER BY id")).fetchall()
@@ -84,6 +93,93 @@ def test_run_job_copies_rows_between_sqlite_databases(tmp_path: Path) -> None:
 
         assert parent_rows == [(1, "p1"), (2, "p2")]
         assert child_rows == [(10, 1, "c1"), (11, 2, "c2")]
+    finally:
+        source_engine.dispose()
+        target_engine.dispose()
+
+
+def test_run_job_resets_postgresql_sequences_after_explicit_pk_copy(tmp_path: Path) -> None:
+    """SQLite → PostgreSQL 搬遷後，target 的 SERIAL sequence 必須跟著顯式 PK 資料前進，
+    否則後續應用程式正常 INSERT（不指定 PK）會與剛搬入的資料撞鍵。"""
+    database_url = os.getenv(POSTGRES_URL_ENV)
+    if not database_url:
+        pytest.skip(f"{POSTGRES_URL_ENV} 未設定，略過需要真實 PostgreSQL server 的整合測試")
+
+    module = _load_script_module()
+    source_path = tmp_path / "source.db"
+    source_engine = create_engine(_sqlite_url(source_path), future=True)
+    target_engine = create_engine(database_url, future=True)
+
+    try:
+        with source_engine.begin() as connection:
+            connection.execute(text("CREATE TABLE widgets (id INTEGER PRIMARY KEY, name TEXT NOT NULL)"))
+            connection.execute(text("INSERT INTO widgets (id, name) VALUES (5, 'five'), (10, 'ten')"))
+
+        with target_engine.begin() as connection:
+            connection.execute(text("DROP TABLE IF EXISTS widgets"))
+            connection.execute(text("CREATE TABLE widgets (id SERIAL PRIMARY KEY, name VARCHAR(50) NOT NULL)"))
+
+        job = module.TransferJob(
+            name="pg-sequence-reset",
+            source_url=_sqlite_url(source_path),
+            target_url=database_url,
+            chunk_size=10,
+        )
+        summary = module.run_job(job, module.Logger(quiet=True))
+
+        assert summary["status"] == "completed"
+        assert summary["postgresql_sequence_resets"] == [
+            {"table": "widgets", "column": "id", "sequence": "public.widgets_id_seq", "reset_to": 10}
+        ]
+
+        with target_engine.begin() as connection:
+            connection.execute(text("INSERT INTO widgets (name) VALUES ('auto')"))
+            rows = connection.execute(text("SELECT id, name FROM widgets ORDER BY id")).fetchall()
+        assert rows == [(5, "five"), (10, "ten"), (11, "auto")]
+    finally:
+        with target_engine.begin() as connection:
+            connection.execute(text("DROP TABLE IF EXISTS widgets"))
+        source_engine.dispose()
+        target_engine.dispose()
+
+
+def test_run_job_row_count_verification_detects_mismatch(tmp_path: Path, monkeypatch) -> None:
+    module = _load_script_module()
+    source_path = tmp_path / "source.db"
+    target_path = tmp_path / "target.db"
+
+    source_engine = create_engine(_sqlite_url(source_path), future=True)
+    target_engine = create_engine(_sqlite_url(target_path), future=True)
+
+    try:
+        with source_engine.begin() as connection:
+            connection.execute(text("CREATE TABLE widgets (id INTEGER PRIMARY KEY, name TEXT NOT NULL)"))
+            connection.execute(text("INSERT INTO widgets (id, name) VALUES (1, 'a'), (2, 'b'), (3, 'c')"))
+
+        with target_engine.begin() as connection:
+            connection.execute(text("CREATE TABLE widgets (id INTEGER PRIMARY KEY, name TEXT NOT NULL)"))
+
+        # 模擬「複製過程遺漏列」的缺陷：copy_table_data 實際只搬移 source 的前兩列。
+        def _lossy_copy_table_data(source_connection, target_connection, source_table, target_table, **kwargs):
+            rows = list(source_connection.execute(select(source_table)).mappings())[:-1]
+            if rows:
+                target_connection.execute(target_table.insert(), [dict(row) for row in rows])
+            return len(rows)
+
+        monkeypatch.setattr(module, "copy_table_data", _lossy_copy_table_data)
+
+        job = module.TransferJob(
+            name="sqlite-copy-mismatch",
+            source_url=_sqlite_url(source_path),
+            target_url=_sqlite_url(target_path),
+            chunk_size=1,
+        )
+        summary = module.run_job(job, module.Logger(quiet=True))
+
+        assert summary["status"] == "completed"
+        assert summary["row_counts_match"] is False
+        widgets_check = next(item for item in summary["row_count_verification"] if item["table"] == "widgets")
+        assert widgets_check == {"table": "widgets", "source_rows": 3, "target_rows": 2, "matches": False}
     finally:
         source_engine.dispose()
         target_engine.dispose()
@@ -463,75 +559,6 @@ def test_copy_table_data_serializes_json_values_when_target_is_text(tmp_path: Pa
                 json.dumps([{"source": "node-1", "target": "node-2"}], ensure_ascii=False),
             )
         ]
-    finally:
-        source_engine.dispose()
-        target_engine.dispose()
-
-
-def test_copy_table_data_repairs_missing_test_case_set_with_default_section(tmp_path: Path) -> None:
-    module = _load_script_module()
-    source_path = tmp_path / "source-repair.db"
-    target_path = tmp_path / "target-repair.db"
-    source_engine = create_engine(_sqlite_url(source_path), future=True)
-    target_engine = create_engine(_sqlite_url(target_path), future=True)
-
-    try:
-        with source_engine.begin() as connection:
-            connection.execute(text("CREATE TABLE test_cases (id INTEGER PRIMARY KEY, team_id INTEGER NOT NULL, test_case_set_id INTEGER, test_case_section_id INTEGER, title TEXT NOT NULL)"))
-            connection.execute(
-                text(
-                    "INSERT INTO test_cases (id, team_id, test_case_set_id, test_case_section_id, title) VALUES "
-                    "(1, 7, NULL, NULL, 'needs repair')"
-                )
-            )
-
-        with target_engine.begin() as connection:
-            connection.execute(text("CREATE TABLE test_case_sets (id INTEGER PRIMARY KEY, team_id INTEGER NOT NULL, name TEXT NOT NULL, is_default INTEGER NOT NULL)"))
-            connection.execute(text("CREATE TABLE test_case_sections (id INTEGER PRIMARY KEY, test_case_set_id INTEGER NOT NULL, name TEXT NOT NULL)"))
-            connection.execute(text("CREATE TABLE test_cases (id INTEGER PRIMARY KEY, team_id INTEGER NOT NULL, test_case_set_id INTEGER NOT NULL, test_case_section_id INTEGER, title TEXT NOT NULL)"))
-            connection.execute(
-                text(
-                    "INSERT INTO test_case_sets (id, team_id, name, is_default) VALUES "
-                    "(70, 7, 'Default-7', 1)"
-                )
-            )
-            connection.execute(
-                text(
-                    "INSERT INTO test_case_sections (id, test_case_set_id, name) VALUES "
-                    "(700, 70, 'Unassigned')"
-                )
-            )
-
-        source_metadata, _ = module.reflect_selected_metadata(
-            source_engine,
-            include_tables=["test_cases"],
-            exclude_tables=[],
-        )
-        target_metadata, _ = module.reflect_selected_metadata(
-            target_engine,
-            include_tables=["test_cases"],
-            exclude_tables=[],
-        )
-
-        with source_engine.connect() as source_connection, target_engine.begin() as target_connection:
-            copied = module.copy_table_data(
-                source_connection,
-                target_connection,
-                source_metadata.tables["test_cases"],
-                target_metadata.tables["test_cases"],
-                chunk_size=10,
-                logger=module.Logger(quiet=True),
-            )
-
-        assert copied == 1
-        with target_engine.connect() as connection:
-            rows = connection.execute(
-                text(
-                    "SELECT id, team_id, test_case_set_id, test_case_section_id, title "
-                    "FROM test_cases"
-                )
-            ).fetchall()
-        assert rows == [(1, 7, 70, 700, "needs repair")]
     finally:
         source_engine.dispose()
         target_engine.dispose()

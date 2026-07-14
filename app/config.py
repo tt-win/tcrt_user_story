@@ -612,7 +612,43 @@ class Settings(BaseModel):
             usm=UsmConfig.from_env(base_settings.usm),
         )
         _warn_container_runtime_configuration(loaded)
+        _fail_fast_if_sqlite_without_volume_ack(loaded)
         return loaded
+
+
+def _fail_fast_if_sqlite_without_volume_ack(settings: Settings) -> None:
+    """容器內用 SQLite 且沒有掛 volume，容器重建/重新部署會靜默遺失所有資料——這件事
+    應用程式本身無法從檔案系統可靠偵測（bind mount 與容器可寫層在 stat() 層級看起來
+    可能無法區分），所以改用明確的 op-in 環境變數，逼運維者在部署當下就正視這個風險，
+    而不是等到容器重建、資料消失了才發現。"""
+    if not _is_container_runtime():
+        return
+    if _env_truthy("SQLITE_CONTAINER_STORAGE_ACK"):
+        return
+
+    sqlite_targets = [
+        (name, url)
+        for name, url in (
+            ("DATABASE_URL", settings.app.database_url),
+            ("AUDIT_DATABASE_URL", settings.audit.database_url),
+            ("USM_DATABASE_URL", settings.usm.database_url),
+        )
+        if (url or "").strip().lower().startswith("sqlite")
+    ]
+    if not sqlite_targets:
+        return
+
+    offending = ", ".join(f"{name}={url}" for name, url in sqlite_targets)
+    raise RuntimeError(
+        f"偵測到 container runtime 使用 SQLite（{offending}），但未設定 "
+        "SQLITE_CONTAINER_STORAGE_ACK=1。容器沒有為這個路徑掛 volume 時，SQLite 檔案存在"
+        "容器的可寫層，容器重建或重新部署會靜默遺失所有資料。請擇一處理：\n"
+        "1. 確認已經幫這個 SQLite 檔案的目錄掛好 named volume 或 host bind mount，"
+        "再設定 SQLITE_CONTAINER_STORAGE_ACK=1 明確承認並繼續（本檢查無法從應用層可靠"
+        "驗證 volume 是否真的掛好，這個環境變數只是要求你在部署當下想清楚這件事）；\n"
+        "2. 正式環境建議改用 MySQL/PostgreSQL（見 docs/database-cutover-readiness.md 的"
+        "一鍵搬移流程 `--mode migrate`）。"
+    )
 
 
 def _warn_container_runtime_configuration(settings: Settings) -> None:

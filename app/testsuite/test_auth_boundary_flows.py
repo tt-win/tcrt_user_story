@@ -113,6 +113,37 @@ async def test_permission_service_check_user_role_uses_boundary():
 
 
 @pytest.mark.asyncio
+async def test_permission_cache_hits_avoid_db_until_cleared():
+    """回歸測試：app/api/users.py 變更 role/is_active 後必須呼叫 clear_permission_cache，
+    否則同一個 worker 在 TTL 到期前仍會用到已經過期的角色（曾經完全沒有任何地方呼叫這個
+    清除函式，等同權限變更後最多 5 分鐘才會生效——見 2026-07-14 的 Phase 3 修正）。"""
+    session = _FakeSession(
+        execute_results=[
+            _FakeScalarResult(UserRole.ADMIN.value),
+            _FakeScalarResult(UserRole.VIEWER.value),
+        ]
+    )
+    boundary = _FakeBoundary(session)
+    service = PermissionService(main_boundary=boundary)
+
+    first = await service.check_user_role(5, UserRole.USER)
+    assert first is True
+    assert boundary.read_calls == 1
+
+    # 快取命中：TTL 內重複查詢不該再打 DB。
+    second = await service.check_user_role(5, UserRole.USER)
+    assert second is True
+    assert boundary.read_calls == 1
+
+    # 清除快取後（比照 clear_permission_cache 的呼叫方式）必須重新查詢 DB，
+    # 拿到 DB 端已經變更（降為 VIEWER）的最新角色。
+    await service.clear_cache(user_id=5)
+    third = await service.check_user_role(5, UserRole.USER)
+    assert third is False
+    assert boundary.read_calls == 2
+
+
+@pytest.mark.asyncio
 async def test_fetch_team_names_uses_main_boundary():
     session = _FakeSession(execute_results=[_FakeRowResult([(1, "Team A"), (2, "Team B")])])
     boundary = _FakeBoundary(session)

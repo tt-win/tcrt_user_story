@@ -131,6 +131,9 @@ def test_settings_warns_when_container_runtime_uses_localhost_services(tmp_path,
     monkeypatch.setenv("QDRANT_URL", "http://localhost:6333")
     monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
     monkeypatch.delenv("APP_BASE_URL", raising=False)
+    # 這裡測的是 localhost URL 警告，不是 SQLite 儲存風險檢查——明確承認風險避免
+    # 被 _fail_fast_if_sqlite_without_volume_ack 擋下來。
+    monkeypatch.setenv("SQLITE_CONTAINER_STORAGE_ACK", "1")
 
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
@@ -143,6 +146,48 @@ def test_settings_warns_when_container_runtime_uses_localhost_services(tmp_path,
 
     assert "QDRANT_URL" in caplog.text
     assert "PUBLIC_BASE_URL" in caplog.text
+
+
+def test_settings_fails_fast_on_sqlite_in_container_without_ack(tmp_path, monkeypatch):
+    """P0 回歸測試：容器內用 SQLite 又沒有明確承認風險時必須直接炸開，而不是靜默開機——
+    容器沒掛 volume 時，SQLite 檔案存在可寫層，容器重建/重新部署會靜默遺失所有資料。"""
+    monkeypatch.setenv("APP_ENV", "docker")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///./test_case_repo.db")
+    monkeypatch.delenv("SQLITE_CONTAINER_STORAGE_ACK", raising=False)
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("app:\n  port: 9999\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="SQLITE_CONTAINER_STORAGE_ACK"):
+        Settings.from_env_and_file(str(config_path))
+
+
+def test_settings_allows_sqlite_in_container_with_explicit_ack(tmp_path, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "docker")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///./test_case_repo.db")
+    monkeypatch.setenv("SQLITE_CONTAINER_STORAGE_ACK", "1")
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    monkeypatch.delenv("APP_BASE_URL", raising=False)
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://tcrt.example.com")
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("app:\n  port: 9999\n", encoding="utf-8")
+
+    loaded = Settings.from_env_and_file(str(config_path))
+    assert loaded.app.database_url.startswith("sqlite")
+
+
+def test_settings_does_not_fail_fast_on_sqlite_outside_container(tmp_path, monkeypatch):
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.delenv("RUNNING_IN_DOCKER", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///./test_case_repo.db")
+    monkeypatch.delenv("SQLITE_CONTAINER_STORAGE_ACK", raising=False)
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("app:\n  port: 9999\n", encoding="utf-8")
+
+    loaded = Settings.from_env_and_file(str(config_path))
+    assert loaded.app.database_url.startswith("sqlite")
 
 
 def test_settings_reads_jira_values_from_env(tmp_path, monkeypatch):

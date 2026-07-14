@@ -16,6 +16,7 @@ from datetime import datetime
 from app.auth.dependencies import get_current_user
 from app.auth.models import UserRole, UserCreate
 from app.auth.password_service import PasswordService
+from app.auth.permission_service import clear_permission_cache
 from app.services.user_service import UserService
 from app.models.database_models import User, LarkUser
 from app.db_access.main import MainAccessBoundary, get_main_access_boundary
@@ -755,6 +756,10 @@ async def update_user(
 
         payload = await main_boundary.run_write(_update)
         user = payload["user"]
+        if "role" in payload["changed_fields"] or "is_active" in payload["changed_fields"]:
+            # role 是全域欄位、is_active 決定是否還有任何權限，兩者皆會讓權限快取
+            # 的既有內容失真，必須立即清除該使用者的快取（team_id=None 清全部）。
+            await clear_permission_cache(user_id=user.id)
         logger.info("管理員 %s 更新了使用者 %s", current_user.username, user.username)
 
         if payload["changed_fields"]:
@@ -835,6 +840,7 @@ async def delete_user(
             return user
 
         deleted_user = await main_boundary.run_write(_delete)
+        await clear_permission_cache(user_id=deleted_user.id)
         logger.info("管理員 %s 永久刪除了使用者 %s", current_user.username, deleted_user.username)
 
         action_brief = f"{current_user.username} deleted user {deleted_user.username}"

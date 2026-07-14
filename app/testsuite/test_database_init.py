@@ -145,7 +145,11 @@ def test_collect_target_preflight_marks_missing_database_as_ready(monkeypatch) -
     assert "bootstrap 會先建立缺少的 database" in summary["remediation"][0]
 
 
-def test_bootstrap_target_creates_database_before_upgrade(monkeypatch) -> None:
+def _fresh_pending_status(target: str, database_url=None):
+    return db_migrations.PendingStatus(target=target, current=None, head="head", is_pending=True, is_fresh=True)
+
+
+def test_bootstrap_target_creates_database_before_upgrade(monkeypatch, tmp_path) -> None:
     call_order: list[str] = []
 
     class _BootstrapEngine:
@@ -162,6 +166,7 @@ def test_bootstrap_target_creates_database_before_upgrade(monkeypatch) -> None:
         "create_database_if_missing",
         lambda url: call_order.append(f"create:{url.render_as_string(hide_password=False)}") or True,
     )
+    monkeypatch.setattr(database_init, "get_pending_status", _fresh_pending_status)
     monkeypatch.setitem(
         database_init.TARGET_UPGRADERS,
         "main",
@@ -170,6 +175,11 @@ def test_bootstrap_target_creates_database_before_upgrade(monkeypatch) -> None:
     monkeypatch.setattr(
         database_init,
         "verify_required_tables",
+        lambda *_args, **_kwargs: (True, []),
+    )
+    monkeypatch.setattr(
+        database_init,
+        "verify_large_text_columns",
         lambda *_args, **_kwargs: (True, []),
     )
     monkeypatch.setattr(
@@ -190,7 +200,14 @@ def test_bootstrap_target_creates_database_before_upgrade(monkeypatch) -> None:
     monkeypatch.setattr(database_init, "print_verification_summary", lambda _summary: None)
 
     logger = database_init.Logger(quiet=True)
-    database_init.bootstrap_target("main", logger, no_backup=True)
+    policies = database_init.BootstrapPolicies(
+        backup_dir=tmp_path / "backups",
+        backup_mode="off",
+        backup_retention=5,
+        on_failure="abort",
+        max_upgrade_attempts=3,
+    )
+    database_init.bootstrap_target("main", logger, policies)
 
     assert call_order == [
         "create:postgresql+psycopg://tcrt:tcrt@127.0.0.1:5432/tcrt_main",
@@ -198,7 +215,7 @@ def test_bootstrap_target_creates_database_before_upgrade(monkeypatch) -> None:
     ]
 
 
-def test_bootstrap_target_auto_upgrades_legacy_unmanaged_db(monkeypatch) -> None:
+def test_bootstrap_target_auto_upgrades_legacy_unmanaged_db(monkeypatch, tmp_path) -> None:
     call_order: list[str] = []
 
     class _BootstrapEngine:
@@ -211,6 +228,13 @@ def test_bootstrap_target_auto_upgrades_legacy_unmanaged_db(monkeypatch) -> None
 
     monkeypatch.setattr(database_init, "get_sync_engine_for_target", lambda _target: _BootstrapEngine())
     monkeypatch.setattr(database_init, "create_database_if_missing", lambda _url: False)
+    monkeypatch.setattr(
+        database_init,
+        "get_pending_status",
+        lambda target, database_url=None: db_migrations.PendingStatus(
+            target=target, current=None, head="head", is_pending=True, is_fresh=False
+        ),
+    )
 
     def _raise_adoption_required():
         call_order.append("upgrade")
@@ -229,6 +253,11 @@ def test_bootstrap_target_auto_upgrades_legacy_unmanaged_db(monkeypatch) -> None
     )
     monkeypatch.setattr(
         database_init,
+        "verify_large_text_columns",
+        lambda *_args, **_kwargs: (True, []),
+    )
+    monkeypatch.setattr(
+        database_init,
         "collect_target_verification_summary",
         lambda *_args, **_kwargs: {
             "label": "主資料庫",
@@ -245,38 +274,59 @@ def test_bootstrap_target_auto_upgrades_legacy_unmanaged_db(monkeypatch) -> None
     monkeypatch.setattr(database_init, "print_verification_summary", lambda _summary: None)
 
     logger = database_init.Logger(quiet=True)
-    database_init.bootstrap_target("main", logger, no_backup=True)
+    policies = database_init.BootstrapPolicies(
+        backup_dir=tmp_path / "backups",
+        backup_mode="off",
+        backup_retention=5,
+        on_failure="abort",
+        max_upgrade_attempts=3,
+    )
+    database_init.bootstrap_target("main", logger, policies)
 
     assert call_order == ["upgrade", "legacy_upgrade"]
 
 
-def test_verify_mysql_mediumtext_defaults_detects_plain_text_columns(monkeypatch) -> None:
+def test_verify_large_text_columns_is_noop_for_non_mysql_engine() -> None:
+    engine = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+
+    ok, violations = database_init.verify_large_text_columns(
+        engine,
+        "usm",
+        database_init.Logger(quiet=True),
+        "USM 資料庫",
+    )
+
+    assert ok is True
+    assert violations == []
+
+
+def test_verify_large_text_columns_detects_plain_text_column(monkeypatch) -> None:
     class _Inspector:
         def get_table_names(self):
-            return ["demo", "alembic_version"]
+            return ["user_story_maps", "user_story_map_nodes"]
 
         def get_columns(self, table_name):
-            if table_name == "demo":
+            if table_name == "user_story_map_nodes":
                 return [
-                    {"name": "payload_json", "type": sqltypes.Text(), "nullable": True},
-                    {"name": "title", "type": sqltypes.String(length=100), "nullable": True},
+                    {"name": "description", "type": sqltypes.Text(), "nullable": True},
                 ]
             return []
 
     engine = SimpleNamespace(dialect=SimpleNamespace(name="mysql"))
     monkeypatch.setattr(database_init, "inspect", lambda _engine: _Inspector())
 
-    ok, violations = database_init.verify_mysql_mediumtext_defaults(
+    ok, violations = database_init.verify_large_text_columns(
         engine,
+        "usm",
         database_init.Logger(quiet=True),
-        "主資料庫",
+        "USM 資料庫",
     )
 
     assert ok is False
-    assert violations == ["demo.payload_json=TEXT"]
+    assert violations == ["user_story_map_nodes.description=TEXT"]
 
 
-def test_verify_mysql_mediumtext_defaults_accepts_mediumtext_columns(monkeypatch) -> None:
+def test_verify_large_text_columns_accepts_mediumtext_columns(monkeypatch) -> None:
     class _MediumText(sqltypes.Text):
         pass
 
@@ -284,20 +334,23 @@ def test_verify_mysql_mediumtext_defaults_accepts_mediumtext_columns(monkeypatch
 
     class _Inspector:
         def get_table_names(self):
-            return ["demo"]
+            return ["user_story_maps", "user_story_map_nodes"]
 
         def get_columns(self, table_name):
-            return [
-                {"name": "payload_json", "type": _MediumText(), "nullable": True},
-            ]
+            if table_name in {"user_story_maps", "user_story_map_nodes"}:
+                return [
+                    {"name": "description", "type": _MediumText(), "nullable": True},
+                ]
+            return []
 
     engine = SimpleNamespace(dialect=SimpleNamespace(name="mysql"))
     monkeypatch.setattr(database_init, "inspect", lambda _engine: _Inspector())
 
-    ok, violations = database_init.verify_mysql_mediumtext_defaults(
+    ok, violations = database_init.verify_large_text_columns(
         engine,
+        "usm",
         database_init.Logger(quiet=True),
-        "主資料庫",
+        "USM 資料庫",
     )
 
     assert ok is True
