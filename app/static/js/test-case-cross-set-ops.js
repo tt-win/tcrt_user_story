@@ -18,7 +18,7 @@ class TestCaseCrossSetOps {
 
   authFetch(url, options = {}) {
     if (!window.AuthClient || typeof window.AuthClient.fetch !== 'function') {
-      throw new Error('AuthClient unavailable');
+      throw new Error(window.i18n.t('testCaseSet.crossSet.authUnavailable'));
     }
     return window.AuthClient.fetch(url, options);
   }
@@ -58,14 +58,14 @@ class TestCaseCrossSetOps {
    */
   showCrossSetCopyModal(testCaseIds) {
     if (!testCaseIds || testCaseIds.length === 0) {
-      alert('請先選擇要複製的測試案例');
+      alert(window.i18n.t('testCaseSet.selectAtLeastOne'));
       return;
     }
 
     const sets = this.allSets.filter(s => s.id !== this.currentSetId);
 
     if (sets.length === 0) {
-      alert('沒有其他可用的集合');
+      alert(window.i18n.t('testCaseSet.crossSet.noOtherSets'));
       return;
     }
 
@@ -74,37 +74,37 @@ class TestCaseCrossSetOps {
         <div class="modal-dialog modal-dialog-centered">
           <div class="modal-content">
             <div class="modal-header">
-              <h5 class="modal-title">複製到其他集合</h5>
+              <h5 class="modal-title">${this.escapeHtml(window.i18n.t('testCaseSet.crossSet.copyTitle'))}</h5>
               <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
               <form id="crossSetCopyForm">
                 <div class="form-group mb-3">
-                  <label for="targetSet">目標集合 <span class="text-danger">*</span></label>
+                  <label for="targetSet">${this.escapeHtml(window.i18n.t('testCaseSet.crossSet.targetSet'))} <span class="text-danger">*</span></label>
                   <select id="targetSet" class="form-control" onchange="testCaseCrossSetOps.onTargetSetChanged()">
-                    <option value="">選擇集合...</option>
+                    <option value="">${this.escapeHtml(window.i18n.t('testCaseSet.crossSet.selectSet'))}</option>
                     ${sets.map(s => `<option value="${s.id}">${this.escapeHtml(s.name)}</option>`).join('')}
                   </select>
                 </div>
 
                 <div class="form-group mb-3">
-                  <label for="targetSection">目標區段 <span class="text-danger">*</span></label>
+                  <label for="targetSection">${this.escapeHtml(window.i18n.t('section.crossSection.targetSection'))} <span class="text-danger">*</span></label>
                   <select id="targetSection" class="form-control" disabled>
-                    <option value="">先選擇集合...</option>
+                    <option value="">${this.escapeHtml(window.i18n.t('testCaseSet.crossSet.selectSetFirst'))}</option>
                   </select>
                 </div>
 
                 <div class="alert alert-info" role="alert">
                   <i class="fas fa-info-circle"></i>
-                  將複製 <strong>${testCaseIds.length}</strong> 個測試案例
+                  ${this.escapeHtml(window.i18n.t('testCaseSet.crossSet.copyCount', { count: testCaseIds.length }))}
                 </div>
               </form>
             </div>
             <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${this.escapeHtml(window.i18n.t('common.cancel'))}</button>
               <button type="button" class="btn btn-primary"
                       onclick="testCaseCrossSetOps.confirmCrossSetCopy(${JSON.stringify(testCaseIds)})">
-                複製
+                ${this.escapeHtml(window.i18n.t('common.copy'))}
               </button>
             </div>
           </div>
@@ -127,14 +127,14 @@ class TestCaseCrossSetOps {
    */
   showCrossSetMoveModal(testCaseIds) {
     if (!testCaseIds || testCaseIds.length === 0) {
-      alert('請先選擇要搬移的測試案例');
+      alert(window.i18n.t('testCaseSet.selectAtLeastOne'));
       return;
     }
 
     const sets = this.allSets.filter(s => s.id !== this.currentSetId);
 
     if (sets.length === 0) {
-      alert('沒有其他可用的集合');
+      alert(window.i18n.t('testCaseSet.crossSet.noOtherSets'));
       return;
     }
 
@@ -143,42 +143,42 @@ class TestCaseCrossSetOps {
         <div class="modal-dialog modal-dialog-centered">
           <div class="modal-content">
             <div class="modal-header">
-              <h5 class="modal-title">搬移到其他集合</h5>
+              <h5 class="modal-title">${this.escapeHtml(window.i18n.t('testCaseSet.crossSet.moveTitle'))}</h5>
               <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
               <form id="crossSetMoveForm">
                 <div class="alert alert-warning" role="alert">
                   <i class="fas fa-exclamation-triangle"></i>
-                  搬移是永久操作，測試案例將從當前集合移除
+                  ${this.escapeHtml(window.i18n.t('testCaseSet.crossSet.moveWarning'))}
                 </div>
 
                 <div class="form-group mb-3">
-                  <label for="targetSet">目標集合 <span class="text-danger">*</span></label>
+                  <label for="targetSet">${this.escapeHtml(window.i18n.t('testCaseSet.crossSet.targetSet'))} <span class="text-danger">*</span></label>
                   <select id="targetSet" class="form-control" onchange="testCaseCrossSetOps.onTargetSetChanged()">
-                    <option value="">選擇集合...</option>
+                    <option value="">${this.escapeHtml(window.i18n.t('testCaseSet.crossSet.selectSet'))}</option>
                     ${sets.map(s => `<option value="${s.id}">${this.escapeHtml(s.name)}</option>`).join('')}
                   </select>
                 </div>
 
                 <div class="form-group mb-3">
-                  <label for="targetSection">目標區段 <span class="text-danger">*</span></label>
+                  <label for="targetSection">${this.escapeHtml(window.i18n.t('section.crossSection.targetSection'))} <span class="text-danger">*</span></label>
                   <select id="targetSection" class="form-control" disabled>
-                    <option value="">先選擇集合...</option>
+                    <option value="">${this.escapeHtml(window.i18n.t('testCaseSet.crossSet.selectSetFirst'))}</option>
                   </select>
                 </div>
 
                 <div class="alert alert-info" role="alert">
                   <i class="fas fa-info-circle"></i>
-                  將搬移 <strong>${testCaseIds.length}</strong> 個測試案例
+                  ${this.escapeHtml(window.i18n.t('testCaseSet.crossSet.moveCount', { count: testCaseIds.length }))}
                 </div>
               </form>
             </div>
             <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${this.escapeHtml(window.i18n.t('common.cancel'))}</button>
               <button type="button" class="btn btn-danger"
                       onclick="testCaseCrossSetOps.confirmCrossSetMove(${JSON.stringify(testCaseIds)})">
-                搬移
+                ${this.escapeHtml(window.i18n.t('testCaseSet.crossSet.move'))}
               </button>
             </div>
           </div>
@@ -205,7 +205,7 @@ class TestCaseCrossSetOps {
 
     if (!setId) {
       sectionSelect.disabled = true;
-      sectionSelect.innerHTML = '<option value="">先選擇集合...</option>';
+      sectionSelect.innerHTML = `<option value="">${this.escapeHtml(window.i18n.t('testCaseSet.crossSet.selectSetFirst'))}</option>`;
       return;
     }
 
@@ -214,7 +214,7 @@ class TestCaseCrossSetOps {
       const response = await this.authFetch(`/api/test-case-sets/${setId}/sections`);
 
       if (!response.ok) {
-        throw new Error('Failed to load sections');
+        throw new Error(window.i18n.t('section.crossSection.loadFailed'));
       }
 
       const sections = await response.json();
@@ -222,7 +222,7 @@ class TestCaseCrossSetOps {
       // 填充 Section 選擇器
       sectionSelect.disabled = false;
       sectionSelect.innerHTML = `
-        <option value="">選擇區段...</option>
+        <option value="">${this.escapeHtml(window.i18n.t('testCase.selectSection'))}</option>
         ${this.getSectionOptions(sections)}
       `;
 
@@ -230,7 +230,7 @@ class TestCaseCrossSetOps {
 
     } catch (error) {
       console.error('Error loading sections:', error);
-      alert('載入區段失敗');
+      alert(window.i18n.t('section.crossSection.loadFailed'));
     }
   }
 
@@ -263,12 +263,12 @@ class TestCaseCrossSetOps {
     const targetSectionId = document.getElementById('targetSection').value;
 
     if (!targetSetId) {
-      alert('請選擇目標集合');
+      alert(window.i18n.t('testCaseSet.crossSet.selectTargetSet'));
       return;
     }
 
     if (!targetSectionId) {
-      alert('請選擇目標區段');
+      alert(window.i18n.t('section.crossSection.selectTargetSection'));
       return;
     }
 
@@ -288,11 +288,11 @@ class TestCaseCrossSetOps {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.detail || 'Failed to copy test cases');
+        throw new Error(error.detail || window.i18n.t('testCaseSet.crossSet.copyRequestFailed'));
       }
 
       bootstrap.Modal.getInstance(document.getElementById('crossSetCopyModal')).hide();
-      alert(`成功複製 ${testCaseIds.length} 個測試案例`);
+      alert(window.i18n.t('testCaseSet.crossSet.copySuccess', { count: testCaseIds.length }));
 
       // 刷新表格
       if (typeof loadTestCases === 'function') {
@@ -301,7 +301,7 @@ class TestCaseCrossSetOps {
 
     } catch (error) {
       console.error('Error copying test cases:', error);
-      alert('複製失敗: ' + error.message);
+      alert(window.i18n.t('testCaseSet.crossSet.copyFailed', { reason: error.message }));
     }
   }
 
@@ -313,16 +313,16 @@ class TestCaseCrossSetOps {
     const targetSectionId = document.getElementById('targetSection').value;
 
     if (!targetSetId) {
-      alert('請選擇目標集合');
+      alert(window.i18n.t('testCaseSet.crossSet.selectTargetSet'));
       return;
     }
 
     if (!targetSectionId) {
-      alert('請選擇目標區段');
+      alert(window.i18n.t('section.crossSection.selectTargetSection'));
       return;
     }
 
-    if (!confirm(`確定要搬移 ${testCaseIds.length} 個測試案例嗎？此操作無法撤銷。`)) {
+    if (!confirm(window.i18n.t('testCaseSet.crossSet.moveConfirm', { count: testCaseIds.length }))) {
       return;
     }
 
@@ -342,11 +342,11 @@ class TestCaseCrossSetOps {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.detail || 'Failed to move test cases');
+        throw new Error(error.detail || window.i18n.t('testCaseSet.crossSet.moveRequestFailed'));
       }
 
       bootstrap.Modal.getInstance(document.getElementById('crossSetMoveModal')).hide();
-      alert(`成功搬移 ${testCaseIds.length} 個測試案例`);
+      alert(window.i18n.t('testCaseSet.crossSet.moveSuccess', { count: testCaseIds.length }));
 
       // 刷新表格
       if (typeof loadTestCases === 'function') {
@@ -355,7 +355,7 @@ class TestCaseCrossSetOps {
 
     } catch (error) {
       console.error('Error moving test cases:', error);
-      alert('搬移失敗: ' + error.message);
+      alert(window.i18n.t('testCaseSet.crossSet.moveFailed', { reason: error.message }));
     }
   }
 

@@ -153,16 +153,20 @@ class TestCaseSetIntegration {
 
     if (headerName) {
       if (currentSet) {
+        const countText = window.i18n
+          ? window.i18n.t('team.testCaseCount', {count: currentSet.test_case_count || 0}, `${currentSet.test_case_count || 0} 個測試案例`)
+          : `${currentSet.test_case_count || 0} 個測試案例`;
         headerName.innerHTML = `
           <strong>${this.escapeHtml(currentSet.name)}</strong>
           ${currentSet.is_default ? '<i class="fas fa-star text-warning ms-2"></i>' : ''}
           <br>
-          <small class="text-muted">${currentSet.test_case_count || 0} 個測試案例</small>
+          <small class="text-muted">${this.escapeHtml(countText)}</small>
         `;
         // 保存 Set 名稱到 sessionStorage，以備區段列表使用
         sessionStorage.setItem('selectedTestCaseSetName', currentSet.name);
       } else {
-        headerName.innerHTML = '<strong>集合不存在</strong>';
+        const notFoundText = window.i18n ? window.i18n.t('testCaseSet.notFound', {}, '集合不存在') : '集合不存在';
+        headerName.innerHTML = `<strong>${this.escapeHtml(notFoundText)}</strong>`;
       }
     }
 
@@ -180,24 +184,28 @@ class TestCaseSetIntegration {
    * 顯示 Set 選擇器
    */
   showSetSelector() {
+    const selectTitle = window.i18n ? window.i18n.t('testCaseSet.selectTitle', {}, '選擇測試案例集合') : '選擇測試案例集合';
+    const loadingText = window.i18n ? window.i18n.t('common.loading') : '載入中...';
+    const cancelText = window.i18n ? window.i18n.t('common.cancel') : '取消';
+    const manageText = window.i18n ? window.i18n.t('testCaseSet.manage', {}, '管理集合') : '管理集合';
     const modalHtml = `
       <div class="modal fade" id="setSelectModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
           <div class="modal-content">
             <div class="modal-header">
-              <h5 class="modal-title">選擇測試案例集合</h5>
+              <h5 class="modal-title">${this.escapeHtml(selectTitle)}</h5>
               <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body" id="setSelectList">
               <div class="text-center">
                 <div class="spinner-border" role="status">
-                  <span class="visually-hidden">載入中...</span>
+                   <span class="visually-hidden">${this.escapeHtml(loadingText)}</span>
                 </div>
               </div>
             </div>
             <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-              <a href="/test-case-sets" class="btn btn-primary">管理集合</a>
+               <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${this.escapeHtml(cancelText)}</button>
+               <a href="/test-case-sets" class="btn btn-primary">${this.escapeHtml(manageText)}</a>
             </div>
           </div>
         </div>
@@ -215,22 +223,24 @@ class TestCaseSetIntegration {
 
     // 填充列表
     const listContainer = document.getElementById('setSelectList');
-    listContainer.innerHTML = this.testCaseSets.map(set => `
+    listContainer.innerHTML = this.testCaseSets.map((set, index) => `
       <div class="list-group-item p-3 border-bottom d-flex justify-content-between align-items-center"
-           style="cursor: pointer;"
-           onmouseover="this.style.backgroundColor='#f8f9fa'"
-           onmouseout="this.style.backgroundColor='white'"
-           onclick="testCaseSetIntegration.switchSet(${set.id})">
+           style="cursor: pointer;" data-set-index="${index}">
         <div>
           <h6 class="mb-1">
             ${set.is_default ? '<i class="fas fa-star text-warning"></i> ' : ''}
             ${this.escapeHtml(set.name)}
           </h6>
-          <small class="text-muted">${set.test_case_count || 0} 個測試案例</small>
+          <small class="text-muted">${this.escapeHtml(window.i18n ? window.i18n.t('team.testCaseCount', {count: set.test_case_count || 0}) : `${set.test_case_count || 0} 個測試案例`)}</small>
         </div>
         ${set.id == this.currentSetId ? '<i class="fas fa-check text-success"></i>' : ''}
       </div>
     `).join('');
+    listContainer.querySelectorAll('[data-set-index]').forEach(item => {
+      item.addEventListener('mouseenter', () => { item.style.backgroundColor = '#f8f9fa'; });
+      item.addEventListener('mouseleave', () => { item.style.backgroundColor = 'white'; });
+      item.addEventListener('click', () => this.switchSet(this.testCaseSets[Number(item.dataset.setIndex)].id));
+    });
 
     const modal = new bootstrap.Modal(document.getElementById('setSelectModal'));
     modal.show();
@@ -273,7 +283,7 @@ class TestCaseSetIntegration {
       '"': '&quot;',
       "'": '&#039;'
     };
-    return text.replace(/[&<>"']/g, m => map[m]);
+    return String(text ?? '').replace(/[&<>"']/g, m => map[m]);
   }
 }
 

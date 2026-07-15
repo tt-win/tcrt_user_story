@@ -4,18 +4,26 @@
 
 // ---- 釘選 (Pin) 共用工具（Test Run Set / Test Run / Ad-hoc Run 共用）----
 // App token 團隊共用釘選：顯示為置頂但不可在此取消（唯讀狀態，無 onclick）。
+function trmTranslate(key, fallback, params = {}) {
+    try {
+        if (window.i18n && typeof window.i18n.t === 'function') {
+            const value = window.i18n.t(key, params);
+            if (value && value !== key) return value;
+        }
+    } catch (_) {}
+    return fallback;
+}
+
 function trmPinToggleHtml(entityType, id) {
     const pinned = !!(window.PinStore && window.PinStore.isPinned(entityType, id));
     const tokenPinned = !!(window.PinStore && window.PinStore.isTokenPinned(entityType, id));
     if (tokenPinned) {
-        const label = (window.i18n && window.i18n.isReady() && window.i18n.t('common.pinnedByAppToken'))
-            || 'Pinned by App Token (team-shared)';
+        const label = trmTranslate('common.pinnedByAppToken', 'Pinned by App Token (team-shared)');
         return `<button type="button" class="pin-toggle pinned token-pinned" title="${label}" aria-label="${label}" disabled>
                   <i class="fas fa-thumbtack"></i>
                 </button>`;
     }
-    const label = (window.i18n && window.i18n.isReady() && window.i18n.t(pinned ? 'common.unpin' : 'common.pin'))
-        || (pinned ? 'Unpin' : 'Pin');
+    const label = trmTranslate(pinned ? 'common.unpin' : 'common.pin', pinned ? 'Unpin' : 'Pin');
     return `<button type="button" class="pin-toggle ${pinned ? 'pinned' : ''}" title="${label}" aria-label="${label}"
               onclick="event.stopPropagation(); toggleTrmPin('${entityType}', ${id})">
               <i class="fas fa-thumbtack"></i>
@@ -40,7 +48,7 @@ async function toggleTrmPin(entityType, id) {
     } catch (error) {
         console.error('Toggle pin failed:', error);
         if (window.AppUtils && typeof AppUtils.showError === 'function') {
-            AppUtils.showError((window.i18n && window.i18n.isReady() && window.i18n.t('common.failed')) || 'Operation failed');
+            AppUtils.showError(trmTranslate('common.failed', 'Operation failed'));
         }
     }
 }
@@ -110,7 +118,7 @@ function renderCompactTestRunSetTable(filteredSets, filterStatus) {
     if (!container) return;
 
     if (!filteredSets.length) {
-        container.innerHTML = `<div class="text-muted text-center py-4" data-i18n="testRun.sets.card.empty">尚未包含任何 Test Run</div>`;
+        container.innerHTML = `<div class="text-muted text-center py-4">${trmTranslate('testRun.sets.card.empty', '尚未包含任何 Test Run')}</div>`;
         return;
     }
 
@@ -136,21 +144,21 @@ function renderCompactTestRunSetTable(filteredSets, filterStatus) {
         },
         {
             key: 'name',
-            label: (window.i18n && window.i18n.t('common.name')) || '名稱',
+            label: trmTranslate('common.name', '名稱'),
             sortable: true,
             sortValue: set => (set.name || '').toLowerCase(),
             render: set => `<span class="fw-semibold text-primary">${escapeHtml(set.name)}</span>`
         },
         {
             key: 'status',
-            label: (window.i18n && window.i18n.t('common.status')) || '狀態',
+            label: trmTranslate('common.status', '狀態'),
             sortable: true,
             sortValue: set => (set.status || 'active').toLowerCase(),
             render: set => getSetStatusBadge(set.status)
         },
         {
             key: 'runs',
-            label: (window.i18n && window.i18n.t('testRun.sets.card.totalRuns')) || '包含 Test Run',
+            label: trmTranslate('testRun.sets.card.totalRuns', '包含 Test Run'),
             sortable: true,
             thClass: 'text-end',
             tdClass: 'text-end',
@@ -159,7 +167,7 @@ function renderCompactTestRunSetTable(filteredSets, filterStatus) {
         },
         {
             key: 'execution_rate',
-            label: (window.i18n && window.i18n.t('testRun.progressLabel')) || '執行進度',
+            label: trmTranslate('testRun.progressLabel', '執行進度'),
             sortable: true,
             thClass: 'text-end',
             tdClass: 'text-end',
@@ -168,7 +176,7 @@ function renderCompactTestRunSetTable(filteredSets, filterStatus) {
         },
         {
             key: 'pass_rate',
-            label: (window.i18n && window.i18n.t('testRun.passRateLabel')) || 'Pass Rate',
+            label: trmTranslate('testRun.passRateLabel', 'Pass Rate'),
             sortable: true,
             thClass: 'text-end',
             tdClass: 'text-end',
@@ -177,14 +185,14 @@ function renderCompactTestRunSetTable(filteredSets, filterStatus) {
         },
         {
             key: 'created_at',
-            label: (window.i18n && window.i18n.t('common.createDate')) || '建立時間',
+            label: trmTranslate('common.createDate', '建立時間'),
             sortable: true,
             sortValue: set => set.created_at ? new Date(set.created_at).getTime() : 0,
             render: set => AppUtils.formatDate(set.created_at, 'datetime')
         },
         {
             key: 'actions',
-            label: (window.i18n && window.i18n.t('common.actions')) || '操作',
+            label: trmTranslate('common.actions', '操作'),
             sortable: false,
             stopRowClick: true,
             thClass: 'text-end',
@@ -257,7 +265,16 @@ function renderTestRunSetReport(setData) {
 
     if (titleEl) titleEl.textContent = setData.name || '';
     if (statusEl) statusEl.innerHTML = getSetStatusBadge(setData.status);
-    if (metaEl) metaEl.textContent = `Test Run: ${runs.length} · 總案例: ${metrics.totalCases} · 執行率 ${Math.round(metrics.executionRate)}% · Pass Rate ${Math.round(metrics.passRate)}%`;
+    if (metaEl) metaEl.textContent = trmTranslate(
+        'testRun.sets.report.summary',
+        `Test Run: ${runs.length} · 總案例: ${metrics.totalCases} · 執行率 ${Math.round(metrics.executionRate)}% · Pass Rate ${Math.round(metrics.passRate)}%`,
+        {
+            runs: runs.length,
+            totalCases: metrics.totalCases,
+            executionRate: Math.round(metrics.executionRate),
+            passRate: Math.round(metrics.passRate)
+        }
+    );
     if (descEl) {
         descEl.innerHTML = setData.description ? escapeHtml(setData.description).replace(/\n/g, '<br>') : '<span class="text-muted" data-i18n="testRun.sets.detail.noDescription">尚未填寫描述</span>';
     }
@@ -265,35 +282,35 @@ function renderTestRunSetReport(setData) {
     if (statGrid) {
         statGrid.innerHTML = `
             <div class="col-6 col-md-3">
-                <div class="small text-muted">Active</div>
+                <div class="small text-muted">${trmTranslate('testRun.status.active', 'Active')}</div>
                 <div class="fw-semibold">${statusCounts['active'] || 0}</div>
             </div>
             <div class="col-6 col-md-3">
-                <div class="small text-muted">Completed</div>
+                <div class="small text-muted">${trmTranslate('testRun.status.completed', 'Completed')}</div>
                 <div class="fw-semibold">${statusCounts['completed'] || 0}</div>
             </div>
             <div class="col-6 col-md-3">
-                <div class="small text-muted">Archived</div>
+                <div class="small text-muted">${trmTranslate('testRun.status.archived', 'Archived')}</div>
                 <div class="fw-semibold">${statusCounts['archived'] || 0}</div>
             </div>
             <div class="col-6 col-md-3">
-                <div class="small text-muted">草稿/其他</div>
+                <div class="small text-muted">${trmTranslate('testRun.sets.report.draftOther', '草稿/其他')}</div>
                 <div class="fw-semibold">${statusCounts['draft'] || 0}</div>
             </div>
             <div class="col-6 col-md-3">
-                <div class="small text-muted">總案例</div>
+                <div class="small text-muted">${trmTranslate('testRun.totalTestCases', '總案例')}</div>
                 <div class="fw-semibold">${metrics.totalCases}</div>
             </div>
             <div class="col-6 col-md-3">
-                <div class="small text-muted">已執行</div>
+                <div class="small text-muted">${trmTranslate('testRun.configExecutedLabel', '已執行')}</div>
                 <div class="fw-semibold">${metrics.executedCases}</div>
             </div>
             <div class="col-6 col-md-3">
-                <div class="small text-muted">執行率</div>
+                <div class="small text-muted">${trmTranslate('testRun.executionRate', '執行率')}</div>
                 <div class="fw-semibold">${Math.round(metrics.executionRate)}%</div>
             </div>
             <div class="col-6 col-md-3">
-                <div class="small text-muted">Pass Rate</div>
+                <div class="small text-muted">${trmTranslate('testRun.passRateLabel', 'Pass Rate')}</div>
                 <div class="fw-semibold">${Math.round(metrics.passRate)}%</div>
             </div>
         `;
@@ -301,7 +318,7 @@ function renderTestRunSetReport(setData) {
 
     if (runsBody) {
         if (!runs.length) {
-            runsBody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">尚未加入任何 Test Run</td></tr>';
+            runsBody.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-3">${trmTranslate('testRun.sets.detail.noRuns', '尚未加入任何 Test Run')}</td></tr>`;
         } else {
             runsBody.innerHTML = runs.map(run => {
                 const execRate = run.total_test_cases > 0 ? Math.round((run.executed_cases || 0) / run.total_test_cases * 100) : 0;
@@ -335,16 +352,16 @@ async function refreshSetHtmlReportStatus(setId) {
         const resp = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/${setId}/report`);
         const data = await resp.json();
         if (resp.ok && data.exists) {
-            if (statusEl) statusEl.textContent = '已有報告，可直接開啟';
+            if (statusEl) statusEl.textContent = trmTranslate('testRun.sets.report.available', '已有報告，可直接開啟');
             if (openBtn && data.report_url) {
                 openBtn.href = data.report_url;
                 openBtn.classList.remove('d-none');
             }
         } else if (statusEl) {
-            statusEl.textContent = '尚未生成報告';
+            statusEl.textContent = trmTranslate('testRun.sets.report.notGenerated', '尚未生成報告');
         }
     } catch (e) {
-        if (statusEl) statusEl.textContent = '查詢報告狀態失敗';
+        if (statusEl) statusEl.textContent = trmTranslate('testRun.sets.report.statusFailed', '查詢報告狀態失敗');
     }
 }
 
@@ -354,8 +371,8 @@ async function generateTestRunSetHtmlReport() {
     const text = document.getElementById('setReportGenerateText');
     if (!currentSetContext || !currentTeamId || !btn) return;
 
-    const defaultLabel = (window.i18n?.t('testRun.generateHtmlButton') || '生成並複製連結');
-    const loadingLabel = (window.i18n?.t('testRun.generatingHtml') || '生成中...');
+    const defaultLabel = trmTranslate('testRun.generateHtmlButton', '生成並複製連結');
+    const loadingLabel = trmTranslate('testRun.generatingHtml', '生成中...');
 
     try {
         btn.disabled = true;
@@ -371,20 +388,20 @@ async function generateTestRunSetHtmlReport() {
         });
         const data = await resp.json();
         if (!resp.ok || !data.success) {
-            throw new Error(data?.detail || '生成失敗');
+            throw new Error(data?.detail || trmTranslate('testRun.generateHtmlFailed', '生成失敗'));
         }
 
         if (data.report_url) {
             if (window.AppUtils?.showCopyModal) {
                 window.AppUtils.showCopyModal(data.report_url);
             } else {
-                window.prompt('請手動複製此連結：', data.report_url);
+                window.prompt(trmTranslate('testRun.sets.report.copyLinkPrompt', '請手動複製此連結：'), data.report_url);
             }
         }
         refreshSetHtmlReportStatus(currentSetContext.id);
     } catch (error) {
-        const msg = error?.message || '生成失敗';
-        AppUtils.showError(`生成 HTML 報告時發生錯誤：${msg}`);
+        const msg = error?.message || trmTranslate('testRun.generateHtmlFailed', '生成失敗');
+        AppUtils.showError(trmTranslate('testRun.generateHtmlError', `生成 HTML 報告時發生錯誤：${msg}`, { error: msg }));
     } finally {
         btn.disabled = false;
         if (icon) {
@@ -643,21 +660,21 @@ function renderCompactUnassignedRunsTable(runs) {
         },
         {
             key: 'name',
-            label: (window.i18n && window.i18n.t('common.name')) || '名稱',
+            label: trmTranslate('common.name', '名稱'),
             sortable: true,
             sortValue: run => (run.name || '').toLowerCase(),
             render: run => `<span class="fw-semibold text-primary">${escapeHtml(run.name)}</span>`
         },
         {
             key: 'status',
-            label: (window.i18n && window.i18n.t('common.status')) || '狀態',
+            label: trmTranslate('common.status', '狀態'),
             sortable: true,
             sortValue: run => (run.status || 'draft').toLowerCase(),
             render: run => `<span class="status-badge ${getStatusClass(run.status)}">${getStatusText(run.status)}</span>`
         },
         {
             key: 'execution_rate',
-            label: (window.i18n && window.i18n.t('testRun.progressLabel')) || '執行進度',
+            label: trmTranslate('testRun.progressLabel', '執行進度'),
             sortable: true,
             thClass: 'text-end',
             tdClass: 'text-end',
@@ -666,7 +683,7 @@ function renderCompactUnassignedRunsTable(runs) {
         },
         {
             key: 'pass_rate',
-            label: (window.i18n && window.i18n.t('testRun.passRateLabel')) || 'Pass Rate',
+            label: trmTranslate('testRun.passRateLabel', 'Pass Rate'),
             sortable: true,
             thClass: 'text-end',
             tdClass: 'text-end',
@@ -675,7 +692,7 @@ function renderCompactUnassignedRunsTable(runs) {
         },
         {
             key: 'cases',
-            label: (window.i18n && window.i18n.t('testCaseSet.caseCount')) || 'Test Cases',
+            label: trmTranslate('testCaseSet.caseCount', 'Test Cases'),
             sortable: true,
             thClass: 'text-end',
             tdClass: 'text-end',
@@ -684,21 +701,21 @@ function renderCompactUnassignedRunsTable(runs) {
         },
         {
             key: 'test_environment',
-            label: (window.i18n && window.i18n.t('testRun.testEnvironment')) || '測試環境',
+            label: trmTranslate('testRun.testEnvironment', '測試環境'),
             sortable: true,
             sortValue: run => (run.test_environment || '').toLowerCase(),
             render: run => run.test_environment ? escapeHtml(run.test_environment) : '-'
         },
         {
             key: 'created_at',
-            label: (window.i18n && window.i18n.t('common.createDate')) || '建立時間',
+            label: trmTranslate('common.createDate', '建立時間'),
             sortable: true,
             sortValue: run => run.created_at ? new Date(run.created_at).getTime() : 0,
             render: run => AppUtils.formatDate(run.created_at, 'datetime-tz')
         },
         {
             key: 'actions',
-            label: (window.i18n && window.i18n.t('common.actions')) || '操作',
+            label: trmTranslate('common.actions', '操作'),
             sortable: false,
             stopRowClick: true,
             thClass: 'text-end',
@@ -791,10 +808,10 @@ function createConfigCard(config) {
     const lockedForConfigEdit = config.status === 'archived';
     const lockedForCasesEdit = config.status === 'completed' || config.status === 'archived';
     const lockedConfigTitle = lockedForConfigEdit
-        ? ` title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t('testRun.cannotEditArchived') : 'Cannot edit archived Test Run'}"`
+        ? ` title="${trmTranslate('testRun.cannotEditArchived', 'Cannot edit archived Test Run')}"`
         : '';
     const lockedCasesTitle = lockedForCasesEdit
-        ? ` title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t(config.status === 'archived' ? 'testRun.cannotEditArchived' : 'testRun.cannotEditCompleted') : (config.status === 'archived' ? 'Cannot edit archived Test Run' : 'Cannot edit Test Cases in completed Test Run')}"`
+        ? ` title="${trmTranslate(config.status === 'archived' ? 'testRun.cannotEditArchived' : 'testRun.cannotEditCompleted', config.status === 'archived' ? 'Cannot edit archived Test Run' : 'Cannot edit Test Cases in completed Test Run')}"`
         : '';
 
     if (permissions.canUpdate) {
@@ -894,11 +911,11 @@ function createConfigCard(config) {
                         ${buildLine}
                         <div class="stats-item">
                             <i class="fas fa-list-ul stats-icon"></i>
-                            <small class="text-muted">${(window.i18n && window.i18n.isReady()) ? window.i18n.t('testRun.totalExecuted', {total: config.total_test_cases, executed: config.executed_cases}) : `總數: ${config.total_test_cases} | 已執行: ${config.executed_cases}`}</small>
+                            <small class="text-muted">${trmTranslate('testRun.totalExecuted', `總數: ${config.total_test_cases} | 已執行: ${config.executed_cases}`, { total: config.total_test_cases, executed: config.executed_cases })}</small>
                         </div>
                         <div class="stats-item">
                             <i class="fas fa-calendar stats-icon"></i>
-                            <small class="text-muted">${(window.i18n && window.i18n.isReady()) ? window.i18n.t('testRun.createdLabel', {date: createdDate}) : `建立: ${createdDate}`}</small>
+                            <small class="text-muted">${trmTranslate('testRun.createdLabel', `建立: ${createdDate}`, { date: createdDate })}</small>
                         </div>
                     </div>
                     ${actionsHtml ? `<div class="mt-auto pt-2">${actionsHtml}</div>` : ''}
@@ -979,15 +996,15 @@ function getDefaultStatusText(status) {
 function getSetStatusText(status) {
     const key = String(status || '').toLowerCase();
     if (key === 'active') {
-        return window.i18n?.t('testRun.sets.status.active') || 'Active';
+        return trmTranslate('testRun.sets.status.active', 'Active');
     }
     if (key === 'completed') {
-        return window.i18n?.t('testRun.sets.status.completed') || 'Completed';
+        return trmTranslate('testRun.sets.status.completed', 'Completed');
     }
     if (key === 'archived') {
-        return window.i18n?.t('testRun.sets.status.archived') || 'Archived';
+        return trmTranslate('testRun.sets.status.archived', 'Archived');
     }
-    return key || 'Unknown';
+    return key || trmTranslate('testRun.status.unknown', 'Unknown');
 }
 
 function getSetStatusBadge(status) {

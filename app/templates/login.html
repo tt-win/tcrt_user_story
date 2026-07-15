@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Login - Test Case Repository Web Tool{% endblock %}
+{% block title %}{{ i18n.t('login.title') if i18n else 'Login' }} - Test Case Repository Web Tool{% endblock %}
 
 <!-- 禁用基礎模板的 header 和 footer -->
 {% block page_title %}{% endblock %}
@@ -19,34 +19,38 @@
         <!-- 登入頭部 -->
         <div class="login-header">
             <i class="fas fa-shield-alt fa-2x mb-2"></i>
-            <h4 class="mb-1">User Login</h4>
-            <p class="mb-0 opacity-75">Test Case Repository</p>
+            <h4 class="mb-1" data-i18n="login.title">User Login</h4>
+            <p class="mb-0 opacity-75" data-i18n="login.productName">Test Case Repository</p>
         </div>
         
         <!-- 登入表單 -->
         <div class="p-4">
             <form id="loginForm" autocomplete="off">
                 <div id="loginStepIndicator" class="mb-3 text-muted small">
-                    <i class="fas fa-circle me-2"></i>Step 1: Enter Account
+                    <i class="fas fa-circle me-2"></i><span data-i18n="login.stepAccount">Step 1: Enter Account</span>
                 </div>
 
                 <div id="usernameStep" class="mb-3">
                     <label for="username" class="form-label">
-                        <i class="fas fa-user me-2"></i>Username or Email
+                        <i class="fas fa-user me-2"></i><span data-i18n="login.usernameOrEmail">Username or Email</span>
                     </label>
                     <input type="text" class="form-control" id="username" name="username_or_email" 
+                           data-i18n-placeholder="login.usernamePlaceholder"
                            placeholder="Please enter username or email" required>
                 </div>
 
                 <div id="passwordStep" class="d-none">
                     <div class="mb-3">
                         <label for="password" class="form-label">
-                            <i class="fas fa-lock me-2"></i>Password
+                            <i class="fas fa-lock me-2"></i><span data-i18n="login.password">Password</span>
                         </label>
                         <div class="input-group">
                             <input type="password" class="form-control" id="password" name="password" 
+                                   data-i18n-placeholder="login.passwordPlaceholder"
                                    placeholder="Please enter password">
-                            <button class="btn btn-secondary" type="button" id="togglePassword">
+                            <button class="btn btn-secondary" type="button" id="togglePassword"
+                                    data-i18n-title="login.togglePassword" title="Show or hide password"
+                                    data-i18n-aria-label="login.togglePassword" aria-label="Show or hide password">
                                 <i class="fas fa-eye" id="togglePasswordIcon"></i>
                             </button>
                         </div>
@@ -56,7 +60,7 @@
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" id="rememberMe" name="remember_me">
                             <label class="form-check-label" for="rememberMe">
-                                Remember my login status
+                                <span data-i18n="login.rememberMe">Remember my login status</span>
                             </label>
                         </div>
                     </div>
@@ -64,15 +68,15 @@
 
                 <div class="d-flex justify-content-between align-items-center gap-2">
                     <button type="button" class="btn btn-secondary d-none" id="backToUsername">
-                        <i class="fas fa-arrow-left me-2"></i>Back
+                        <i class="fas fa-arrow-left me-2"></i><span data-i18n="login.back">Back</span>
                     </button>
                     <button type="submit" class="btn btn-success flex-fill" id="loginBtn">
                         <span id="loginBtnText">
-                            <i class="fas fa-arrow-right me-2"></i>Next
+                            <i class="fas fa-arrow-right me-2"></i><span data-i18n="login.next">Next</span>
                         </span>
                         <span id="loginBtnLoading" class="d-none">
                             <div class="spinner-border loading-spinner me-2" role="status"></div>
-                            Processing...
+                            <span data-i18n="login.processing">Processing...</span>
                         </span>
                     </button>
                 </div>
@@ -82,7 +86,7 @@
             <div class="text-center mt-4 pt-3 border-top">
                 <small class="text-muted">
                     <i class="fas fa-info-circle me-1"></i>
-                    If you have login issues, please contact the system administrator
+                    <span data-i18n="login.help">If you have login issues, please contact the system administrator</span>
                 </small>
             </div>
         </div>

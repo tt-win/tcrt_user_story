@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block title %}Test Case Sets - TCRT{% endblock %}
+{% block title %}{{ i18n.t('testCaseSet.title') if i18n else 'Test Case Sets' }} - TCRT{% endblock %}
 
-{% block page_title_text %}Test Case Sets{% endblock %}
+{% block page_title_text %}<span data-i18n="testCaseSet.title">Test Case Sets</span>{% endblock %}
 
 {% block page_subtitle_text %}<span data-i18n="testCaseSet.pageSubtitle">選擇或建立一個測試案例集合來開始管理測試案例</span>{% endblock %}
 
@@ -31,7 +31,7 @@
     <button type="button" class="btn btn-sm btn-outline-primary d-none" id="compactAddSetBtn" data-i18n-title="testCaseSet.addSet" title="Add Set">
       <i class="fas fa-plus"></i>
     </button>
-    <div class="btn-group" role="group" aria-label="View toggle">
+    <div class="btn-group" role="group" data-i18n-aria-label="common.viewToggle" aria-label="View toggle">
       <button type="button" class="btn btn-sm btn-outline-secondary active" id="viewToggleCard" data-i18n-title="common.cardView" title="Card view">
         <i class="fas fa-th-large"></i>
       </button>
@@ -69,7 +69,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="setModalLabel" data-i18n="testCaseSet.createSet">新增測試案例集合</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <form id="setForm">
@@ -104,7 +104,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" data-i18n="testCaseSet.confirmDelete">確認刪除</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <p id="deleteConfirmText" data-i18n="testCaseSet.deleteConfirmMessage">確定要刪除此測試案例集合嗎？此操作無法撤銷。</p>
@@ -128,10 +128,10 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="setDefaultConfirmTitle" data-i18n="testCaseSet.setDefaultTitle">設為預設 Test Case Set</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <p id="setDefaultConfirmText" class="mb-3">確定要將此集合設為預設 Test Case Set 嗎？</p>
+        <p id="setDefaultConfirmText" class="mb-3" data-i18n="testCaseSet.setDefaultConfirmGeneric">確定要將此集合設為預設 Test Case Set 嗎？</p>
         <div class="alert alert-warning mb-0">
           <div class="fw-semibold mb-1" data-i18n="testCaseSet.setDefaultHintTitle">注意事項</div>
           <small class="d-block" id="setDefaultConfirmHint" data-i18n="testCaseSet.setDefaultHint">既有 Test Case 不會被搬移，之後新建立的 ad-hoc run 與新 Test Case 會預設放入這個集合。</small>
@@ -157,7 +157,7 @@
         <h5 class="modal-title" data-i18n="testCaseSet.selectTestCases">
           <i class="fas fa-check-square"></i> 選擇測試案例
         </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <!-- 搜尋工具列 -->
@@ -179,8 +179,8 @@
 
         <!-- Test Run Name 輸入 -->
         <div class="mt-3">
-            <label for="newTestRunName" class="form-label small fw-bold">Test Run 名稱</label>
-            <input type="text" class="form-control" id="newTestRunName" placeholder="預設：Test Run - YYYY-MM-DD">
+            <label for="newTestRunName" class="form-label small fw-bold" data-i18n="testCaseSet.testRunName">Test Run 名稱</label>
+            <input type="text" class="form-control" id="newTestRunName" data-i18n-placeholder="testCaseSet.testRunNamePlaceholder" placeholder="預設：Test Run - YYYY-MM-DD">
         </div>
 
         <!-- 摘要信息 -->

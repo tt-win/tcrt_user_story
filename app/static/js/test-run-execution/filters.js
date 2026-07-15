@@ -634,7 +634,9 @@ function setupQuickSearch_TR() {
                     }
                     el.placeholder = text;
                 } else {
-                    el.placeholder = '搜尋測試案例...';
+                    el.placeholder = window.i18n
+                        ? window.i18n.t('testRun.searchTestCases', {}, '搜尋測試案例...')
+                        : '搜尋測試案例...';
                 }
             };
             applyPlaceholder();

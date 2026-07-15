@@ -131,13 +131,11 @@ async def apply_version_headers(request: Request, call_next):
 from app.api import api_router
 from app.api.system import router as system_router
 from app.api.user_story_maps import router as usm_router
-from app.api.usm_import import router as usm_import_router
 from app.api.adhoc import router as adhoc_router
 
 app.include_router(api_router, prefix="/api")
 app.include_router(system_router)
 app.include_router(usm_router, prefix="/api")
-app.include_router(usm_import_router)
 app.include_router(adhoc_router, prefix="/api")
 
 

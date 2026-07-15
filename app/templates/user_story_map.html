@@ -1,5 +1,4 @@
-{% extends "base.html" %} {% block title %}User Story Map - Test Case Repository
-Web Tool{% endblock %} {% block page_title_text %}
+{% extends "base.html" %} {% set page_title_i18n_key = "usm.title" %} {% block page_title_text %}
 <span class="text-primary" data-i18n="usm.title">User Story Map</span>
 {% endblock %} {% block page_subtitle_text %}
 <span data-i18n="usm.subtitle">視覺化管理使用者故事與功能規劃</span>
@@ -268,6 +267,8 @@ Web Tool{% endblock %} {% block page_title_text %}
                     type="button"
                     class="btn-close"
                     data-bs-dismiss="modal"
+                    data-i18n-aria-label="common.close"
+                    aria-label="關閉"
                 ></button>
             </div>
             <div class="modal-body relation-modal-body">
@@ -444,6 +445,8 @@ Web Tool{% endblock %} {% block page_title_text %}
                     type="button"
                     class="btn-close"
                     data-bs-dismiss="modal"
+                    data-i18n-aria-label="common.close"
+                    aria-label="關閉"
                 ></button>
             </div>
             <div
@@ -545,6 +548,8 @@ Web Tool{% endblock %} {% block page_title_text %}
                     type="button"
                     class="btn-close"
                     data-bs-dismiss="modal"
+                    data-i18n-aria-label="common.close"
+                    aria-label="關閉"
                 ></button>
             </div>
             <div class="modal-body">
@@ -603,6 +608,8 @@ Web Tool{% endblock %} {% block page_title_text %}
                         type="button"
                         class="btn-close"
                         data-bs-dismiss="modal"
+                        data-i18n-aria-label="common.close"
+                        aria-label="關閉"
                     ></button>
                 </div>
             </div>
@@ -648,7 +655,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                     <i class="fas fa-exclamation-triangle me-2"></i>
                     <span id="deleteMapModalTitle" data-i18n="usm.deleteMapConfirm">確定要刪除此 User Story Map 嗎？</span>
                 </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="alert alert-danger mb-0">
@@ -678,6 +685,8 @@ Web Tool{% endblock %} {% block page_title_text %}
                     type="button"
                     class="btn-close"
                     data-bs-dismiss="modal"
+                    data-i18n-aria-label="common.close"
+                    aria-label="關閉"
                 ></button>
             </div>
             <div class="modal-body">
@@ -736,6 +745,8 @@ Web Tool{% endblock %} {% block page_title_text %}
                     type="button"
                     class="btn-close"
                     data-bs-dismiss="modal"
+                    data-i18n-aria-label="common.close"
+                    aria-label="關閉"
                 ></button>
             </div>
             <div class="modal-body">
@@ -854,6 +865,8 @@ Web Tool{% endblock %} {% block page_title_text %}
                     type="button"
                     class="btn-close"
                     data-bs-dismiss="modal"
+                    data-i18n-aria-label="common.close"
+                    aria-label="關閉"
                 ></button>
             </div>
             <div class="modal-body">
@@ -985,6 +998,8 @@ Web Tool{% endblock %} {% block page_title_text %}
                         type="button"
                         class="btn-close"
                         data-bs-dismiss="modal"
+                        data-i18n-aria-label="common.close"
+                        aria-label="關閉"
                     ></button>
                 </div>
                 <div class="modal-body">
@@ -1064,6 +1079,8 @@ Web Tool{% endblock %} {% block page_title_text %}
                         type="button"
                         class="btn-close"
                         data-bs-dismiss="modal"
+                        data-i18n-aria-label="common.close"
+                        aria-label="關閉"
                     ></button>
                 </div>
                 <div class="modal-body">

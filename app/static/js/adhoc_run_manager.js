@@ -601,7 +601,7 @@ function showAdHocConfirmModal({ title, message, confirmText, confirmClass, type
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Cancel</button>
                         <button type="button" class="btn" id="adhocConfirmBtn"></button>
                     </div>
                 </div>
@@ -696,8 +696,8 @@ function toggleAdHocStatusDropdown(btn, id, currentStatus) {
 
     // Define options (Active is starting state, cannot return to it)
     const allOptions = [
-        { value: 'completed', label: 'Completed', icon: 'fa-check', color: 'text-success' },
-        { value: 'archived', label: 'Archived', icon: 'fa-archive', color: 'text-secondary' }
+        { value: 'completed', label: adhocT('adhoc.status.completed', 'Completed'), icon: 'fa-check', color: 'text-success' },
+        { value: 'archived', label: adhocT('adhoc.status.archived', 'Archived'), icon: 'fa-archive', color: 'text-secondary' }
     ];
 
     // Status Transition Logic
@@ -725,15 +725,18 @@ function toggleAdHocStatusDropdown(btn, id, currentStatus) {
     if (options.length === 0) {
         // If no transitions allowed, maybe show a message or just don't show dropdown?
         // Better to give feedback.
-        dropdown.innerHTML = '<div class="p-2 text-muted small text-center">No actions available</div>';
+        dropdown.innerHTML = '<div class="p-2 text-muted small text-center" data-i18n="adhoc.actions.noAvailable">No actions available</div>';
     } else {
         // Build HTML
         dropdown.innerHTML = options.map(opt => `
             <button class="custom-status-dropdown-item" onclick="updateAdHocStatus(${id}, '${opt.value}'); hideCustomStatusDropdown()">
                 <i class="fas ${opt.icon} ${opt.color} me-2"></i>
-                ${opt.label}
+                ${escapeHtml(opt.label)}
             </button>
         `).join('');
+    }
+    if (window.i18n && typeof window.i18n.retranslate === 'function') {
+        window.i18n.retranslate(dropdown);
     }
 
     // Position logic (simple version, can be enhanced with Popper.js if available)

@@ -1,4 +1,4 @@
-{% extends "base.html" %} {% block title %}團隊數據統計 - Test Case Repository{%
+{% extends "base.html" %} {% block title %}{{ i18n.t('teamStats.pageTitle') if i18n else '團隊數據統計' }} - Test Case Repository{%
 endblock %} {% block page_title_text %}<span data-i18n="teamStats.pageTitle"
     >團隊數據統計</span
 >{% endblock %} {% block page_subtitle_text %}<span
@@ -924,7 +924,7 @@ endblock %} {% block page_title_text %}<span data-i18n="teamStats.pageTitle"
             <!-- 載入指示 -->
             <div id="qa-ai-helper-loading" class="text-center py-4 d-none">
                 <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
+                    <span class="visually-hidden" data-i18n="common.loading">Loading...</span>
                 </div>
             </div>
 
@@ -1429,7 +1429,7 @@ endblock %} {% block page_title_text %}<span data-i18n="teamStats.pageTitle"
                         <div class="col-md-4 col-sm-6">
                             <div class="card text-center">
                                 <div class="card-body py-2">
-                                    <div class="text-muted small">Prompt / Completion</div>
+                                    <div class="text-muted small" translate="no" data-i18n-ignore>Prompt / Completion</div>
                                     <h4 class="mb-0" id="helper-tel-inspection-detail">-</h4>
                                 </div>
                             </div>

@@ -24,6 +24,10 @@
   function buildOverlay(message) {
     const overlay = document.createElement('div');
     overlay.className = 'ai-thinking-overlay';
+    const defaultMessage = window.i18n && typeof window.i18n.t === 'function'
+      ? window.i18n.t('automationHub.tests.aiLoading', {}, 'Thinking...')
+      : 'Thinking...';
+    const displayMessage = escapeHtml(message || defaultMessage);
     overlay.innerHTML = `
       <div class="ai-thinking-container">
         <div class="ai-thinking-indicator">
@@ -31,7 +35,7 @@
           <span class="ai-thinking-dot"></span>
           <span class="ai-thinking-dot"></span>
         </div>
-        <div class="ai-thinking-message">${escapeHtml(message || 'AI 思考中...')}</div>
+        <div class="ai-thinking-message">${displayMessage}</div>
       </div>`;
     return overlay;
   }

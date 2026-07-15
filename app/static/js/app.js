@@ -27,6 +27,40 @@ const AppUtils = {
         return team ? team.id.toString() : null;
     },
 
+    // Resolve locale-independent API messages while preserving legacy string fallbacks.
+    getApiMessage: function(payload, fallback = '') {
+        const detail = payload && Object.prototype.hasOwnProperty.call(payload, 'detail')
+            ? payload.detail
+            : payload;
+        const message = detail && typeof detail === 'object'
+            ? (detail.message || payload?.message || fallback)
+            : (typeof detail === 'string' ? detail : (payload?.message || fallback));
+        const code = detail && typeof detail === 'object'
+            ? detail.code
+            : payload?.code;
+        const params = detail && typeof detail === 'object'
+            ? (detail.params || {})
+            : (payload?.params || {});
+
+        if (code && window.i18n?.t) {
+            return window.i18n.t(code, params, message || fallback);
+        }
+        return message || fallback;
+    },
+
+    translate: function(key, fallback, params = {}) {
+        const fallbackText = String(fallback ?? '').replace(/\{(\w+)\}/g, (match, name) => (
+            Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : match
+        ));
+        return window.i18n?.t ? window.i18n.t(key, params, fallbackText) : fallbackText;
+    },
+
+    escapeHtml: function(value) {
+        const element = document.createElement('div');
+        element.textContent = String(value ?? '');
+        return element.innerHTML;
+    },
+
     // 清除當前團隊
     clearCurrentTeam: function() {
         this.currentTeam = null;
@@ -109,10 +143,11 @@ const AppUtils = {
         if (!container) return;
 
         const alertId = 'alert-' + Date.now();
+        const closeLabel = this.escapeHtml(this.translate('common.close', '關閉'));
         const alertHtml = `
             <div class="alert alert-${type} alert-dismissible fade show" role="alert" id="${alertId}">
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                ${this.escapeHtml(message)}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="${closeLabel}"></button>
             </div>
         `;
 
@@ -141,10 +176,11 @@ const AppUtils = {
         overlay.style.backdropFilter = 'blur(2px)';
         overlay.style.display = 'none';
 
+        const loadingLabel = this.escapeHtml(this.translate('common.loading', '載入中...'));
         overlay.innerHTML = `
             <div class="text-center">
                 <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
+                    <span class="visually-hidden">${loadingLabel}</span>
                 </div>
                 <div id="app-loading-message" class="mt-3 text-primary fw-semibold"></div>
             </div>
@@ -158,7 +194,7 @@ const AppUtils = {
     },
 
     // 顯示全域載入遮罩
-    showLoading: function(message = '載入中...') {
+    showLoading: function(message = this.translate('common.loading', '載入中...')) {
         const overlay = this._ensureLoadingOverlay();
         this._loadingCounter = (this._loadingCounter || 0) + 1;
         overlay.dataset.loadingCount = String(this._loadingCounter);
@@ -301,6 +337,12 @@ const AppUtils = {
         const selectLabel = options.selectLabel || translate('copyModal.select') || '選取';
         const closeLabel = options.closeLabel || translate('common.close') || '關閉';
         const urlLabel = options.urlLabel || translate('copyModal.url') || 'URL';
+        const escapedTitle = this.escapeHtml(title);
+        const escapedInstruction = this.escapeHtml(instruction);
+        const escapedSelectLabel = this.escapeHtml(selectLabel);
+        const escapedCloseLabel = this.escapeHtml(closeLabel);
+        const escapedUrlLabel = this.escapeHtml(urlLabel);
+        const escapedText = this.escapeHtml(text || '');
 
         try {
             const existing = document.getElementById('copyModal');
@@ -317,19 +359,19 @@ const AppUtils = {
               <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
                   <div class="modal-header">
-                    <h5 class="modal-title">${title}</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <h5 class="modal-title">${escapedTitle}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="${escapedCloseLabel}"></button>
                   </div>
                   <div class="modal-body">
                     <div class="mb-2">
-                      <label class="form-label">${urlLabel}</label>
-                      <input id="copyModalInput" type="text" class="form-control" readonly value="${text || ''}">
+                      <label class="form-label">${escapedUrlLabel}</label>
+                      <input id="copyModalInput" type="text" class="form-control" readonly value="${escapedText}">
                     </div>
-                    <small class="text-muted">${instruction}</small>
+                    <small class="text-muted">${escapedInstruction}</small>
                   </div>
                   <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${closeLabel}</button>
-                    <button type="button" class="btn btn-primary" id="copySelectBtn">${selectLabel}</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${escapedCloseLabel}</button>
+                    <button type="button" class="btn btn-primary" id="copySelectBtn">${escapedSelectLabel}</button>
                   </div>
                 </div>
               </div>
@@ -358,6 +400,8 @@ const AppUtils = {
         modal.show();
     }
 };
+
+window.AppUtils = AppUtils;
 
 // 全域翻譯監視器 - 處理動態內容的翻譯
 class TranslationObserver {
@@ -547,20 +591,27 @@ async function showHiddenModeModal() {
         }
     } catch (_) {}
 
+    const translate = (key, fallback, params = {}) => AppUtils.translate(key, fallback, params);
+    const escape = (value) => AppUtils.escapeHtml(value);
+    const closeLabel = escape(translate('common.close', '關閉'));
+    const hiddenModeTitle = escape(translate('hiddenMode.title', '隱藏模式'));
+    const systemMonitoringLabel = escape(translate('hiddenMode.systemMonitoring', '系統監控'));
+    const serverResourceMonitoringLabel = escape(translate('hiddenMode.serverResourceMonitoring', '伺服器資源監控'));
+    const loadingLabel = escape(translate('hiddenMode.loading', '讀取中…'));
     const wrapper = document.createElement('div');
     wrapper.innerHTML = `
         <div class="modal fade" id="hiddenModeModal" tabindex="-1" aria-hidden="true">
           <div class="modal-dialog modal-dialog-centered" style="max-width: 1000px; width: 1000px;">
             <div class="modal-content" style="height: 700px; display: flex; flex-direction: column;">
               <div class="modal-header">
-                <h5 class="modal-title">隱藏模式</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title">${hiddenModeTitle}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="${closeLabel}"></button>
               </div>
               <div class="modal-body" style="flex: 1 1 auto; overflow: auto;">
                 <!-- Tabs -->
                 <ul class="nav nav-tabs" id="hiddenModeTabs" role="tablist">
                   <li class="nav-item" role="presentation">
-                    <button class="nav-link active" id="sys-tab" data-bs-toggle="tab" data-bs-target="#sys-pane" type="button" role="tab" aria-controls="sys-pane" aria-selected="true">系統監控</button>
+                    <button class="nav-link active" id="sys-tab" data-bs-toggle="tab" data-bs-target="#sys-pane" type="button" role="tab" aria-controls="sys-pane" aria-selected="true">${systemMonitoringLabel}</button>
                   </li>
                 </ul>
                 <div class="tab-content pt-3">
@@ -568,20 +619,20 @@ async function showHiddenModeModal() {
                   <div class="tab-pane fade show active" id="sys-pane" role="tabpanel" aria-labelledby="sys-tab">
                     <div class="border rounded p-2">
                       <div class="d-flex justify-content-between align-items-center mb-2">
-                        <div class="fw-semibold">伺服器資源監控</div>
+                        <div class="fw-semibold">${serverResourceMonitoringLabel}</div>
                         <div>
                           <span id="hm-last-updated" class="text-muted small">—</span>
                         </div>
                       </div>
                       <div id="hm-metrics" class="small">
-                        <div class="text-muted">讀取中…</div>
+                        <div class="text-muted">${loadingLabel}</div>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
               <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${closeLabel}</button>
               </div>
             </div>
           </div>
@@ -620,7 +671,8 @@ async function showHiddenModeModal() {
                 renderMetrics(data);
             } catch (e) {
                 const box = modalEl.querySelector('#hm-metrics');
-                if (box) box.innerHTML = `<div class="text-danger">讀取失敗：${e?.message || e}</div>`;
+                if (box) box.textContent = translate('hiddenMode.loadFailed', '讀取失敗：{error}', { error: e?.message || e });
+                if (box) box.className = 'text-danger';
             } finally {
                 modalEl.querySelector('#hm-last-updated').textContent = new Date().toLocaleTimeString();
             }
@@ -632,10 +684,17 @@ async function showHiddenModeModal() {
             const mem = data?.memory || {};
             const box = modalEl.querySelector('#hm-metrics');
             if (!box) return;
+            box.className = 'small';
+            const uptimeLabel = escape(translate('hiddenMode.uptime', 'Uptime'));
+            const cpuLabel = escape(translate('hiddenMode.cpu', 'CPU'));
+            const loadAverageLabel = escape(translate('hiddenMode.loadAverage', 'Load Avg (1/5/15)'));
+            const processRssLabel = escape(translate('hiddenMode.processRss', 'Process RSS'));
+            const memoryUsedLabel = escape(translate('hiddenMode.memoryUsed', 'Memory Used'));
+            const memoryAvailableTotalLabel = escape(translate('hiddenMode.memoryAvailableTotal', 'Memory Avail / Total'));
             box.innerHTML = `
               <div class="row g-2">
                 <div class="col-6">
-                  <div class="text-muted">Uptime</div>
+                  <div class="text-muted">${uptimeLabel}</div>
                   <div>${(function(){
                     const s = Math.floor(data?.uptime_seconds || 0);
                     const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
@@ -643,23 +702,23 @@ async function showHiddenModeModal() {
                   })()}</div>
                 </div>
                 <div class="col-6">
-                  <div class="text-muted">CPU</div>
+                  <div class="text-muted">${cpuLabel}</div>
                   <div>${(cpu.percent == null) ? '—' : `${Number(cpu.percent).toFixed(1)}%`}</div>
                 </div>
                 <div class="col-6">
-                  <div class="text-muted">Load Avg (1/5/15)</div>
+                  <div class="text-muted">${loadAverageLabel}</div>
                   <div>${[load['1m'], load['5m'], load['15m']].map(v => (v==null? '—' : Number(v).toFixed(2))).join(' / ')}</div>
                 </div>
                 <div class="col-6">
-                  <div class="text-muted">Process RSS</div>
+                  <div class="text-muted">${processRssLabel}</div>
                   <div>${fmtBytes(mem.process_rss)}</div>
                 </div>
                 <div class="col-6">
-                  <div class="text-muted">Memory Used</div>
+                  <div class="text-muted">${memoryUsedLabel}</div>
                   <div>${fmtBytes(mem.used)} (${(mem.percent == null) ? '—' : `${Number(mem.percent).toFixed(1)}%`})</div>
                 </div>
                 <div class="col-6">
-                  <div class="text-muted">Memory Avail / Total</div>
+                  <div class="text-muted">${memoryAvailableTotalLabel}</div>
                   <div>${fmtBytes(mem.available)} / ${fmtBytes(mem.total)}</div>
                 </div>
               </div>
@@ -722,24 +781,30 @@ async function showHiddenModeModal() {
             }
         } catch (_) {}
 
+        const translate = (key, fallback, params = {}) => AppUtils.translate(key, fallback, params);
+        const escape = (value) => AppUtils.escapeHtml(value);
+        const closeLabel = escape(translate('common.close', '關閉'));
+        const accessDeniedTitle = escape(translate('hiddenMode.accessDeniedTitle', '404 - 存取被拒'));
+        const accessDeniedMessage = escape(translate('hiddenMode.accessDeniedMessage', '您無權限存取此隱藏模式。'));
+        const morseCodeLabel = escape(translate('hiddenMode.morseCode', '摩斯電碼：404 Not Found'));
         const wrapper = document.createElement('div');
         wrapper.innerHTML = `
             <div class="modal fade" id="morse404Modal" tabindex="-1" aria-hidden="true">
               <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
                   <div class="modal-header">
-                    <h5 class="modal-title">404 - 存取被拒</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <h5 class="modal-title">${accessDeniedTitle}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="${closeLabel}"></button>
                   </div>
                   <div class="modal-body text-center">
-                    <p class="mb-4">您無權限存取此隱藏模式。</p>
+                    <p class="mb-4">${accessDeniedMessage}</p>
                     <div id="morse-animation" class="mb-3" style="font-size: 2rem; font-family: monospace; line-height: 2;">
                       <!-- 動畫將在這裡顯示 -->
                     </div>
-                    <p class="text-muted small">摩斯電碼：404 Not Found</p>
+                    <p class="text-muted small">${morseCodeLabel}</p>
                   </div>
                   <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${closeLabel}</button>
                   </div>
                 </div>
               </div>

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block title %}Ad-hoc Test Run - Test Case Repository Web Tool{% endblock %}
+{% block title %}{{ i18n.t('adhoc.execution.title') if i18n else 'Ad-hoc Test Run' }} - Test Case Repository Web Tool{% endblock %}
 
-{% block page_title_text %}Ad-Hoc Test Run{% endblock %}
+{% block page_title_text %}<span data-i18n="adhoc.execution.title">Ad-hoc Test Run</span>{% endblock %}
 {% block page_subtitle_text %}<span id="runNameDisplay" data-i18n="common.loading">Loading...</span>{% endblock %}
 
 {% block page_specific_actions %}
@@ -40,7 +40,7 @@
             </button>
         </div>
         <div class="d-flex align-items-center gap-2">
-            <span id="saveStatus" class="text-muted small" style="font-size: 0.75rem;">All changes saved</span>
+            <span id="saveStatus" class="text-muted small" style="font-size: 0.75rem;" data-i18n="adhoc.execution.saveStatus.saved">All changes saved</span>
         </div>
     </div>
 
@@ -51,7 +51,7 @@
 
     <!-- Bottom Sheet Bar -->
     <div class="adhoc-sheet-bar">
-        <button class="sheet-add-btn" id="addSheetBtn" title="Add Sheet">
+        <button class="sheet-add-btn" id="addSheetBtn" data-i18n-title="adhoc.execution.addSheet" title="Add Sheet">
             <i class="fas fa-plus"></i>
         </button>
         <div class="sheet-tabs-container" id="sheetTabsContainer">
@@ -67,7 +67,7 @@
                 <h5 class="modal-title" id="addRowCountModalLabel">
                     <i class="fas fa-plus-square me-2"></i><span data-i18n="adhoc.addRowBatch.title">Batch Add Rows</span>
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
             </div>
             <form id="addRowCountForm" novalidate>
                 <div class="modal-body">

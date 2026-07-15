@@ -11,12 +11,12 @@
 // 欄位對應表
 const bulkEditColumns = [
     { key: 'index', title: '#', width: '40px', editable: false },
-    { key: 'test_case_number', title: '測試案例編號', width: '180px', editable: false },
-    { key: 'title', title: '標題', width: '200px', editable: true },
-    { key: 'priority', title: '優先級', width: '100px', editable: true, type: 'select', options: ['High', 'Medium', 'Low'] },
-    { key: 'precondition', title: '前置條件', width: '200px', editable: true, type: 'textarea' },
-    { key: 'steps', title: '測試步驟', width: '250px', editable: true, type: 'textarea' },
-    { key: 'expected_result', title: '預期結果', width: '200px', editable: true, type: 'textarea' }
+    { key: 'test_case_number', title: window.i18n ? window.i18n.t('testCase.testCaseNumber', {}, '測試案例編號') : '測試案例編號', width: '180px', editable: false },
+    { key: 'title', title: window.i18n ? window.i18n.t('common.title', {}, '標題') : '標題', width: '200px', editable: true },
+    { key: 'priority', title: window.i18n ? window.i18n.t('testCase.priority', {}, '優先級') : '優先級', width: '100px', editable: true, type: 'select', options: ['High', 'Medium', 'Low'] },
+    { key: 'precondition', title: window.i18n ? window.i18n.t('testCase.preconditions', {}, '前置條件') : '前置條件', width: '200px', editable: true, type: 'textarea' },
+    { key: 'steps', title: window.i18n ? window.i18n.t('testCase.steps', {}, '測試步驟') : '測試步驟', width: '250px', editable: true, type: 'textarea' },
+    { key: 'expected_result', title: window.i18n ? window.i18n.t('testCase.expectedResults', {}, '預期結果') : '預期結果', width: '200px', editable: true, type: 'textarea' }
 ];
 
 function openBulkEditModal() {
@@ -25,7 +25,7 @@ function openBulkEditModal() {
         const dataToEdit = filteredTestCases && filteredTestCases.length > 0 ? filteredTestCases : testCases;
 
         if (!dataToEdit || dataToEdit.length === 0) {
-            const noDataMsg = window.i18n ? window.i18n.t('errors.noTestCasesToEdit', {}, '沒有可編輯的測試案例') : '沒有可編輯的測試案例';
+            const noDataMsg = window.i18n ? window.i18n.t('testCase.bulkEdit.noTestCases', {}, '沒有可編輯的測試案例') : '沒有可編輯的測試案例';
             AppUtils.showError(noDataMsg);
             return;
         }
@@ -64,7 +64,7 @@ function openBulkEditModal() {
 
     } catch (error) {
         console.error('openBulkEditModal error:', error);
-        AppUtils.showError('開啟大量編輯失敗');
+        AppUtils.showError(window.i18n ? window.i18n.t('testCase.bulkEdit.openFailed', {}, '開啟大量編輯失敗') : '開啟大量編輯失敗');
     }
 }
 
@@ -90,9 +90,10 @@ function renderBulkEditGrid() {
                 const escapedValue = (value || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
                 if (col.type === 'select') {
-                    const options = col.options.map(opt =>
-                        `<option value="${opt}" ${opt === value ? 'selected' : ''}>${opt}</option>`
-                    ).join('');
+                    const options = col.options.map(opt => {
+                        const optionLabel = window.i18n ? window.i18n.t(`testCase.priority${opt}`, {}, opt) : opt;
+                        return `<option value="${opt}" ${opt === value ? 'selected' : ''}>${optionLabel}</option>`;
+                    }).join('');
                     inputHTML = `<select class="cell-input form-select">${options}</select>`;
                 } else if (col.type === 'textarea') {
                     // Use proper closing tag to avoid whitespace issue
@@ -541,7 +542,9 @@ function performUndo() {
     // 顯示提示
     const toast = document.createElement('div');
     toast.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #17a2b8; color: white; padding: 12px 24px; border-radius: 4px; z-index: 10000; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);';
-    toast.textContent = `↺ 已復原 ${changesCount} 個儲存格`;
+    toast.textContent = window.i18n ?
+        window.i18n.t('testCase.bulkEdit.undoneCells', { count: changesCount }, `↺ 已復原 ${changesCount} 個儲存格`) :
+        `↺ 已復原 ${changesCount} 個儲存格`;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 2000);
 
@@ -559,7 +562,7 @@ async function copySelectedCells() {
         // 顯示提示
         const toast = document.createElement('div');
         toast.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #dc3545; color: white; padding: 12px 24px; border-radius: 4px; z-index: 10000; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);';
-        toast.textContent = '⚠️ 請先選取儲存格';
+        toast.textContent = window.i18n ? window.i18n.t('testCase.bulkEdit.selectCellsFirst', {}, '⚠️ 請先選取儲存格') : '⚠️ 請先選取儲存格';
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 2000);
         return;
@@ -695,11 +698,15 @@ async function copySelectedCells() {
     if (clipboardSuccess) {
         toast.style.background = '#28a745';
         toast.style.color = 'white';
-        toast.textContent = `✅ 已複製 ${cellsWithPosition.length} 個儲存格`;
+        toast.textContent = window.i18n ?
+            window.i18n.t('testCase.bulkEdit.copiedCells', { count: cellsWithPosition.length }, `✅ 已複製 ${cellsWithPosition.length} 個儲存格`) :
+            `✅ 已複製 ${cellsWithPosition.length} 個儲存格`;
     } else {
         toast.style.background = '#ffc107';
         toast.style.color = 'black';
-        toast.textContent = `⚠️ 已儲存到內部剪貼簿（${cellsWithPosition.length} 個儲存格）`;
+        toast.textContent = window.i18n ?
+            window.i18n.t('testCase.bulkEdit.internalClipboardSaved', { count: cellsWithPosition.length }, `⚠️ 已儲存到內部剪貼簿（${cellsWithPosition.length} 個儲存格）`) :
+            `⚠️ 已儲存到內部剪貼簿（${cellsWithPosition.length} 個儲存格）`;
     }
 
     document.body.appendChild(toast);
@@ -714,7 +721,7 @@ async function pasteToSelectedCells() {
 
         const toast = document.createElement('div');
         toast.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #dc3545; color: white; padding: 12px 24px; border-radius: 4px; z-index: 10000; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);';
-        toast.textContent = '⚠️ 請先選取儲存格';
+        toast.textContent = window.i18n ? window.i18n.t('testCase.bulkEdit.selectCellsFirst', {}, '⚠️ 請先選取儲存格') : '⚠️ 請先選取儲存格';
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 2000);
         return;
@@ -943,7 +950,9 @@ async function pasteToSelectedCells() {
             // 顯示成功提示
             const toast = document.createElement('div');
             toast.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #28a745; color: white; padding: 12px 24px; border-radius: 4px; z-index: 10000; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);';
-            toast.textContent = `✅ 已貼上 ${pasteCount} 個儲存格`;
+            toast.textContent = window.i18n ?
+                window.i18n.t('testCase.bulkEdit.pastedCells', { count: pasteCount }, `✅ 已貼上 ${pasteCount} 個儲存格`) :
+                `✅ 已貼上 ${pasteCount} 個儲存格`;
             document.body.appendChild(toast);
             setTimeout(() => toast.remove(), 2000);
         } else {
@@ -953,7 +962,7 @@ async function pasteToSelectedCells() {
 
     } catch (err) {
         console.error('貼上失敗:', err);
-        AppUtils.showError('貼上失敗');
+        AppUtils.showError(window.i18n ? window.i18n.t('testCase.bulkEdit.pasteFailed', {}, '貼上失敗') : '貼上失敗');
         // 發生錯誤時取消當前操作組
         bulkEditCurrentOperation = null;
     }
@@ -1118,7 +1127,7 @@ function performSearch() {
     const searchColumn = document.getElementById('bulkEditSearchColumn').value;
 
     if (!searchText) {
-        AppUtils.showError('請輸入搜尋內容');
+        AppUtils.showError(window.i18n ? window.i18n.t('testCase.bulkEdit.enterSearchText', {}, '請輸入搜尋內容') : '請輸入搜尋內容');
         return;
     }
 
@@ -1180,7 +1189,7 @@ function displaySearchResults() {
     const replaceBtn = document.getElementById('bulkEditReplaceBtn');
 
     if (bulkEditSearchResults.length === 0) {
-        AppUtils.showInfo('未找到符合項目');
+        AppUtils.showInfo(window.i18n ? window.i18n.t('testCase.bulkEdit.noSearchResults', {}, '未找到符合項目') : '未找到符合項目');
         searchResultsDiv.style.display = 'none';
         searchBtn.style.display = 'inline-block';
         replaceBtn.style.display = 'none';
@@ -1271,10 +1280,10 @@ function deselectAllSearchResults() {
 
 function getColumnTitle(column) {
     const columnMap = {
-        'title': '標題',
-        'precondition': '前置條件',
-        'steps': '測試步驟',
-        'expected_result': '預期結果'
+        'title': window.i18n ? window.i18n.t('common.title', {}, '標題') : '標題',
+        'precondition': window.i18n ? window.i18n.t('testCase.preconditions', {}, '前置條件') : '前置條件',
+        'steps': window.i18n ? window.i18n.t('testCase.steps', {}, '測試步驟') : '測試步驟',
+        'expected_result': window.i18n ? window.i18n.t('testCase.expectedResults', {}, '預期結果') : '預期結果'
     };
     return columnMap[column] || column;
 }
@@ -1284,18 +1293,18 @@ function performSearchReplace() {
     const replaceText = document.getElementById('bulkEditReplaceText').value;
 
     if (!searchText) {
-        AppUtils.showError('請輸入搜尋內容');
+        AppUtils.showError(window.i18n ? window.i18n.t('testCase.bulkEdit.enterSearchText', {}, '請輸入搜尋內容') : '請輸入搜尋內容');
         return;
     }
 
     // 檢查是否有搜尋結果和勾選的結果
     if (bulkEditSearchResults.length === 0) {
-        AppUtils.showError('請先執行搜尋');
+        AppUtils.showError(window.i18n ? window.i18n.t('testCase.bulkEdit.searchFirst', {}, '請先執行搜尋') : '請先執行搜尋');
         return;
     }
 
     if (bulkEditCheckedResults.size === 0) {
-        AppUtils.showError('請選擇至少一個結果進行取代');
+        AppUtils.showError(window.i18n ? window.i18n.t('testCase.bulkEdit.selectReplaceResults', {}, '請選擇至少一個結果進行取代') : '請選擇至少一個結果進行取代');
         return;
     }
 
@@ -1385,6 +1394,8 @@ function performSearchReplace() {
     updateBulkEditStatus();
     bulkEditSearchModalInstance.hide();
 
-    const successMsg = `取代完成，共取代 ${replaceCount} 個位置，更新 ${updatedRecords.size} 筆資料`;
+    const successMsg = window.i18n ?
+        window.i18n.t('testCase.bulkEdit.replaceCompleted', { count: replaceCount, records: updatedRecords.size }, `取代完成，共取代 ${replaceCount} 個位置，更新 ${updatedRecords.size} 筆資料`) :
+        `取代完成，共取代 ${replaceCount} 個位置，更新 ${updatedRecords.size} 筆資料`;
     AppUtils.showSuccess(successMsg);
 }

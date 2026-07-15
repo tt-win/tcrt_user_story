@@ -17,7 +17,7 @@
 {% block page_specific_actions %}
 <div class="d-flex flex-column flex-md-row gap-3">
     <!-- 狀態過濾按鈕群組 -->
-    <div class="btn-group" role="group" aria-label="Status filter buttons">
+    <div class="btn-group" role="group" data-i18n-aria-label="testRun.statusFilterButtons" aria-label="Status filter buttons">
         <input type="radio" class="btn-check" name="statusFilter" id="filterAll" value="all" checked>
         <label class="btn btn-sm btn-secondary" for="filterAll">
             <i class="fas fa-list me-1"></i><span data-i18n="testRun.filter.all">全部</span>
@@ -89,7 +89,7 @@
 
     <!-- 檢視切換 (卡片 / 精簡列表)，套用至下方三個區塊 -->
     <div class="d-flex justify-content-end align-items-center gap-2 mb-3">
-        <div class="btn-group" role="group" aria-label="View toggle">
+        <div class="btn-group" role="group" data-i18n-aria-label="common.viewToggle" aria-label="View toggle">
             <button type="button" class="btn btn-sm btn-outline-secondary active" id="trmViewToggleCard" data-i18n-title="common.cardView" title="Card view">
                 <i class="fas fa-th-large"></i>
             </button>
@@ -118,7 +118,7 @@
             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                 <div>
                     <h4 class="mb-0" data-i18n="adhoc.title">Ad-hoc Runs</h4>
-                    <small class="text-muted">{{ i18n.t("adhoc.desc") if i18n else "Quick test runs without predefined test cases" }}</small>
+                    <small class="text-muted" data-i18n="adhoc.card.createHint">Quick test runs without predefined test cases</small>
                 </div>
             </div>
             <div class="row" id="adhoc-runs-container"></div>
@@ -148,42 +148,43 @@
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="adHocRunFormTitle">Create Ad-hoc Run</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="adHocRunFormTitle" data-i18n="adhoc.form.createTitle">Create Ad-hoc Run</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <form id="adHocRunForm">
                     <div class="mb-3">
-                        <label for="adHocName" class="form-label">Name <span class="text-danger">*</span></label>
+                        <label for="adHocName" class="form-label"><span data-i18n="adhoc.form.name">Name</span> <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="adHocName" required>
                     </div>
                     <div class="mb-3">
-                        <label for="adHocDescription" class="form-label">Description</label>
+                        <label for="adHocDescription" class="form-label" data-i18n="adhoc.form.description">Description</label>
                         <textarea class="form-control" id="adHocDescription" rows="3"></textarea>
                     </div>
                     
                     <div class="row">
                       <div class="col-md-4">
                         <div class="mb-3">
-                          <label for="adHocTestEnvironment" class="form-label">Test Environment <span class="badge bg-secondary ms-2">Optional</span></label>
-                          <input type="text" class="form-control" id="adHocTestEnvironment" placeholder="e.g. Staging / UAT">
+                          <label for="adHocTestEnvironment" class="form-label"><span data-i18n="adhoc.form.environment">Test Environment</span> <span class="badge bg-secondary ms-2" data-i18n="common.optional">Optional</span></label>
+                          <input type="text" class="form-control" id="adHocTestEnvironment" data-i18n-placeholder="adhoc.form.environmentPlaceholder" placeholder="e.g. Staging / UAT">
                         </div>
                       </div>
                       <div class="col-md-4">
                         <div class="mb-3">
-                          <label for="adHocBuildNumber" class="form-label">Build Number <span class="badge bg-secondary ms-2">Optional</span></label>
-                          <input type="text" class="form-control" id="adHocBuildNumber" placeholder="e.g. v1.2.3">
+                          <label for="adHocBuildNumber" class="form-label"><span data-i18n="adhoc.form.build">Build Number</span> <span class="badge bg-secondary ms-2" data-i18n="common.optional">Optional</span></label>
+                          <input type="text" class="form-control" id="adHocBuildNumber" data-i18n-placeholder="adhoc.form.buildPlaceholder" placeholder="e.g. v1.2.3">
                         </div>
                       </div>
                       <div class="col-md-4">
                         <div class="mb-3">
-                          <label for="adHocRelatedTpTickets" class="form-label">Related JIRA Tickets <span class="badge bg-secondary ms-2">Optional</span></label>
+                          <label for="adHocRelatedTpTickets" class="form-label"><span data-i18n="adhoc.form.relatedTickets">Related JIRA Tickets</span> <span class="badge bg-secondary ms-2" data-i18n="common.optional">Optional</span></label>
                           <input type="text" class="form-control" id="adHocRelatedTpTicketsInput" 
+                                 data-i18n-placeholder="adhoc.form.relatedTicketsPlaceholder"
                                  placeholder="Enter JIRA ticket (e.g. TP-12345)"
                                  autocomplete="off">
                           <div class="form-text">
                             <i class="fas fa-info-circle me-1"></i>
-                            <span>Press Enter to add ticket</span>
+                            <span data-i18n="adhoc.form.pressEnter">Press Enter to add ticket</span>
                           </div>
                         </div>
                       </div>
@@ -191,7 +192,7 @@
 
                     <!-- TP Tickets Display Area -->
                     <div class="mb-3" id="adHocTpTicketsDisplay" style="display: none;">
-                        <label class="form-label">Selected Tickets:</label>
+                        <label class="form-label" data-i18n="adhoc.form.selectedTickets">Selected Tickets:</label>
                         <div id="adHocTpTicketTags" class="d-flex flex-wrap gap-2"></div>
                     </div>
                     
@@ -200,8 +201,8 @@
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="saveAdHocRunBtn">Create</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveAdHocRunBtn" data-i18n="adhoc.form.create">Create</button>
             </div>
         </div>
     </div>
@@ -213,7 +214,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="configFormModalTitle"></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <form id="testRunConfigForm">
@@ -369,7 +370,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title"><i class="fas fa-tasks me-2"></i><span data-i18n="testRun.caseSelect.title">選擇要加入的 Test Case</span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
       </div>
       <div class="modal-body case-select-modal-body">
         <div class="case-select-controls">
@@ -425,7 +426,7 @@
 
         <div class="mt-2 pt-2 border-top case-select-summary">
           <small class="text-muted d-block" id="caseSelectInfo"></small>
-          <small class="text-muted" id="caseSelectionSummary">已選 0 個測試案例</small>
+          <small class="text-muted" id="caseSelectionSummary" data-i18n="testCaseSet.selectedCount" data-i18n-params='{"count": 0}'>已選 0 個測試案例</small>
         </div>
       </div>
       <div class="modal-footer">
@@ -446,7 +447,7 @@
                     <i class="fas fa-cog me-2"></i>
                     <span id="configDetailTitle" data-i18n="testRun.configDetails">Test Run 配置詳情</span>
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="configDetailContent">
                 <!-- Configuration details will be dynamically loaded by JavaScript -->
@@ -470,7 +471,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="testRunSetFormTitle"></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <form id="testRunSetForm">
@@ -494,7 +495,7 @@
                             <span data-i18n="testRun.sets.form.relatedTpTickets">相關 JIRA Tickets</span>
                             <span class="badge bg-secondary ms-2" data-i18n="common.optional">選填</span>
                         </label>
-                        <input type="text" class="form-control" id="setTpTicketsInput" placeholder="TP-12345" autocomplete="off">
+                        <input type="text" class="form-control" id="setTpTicketsInput" data-i18n-placeholder="testRun.relatedTpTicketsPlaceholder" placeholder="TP-12345" autocomplete="off">
                         <div class="form-text text-muted">
                             <i class="fas fa-info-circle me-1"></i>
                             <span data-i18n="testRun.sets.form.relatedTpTicketsHint">按 Enter 鍵新增票號，格式 TP-123456</span>
@@ -551,7 +552,7 @@
                         <i class="fas fa-chart-line me-1"></i><span data-i18n="testRun.sets.detail.report">報告</span>
                     </button>
                     <div class="dropdown" id="setDetailMoreActions">
-                        <button type="button" class="btn btn-sm test-run-kebab-btn" data-bs-toggle="dropdown" aria-expanded="false" aria-label="More actions">
+                        <button type="button" class="btn btn-sm test-run-kebab-btn" data-bs-toggle="dropdown" aria-expanded="false" data-i18n-aria-label="common.actions" aria-label="More actions">
                             <i class="fas fa-ellipsis-v"></i>
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end">
@@ -574,7 +575,7 @@
                         </ul>
                     </div>
                 </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
             </div>
             <div class="modal-body test-run-set-detail-body">
                 <!-- 上方：Test Run Set 資訊 -->
@@ -646,7 +647,7 @@
                     <i class="fas fa-chart-pie text-primary"></i>
                     <span id="setReportTitle"></span>
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="mb-3 d-flex flex-wrap gap-3 align-items-center">
@@ -673,15 +674,15 @@
                     <table class="table table-sm align-middle mb-0">
                         <thead class="table-light">
                             <tr>
-                                <th>Test Run</th>
-                                <th>狀態</th>
-                                <th class="text-center">執行率</th>
-                                <th class="text-center">Pass Rate</th>
-                                <th class="text-center">總案例</th>
-                                <th class="text-center">已執行</th>
-                                <th class="text-center">通過</th>
-                                <th>環境</th>
-                                <th>版本</th>
+                                <th data-i18n="testRun.sets.report.testRun">Test Run</th>
+                                <th data-i18n="common.status">狀態</th>
+                                <th class="text-center" data-i18n="testRun.executionRate">執行率</th>
+                                <th class="text-center" data-i18n="testRun.passRate">Pass Rate</th>
+                                <th class="text-center" data-i18n="testRun.sets.detail.totalCases">總案例</th>
+                                <th class="text-center" data-i18n="testRun.executedItems">已執行</th>
+                                <th class="text-center" data-i18n="testRun.passedItems">通過</th>
+                                <th data-i18n="testRun.testEnvironment">環境</th>
+                                <th data-i18n="testRun.sets.report.version">版本</th>
                             </tr>
                         </thead>
                         <tbody id="setReportRunsBody"></tbody>
@@ -708,7 +709,7 @@
                     <i class="fas fa-layer-group text-primary"></i>
                     <span data-i18n="testRun.sets.detail.addAutomationSuite">加入 Test Automation Suite</span>
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="mb-3">
@@ -736,7 +737,7 @@
                     <i class="fas fa-link text-primary"></i>
                     <span data-i18n="testRun.sets.detail.addExisting">加入既有 Test Run</span>
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="mb-3">
@@ -795,7 +796,7 @@
           <i class="fas fa-exclamation-triangle me-2"></i>
           <span data-i18n="common.confirm">確認刪除</span>
         </h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <p id="deleteConfirmMessage" class="mb-3"></p>
@@ -826,7 +827,7 @@
           <i class="fas fa-exclamation-triangle me-2"></i>
           <span data-i18n="common.confirm">確認刪除</span>
         </h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <div class="alert alert-danger mb-0">
@@ -859,7 +860,7 @@
         <a id="reportEmbedOpenLink" href="#" target="_blank" rel="noopener" class="btn btn-link btn-sm ms-auto me-2">
           <i class="fas fa-external-link-alt me-1"></i><span data-i18n="testRun.sets.detail.automationRunsOpenExternal">Open in CI</span>
         </a>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
       </div>
       <div class="modal-body p-0" style="height: 70vh;">
         <iframe id="reportEmbedFrame" src="about:blank" style="width: 100%; height: 100%; border: 0;" loading="lazy" referrerpolicy="no-referrer"></iframe>

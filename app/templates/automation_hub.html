@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Automation Hub - Test Case Repository Web Tool{% endblock %}
+{% block title %}{{ i18n.t('automationHub.title') if i18n else 'Automation Hub' }} - Test Case Repository Web Tool{% endblock %}
 
 {% block head %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
@@ -82,7 +82,7 @@
           <div class="automation-panel-header">
             <span data-i18n="automationHub.scripts.title">Repository Scripts</span>
             <small class="text-muted"><span id="scriptCount">0</span> <span data-i18n="automationHub.scripts.items">items</span></small>
-            <div class="btn-group btn-group-sm ms-auto automation-view-toggle" role="group" aria-label="View toggle">
+            <div class="btn-group btn-group-sm ms-auto automation-view-toggle" role="group" data-i18n-aria-label="common.viewToggle" aria-label="View toggle">
               <button type="button" class="btn btn-outline-secondary active" id="viewToggleScript" data-view="script" data-i18n-title="automationHub.scripts.viewScript" title="Script view">
                 <i class="fas fa-folder-tree"></i>
                 <span class="d-none d-md-inline ms-1" data-i18n="automationHub.scripts.viewScriptLabel">Scripts</span>
@@ -100,17 +100,17 @@
                   <span class="input-group-text"><i class="fas fa-search"></i></span>
                   <input type="search" class="form-control" id="scriptSearch" data-i18n-placeholder="automationHub.scripts.searchPlaceholder" placeholder="Search scripts">
                 </div>
-                <div class="btn-group btn-group-sm flex-shrink-0" role="group" aria-label="Expand or collapse all">
-                  <button type="button" class="btn btn-sm btn-outline-secondary" id="treeExpandAllBtn" title="Expand all">
+                <div class="btn-group btn-group-sm flex-shrink-0" role="group" data-i18n-aria-label="automationHub.scripts.expandCollapseAll" aria-label="Expand or collapse all">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="treeExpandAllBtn" data-i18n-title="automationHub.scripts.expandAll" title="Expand all">
                     <i class="fas fa-angles-down me-1"></i><span data-i18n="automationHub.scripts.expandAll">Expand all</span>
                   </button>
-                  <button type="button" class="btn btn-sm btn-outline-secondary" id="treeCollapseAllBtn" title="Collapse all">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="treeCollapseAllBtn" data-i18n-title="automationHub.scripts.collapseAll" title="Collapse all">
                     <i class="fas fa-angles-up me-1"></i><span data-i18n="automationHub.scripts.collapseAll">Collapse all</span>
                   </button>
                 </div>
                 <div class="d-none align-items-center gap-2 automation-test-toolbar" id="testViewToolbar">
                   <small class="text-muted d-none d-lg-inline" data-i18n="automationHub.tests.groupByLabel">Group by</small>
-                  <div class="btn-group btn-group-sm" role="group" aria-label="Group tests by">
+                  <div class="btn-group btn-group-sm" role="group" data-i18n-aria-label="automationHub.tests.groupByLabel" aria-label="Group by">
                     <button type="button" class="btn btn-outline-secondary active" id="testGroupByScript" data-group-by="script">
                       <i class="fas fa-file-code me-1"></i><span data-i18n="automationHub.tests.groupByScript">Script</span>
                     </button>
@@ -189,7 +189,7 @@
                   <span id="coverageRateText" class="automation-coverage-rate-value">0%</span>
                   <span class="text-muted small"><span id="coverageCoveredOfTotal">0 / 0</span> <span data-i18n="automationHub.coverage.covered">covered</span></span>
                 </div>
-                <div class="automation-coverage-bar" role="img" aria-label="Coverage breakdown">
+                <div class="automation-coverage-bar" role="img" data-i18n-aria-label="automationHub.coverage.breakdownAriaLabel" aria-label="Coverage breakdown">
                   <div class="automation-coverage-bar-seg seg-primary" id="coverageBarPrimary"></div>
                   <div class="automation-coverage-bar-seg seg-covers" id="coverageBarCovers"></div>
                   <div class="automation-coverage-bar-seg seg-uncovered" id="coverageBarUncovered"></div>
@@ -204,15 +204,15 @@
               <div class="automation-coverage-toolbar d-flex flex-wrap gap-2 align-items-center mb-2">
                 <div class="automation-coverage-search position-relative flex-grow-1">
                   <i class="fas fa-search" aria-hidden="true"></i>
-                  <input type="text" id="coverageSearch" class="form-control form-control-sm" data-i18n-placeholder="automationHub.coverage.searchPlaceholder" placeholder="Search case number or title" aria-label="Search cases">
+                  <input type="text" id="coverageSearch" class="form-control form-control-sm" data-i18n-placeholder="automationHub.coverage.searchPlaceholder" data-i18n-aria-label="automationHub.coverage.searchPlaceholder" placeholder="Search case number or title" aria-label="Search case number or title">
                 </div>
-                <div class="btn-group btn-group-sm" role="group" aria-label="Coverage status filter" id="coverageStatusFilter">
+                <div class="btn-group btn-group-sm" role="group" data-i18n-aria-label="common.filter" aria-label="Filter" id="coverageStatusFilter">
                   <button type="button" class="btn btn-outline-secondary active" data-status="all"><span data-i18n="automationHub.coverage.statusAll">All</span></button>
                   <button type="button" class="btn btn-outline-secondary" data-status="uncovered"><span data-i18n="automationHub.coverage.uncovered">Uncovered</span></button>
                   <button type="button" class="btn btn-outline-secondary" data-status="covered"><span data-i18n="automationHub.coverage.covered">Covered</span></button>
                   <button type="button" class="btn btn-outline-secondary" data-status="primary">PRIMARY</button>
                 </div>
-                <select id="coverageSort" class="form-select form-select-sm automation-coverage-sort" aria-label="Sort">
+                <select id="coverageSort" class="form-select form-select-sm automation-coverage-sort" data-i18n-aria-label="automationHub.coverage.sortAriaLabel" aria-label="Sort coverage">
                   <option value="pct-asc" data-i18n="automationHub.coverage.sortWorst">Coverage low to high</option>
                   <option value="pct-desc" data-i18n="automationHub.coverage.sortBest">Coverage high to low</option>
                   <option value="size-desc" data-i18n="automationHub.coverage.sortSize">Case count</option>
@@ -221,7 +221,7 @@
                 <button type="button" id="coverageGroupToggle" class="btn btn-outline-secondary btn-sm active" aria-pressed="true">
                   <i class="fas fa-stream me-1" aria-hidden="true"></i><span data-i18n="automationHub.coverage.groupByTicket">Group by ticket</span>
                 </button>
-                <button type="button" id="coverageExpandAll" class="btn btn-outline-secondary btn-sm">
+                <button type="button" id="coverageExpandAll" class="btn btn-outline-secondary btn-sm" data-i18n-title="automationHub.coverage.expandAll" title="Expand all">
                   <i class="fas fa-angle-double-down me-1" aria-hidden="true"></i><span data-i18n="automationHub.coverage.expandAll">Expand all</span>
                 </button>
               </div>
@@ -339,7 +339,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="suiteModalTitle" data-i18n="automationHub.suites.createTitle">Create Suite</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <form id="suiteForm">
@@ -383,9 +383,9 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title">
-          <i class="fas fa-layer-group text-primary me-2"></i><span id="environmentVarsModalTitle">Environment</span>
+          <i class="fas fa-layer-group text-primary me-2"></i><span id="environmentVarsModalTitle" data-i18n="automationHub.environments.varsCellEnvironment">Environment</span>
         </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <div id="environmentVarsBody"></div>
@@ -403,7 +403,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="environmentModalTitle" data-i18n="automationHub.environments.createTitle">Add Environment</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <form id="environmentForm" onsubmit="return false;">
@@ -434,7 +434,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="environmentParamModalTitle" data-i18n="automationHub.environments.addParam">Add variable</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <form id="environmentParamForm" onsubmit="return false;">
@@ -477,7 +477,7 @@
           <span data-i18n="automationHub.environments.importTitle">Import variables from YAML</span>
           <span class="text-muted font-monospace small ms-1" id="environmentImportEnvName"></span>
         </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <input type="hidden" id="environmentImportEnvId">
@@ -503,7 +503,7 @@
           <span data-i18n="automationHub.environments.exportTitle">Export variables as YAML</span>
           <span class="text-muted font-monospace small ms-1" id="environmentExportEnvName"></span>
         </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <div class="text-muted small mb-2" data-i18n="automationHub.environments.exportHint">Secret values are masked as *** in the export.</div>
@@ -528,7 +528,7 @@
           <i class="fas fa-sliders-h text-primary me-1"></i><span data-i18n="automationHub.environments.varsModalTitle">Configure script variables</span>
           <span class="text-muted font-monospace small ms-1" id="scriptVarsRefPath"></span>
         </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <div id="scriptVarsLoading" class="text-center py-4 d-none">
@@ -551,7 +551,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" data-i18n="automationHub.environments.varsCellModalTitle">Set variable value</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <input type="hidden" id="scriptVarsCellEnvId">

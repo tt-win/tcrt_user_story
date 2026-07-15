@@ -27,12 +27,13 @@ async function showJiraPreview(event, ticketNumber) {
     positionTooltip(tooltip, targetElement);
     
     // 顯示載入中狀態
-    tooltip.innerHTML = `
+    const loadingHtml = `
         <div class="loading-spinner">
             <i class="fas fa-spinner fa-spin me-2"></i>
-            載入中...
+            ${escapeHtml(trmTranslate('common.loading', '載入中...'))}
         </div>
     `;
+    tooltip.innerHTML = loadingHtml;
     tooltip.classList.add('show');
     
     try {
@@ -60,12 +61,13 @@ async function showJiraPreview(event, ticketNumber) {
         
     } catch (error) {
         console.error('載入 JIRA 資料失敗:', error);
-        tooltip.innerHTML = `
+        const failedHtml = `
             <div class="error-message">
                 <i class="fas fa-exclamation-triangle me-2"></i>
-                載入失敗，請稍後再試
+                ${escapeHtml(trmTranslate('tooltip.loadFailedRetry', '載入失敗，請稍後再試'))}
             </div>
         `;
+        tooltip.innerHTML = failedHtml;
     }
 }
 
@@ -101,51 +103,64 @@ function displayJiraData(tooltip, ticketNumber, data) {
             statusText = data.status;
         }
     }
+    statusText = String(statusText);
     
     const statusClass = getStatusClass(statusText);
     
     // 安全地獲取負責人資訊 - assignee 也可能是物件
-    let assigneeDisplay = '未指派';
+    let assigneeDisplay = trmTranslate('tooltip.unassigned', '未指派');
     if (data.assignee) {
         if (typeof data.assignee === 'object') {
-            assigneeDisplay = data.assignee.display_name || data.assignee.displayName || '未指派';
+            assigneeDisplay = data.assignee.display_name || data.assignee.displayName || trmTranslate('tooltip.unassigned', '未指派');
         } else if (typeof data.assignee === 'string') {
             assigneeDisplay = data.assignee;
         }
     }
     
-    tooltip.innerHTML = `
+    const summary = String(data.summary || trmTranslate('tooltip.noTitle', '無標題'));
+    const priority = typeof data.priority === 'object'
+        ? (data.priority.name || trmTranslate('common.notSet', '未設定'))
+        : data.priority;
+    let jiraUrl = '#';
+    try {
+        if (data.url) {
+            const parsedUrl = new URL(data.url, window.location.origin);
+            if (parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:') jiraUrl = parsedUrl.href;
+        }
+    } catch (_) {}
+    const tooltipHtml = `
         <div class="tcg-tooltip-header">
             <div class="tcg-ticket-info">
-                <span class="tcg-ticket-number">${ticketNumber}</span>
-                <span class="tcg-ticket-status ${statusClass}">${statusText || 'Unknown'}</span>
+                <span class="tcg-ticket-number">${escapeHtml(String(ticketNumber))}</span>
+                <span class="tcg-ticket-status ${statusClass}">${escapeHtml(statusText || trmTranslate('tooltip.unknownStatus', 'Unknown'))}</span>
             </div>
         </div>
         
         <div class="tcg-ticket-content">
-            <div class="tcg-ticket-title">${data.summary || '無標題'}</div>
+            <div class="tcg-ticket-title">${escapeHtml(summary)}</div>
             
             <div class="tcg-ticket-meta">
                 <div class="tcg-assignee">
-                    <span class="tcg-label">負責人:</span>
-                    <span class="tcg-value">${assigneeDisplay}</span>
+                    <span class="tcg-label">${escapeHtml(trmTranslate('tooltip.assignedTo', '負責人'))}:</span>
+                    <span class="tcg-value">${escapeHtml(String(assigneeDisplay))}</span>
                 </div>
                 ${data.priority ? `
                 <div class="tcg-priority">
-                    <span class="tcg-label">優先級:</span>
-                    <span class="tcg-value">${typeof data.priority === 'object' ? (data.priority.name || '未設定') : data.priority}</span>
+                    <span class="tcg-label">${escapeHtml(trmTranslate('testRun.priority', '優先級'))}:</span>
+                    <span class="tcg-value">${escapeHtml(String(priority))}</span>
                 </div>
                 ` : ''}
             </div>
         </div>
         
         <div class="tcg-tooltip-footer">
-            <a href="${data.url || '#'}" target="_blank" class="tcg-jira-link">
+            <a href="${escapeHtml(jiraUrl)}" target="_blank" rel="noopener" class="tcg-jira-link">
                 <i class="fas fa-external-link-alt me-1"></i>
-                在 JIRA 中檢視
+                ${escapeHtml(trmTranslate('tooltip.openInJira', '在 JIRA 中檢視'))}
             </a>
         </div>
     `;
+    tooltip.innerHTML = tooltipHtml;
 }
 
 

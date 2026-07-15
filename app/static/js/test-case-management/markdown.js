@@ -148,7 +148,9 @@ function addHelpButtonsToToolbars() {
             helpButton.type = 'button';
             helpButton.className = 'btn btn-info btn-xs markdown-help-btn';
             helpButton.setAttribute('data-i18n-title', 'markdown.help');
-            helpButton.title = 'Markdown 語法說明'; // fallback
+            helpButton.title = window.i18n
+                ? window.i18n.t('markdown.help', {}, 'Markdown 語法說明')
+                : 'Markdown 語法說明';
             helpButton.style.marginLeft = '8px';
             helpButton.onclick = () => window.open('https://www.markdownguide.org/cheat-sheet/', '_blank');
             helpButton.innerHTML = '<i class="fas fa-question-circle"></i>';

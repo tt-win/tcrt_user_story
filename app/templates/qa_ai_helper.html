@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}QA AI Helper - TCRT{% endblock %}
+{% set page_title_i18n_key = "qaAiHelper.pageTitle" %}
 
 {% block head %}
 <link rel="stylesheet" href="/static/css/qa-ai-helper.css">
@@ -70,9 +70,9 @@
                         <div class="col-md-4">
                             <label class="form-label" for="qaHelperOutputLocale" data-i18n="qaAiHelper.outputLocale">產出語系</label>
                             <select class="form-select" id="qaHelperOutputLocale">
-                                <option value="zh-TW">繁體中文</option>
-                                <option value="zh-CN">简体中文</option>
-                                <option value="en">English</option>
+                                <option value="zh-TW" translate="no" data-i18n-ignore>繁體中文</option>
+                                <option value="zh-CN" translate="no" data-i18n-ignore>简体中文</option>
+                                <option value="en" translate="no" data-i18n-ignore>English</option>
                             </select>
                         </div>
                     </div>
@@ -109,9 +109,9 @@
                         <div class="col-md-4">
                             <label class="form-label" for="qaHelperNoTicketOutputLocale" data-i18n="qaAiHelper.outputLocale">產出語系</label>
                             <select class="form-select" id="qaHelperNoTicketOutputLocale">
-                                <option value="zh-TW">繁體中文</option>
-                                <option value="zh-CN">简体中文</option>
-                                <option value="en">English</option>
+                                <option value="zh-TW" translate="no" data-i18n-ignore>繁體中文</option>
+                                <option value="zh-CN" translate="no" data-i18n-ignore>简体中文</option>
+                                <option value="en" translate="no" data-i18n-ignore>English</option>
                             </select>
                         </div>
                     </div>
@@ -500,7 +500,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" data-i18n="qaAiHelper.confirmDeleteSectionsTitle">確認刪除區段</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p class="mb-2" id="qaHelperDeleteSectionsModalDesc"></p>
@@ -522,7 +522,7 @@
                     <h5 class="modal-title" data-i18n="qaAiHelper.sessionManager">Session 管理</h5>
                     <small class="text-muted" data-i18n="qaAiHelper.sessionManagerHint">檢視既有 Session，挑選恢復、刪除單筆或批次清除。</small>
                 </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="row g-3">

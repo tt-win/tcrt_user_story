@@ -19,13 +19,13 @@ function addTpTicket(ticketNumber) {
     
     // 驗證格式
     if (!validateTpTicketFormat(trimmedTicket)) {
-        showTpInputError('TP 票號格式無效，請使用格式：TP-XXXXX');
+        showTpInputError(window.i18n?.t('testRun.invalidTpTicketFormat', {}, 'TP 票號格式無效，請使用格式：TP-XXXXX') || 'TP 票號格式無效，請使用格式：TP-XXXXX');
         return false;
     }
     
     // 檢查重複
     if (isDuplicateTicket(trimmedTicket)) {
-        showTpInputError('此 TP 票號已存在');
+        showTpInputError(window.i18n?.t('testRun.duplicateTpTicket', {}, '此 TP 票號已存在') || '此 TP 票號已存在');
         return false;
     }
     
@@ -72,14 +72,15 @@ function renderTpTags() {
     displayContainer.style.display = 'block';
     
     // 生成標籤 HTML
+    const removeTitle = window.i18n?.t('testRun.removeTicket', {}, '移除此票號') || '移除此票號';
     const tagsHtml = currentTpTickets.map(ticket => `
         <div class="tp-ticket-tag" data-ticket="${ticket}">
             <i class="fas fa-ticket-alt me-1"></i>
             <span>${ticket}</span>
             <button type="button" class="remove-btn" 
                     onclick="removeTpTicket('${ticket}')"
-                    title="移除此票號"
-                    aria-label="移除 ${ticket}">
+                    title="${escapeHtml(removeTitle)}"
+                    aria-label="${escapeHtml(window.i18n?.t('testRun.removeTicketNamed', { ticket }, `移除 ${ticket}`) || `移除 ${ticket}`)}">
                 <i class="fas fa-times"></i>
             </button>
         </div>
@@ -227,13 +228,13 @@ function addSetTpTicket(ticketNumber) {
     }
 
     if (!validateTpTicketFormat(trimmed)) {
-        const message = window.i18n?.t('messages.invalidTpTicketFormat') || 'TP 票號格式不正確（需要 TP-12345）';
+        const message = window.i18n?.t('testRun.invalidTpTicketFormat', {}, 'TP 票號格式不正確（需要 TP-12345）') || 'TP 票號格式不正確（需要 TP-12345）';
         showSetTpInputError(message);
         return false;
     }
 
     if (currentSetTpTickets.includes(trimmed)) {
-        const message = window.i18n?.t('messages.duplicateTpTicket') || 'TP 票號已重複';
+        const message = window.i18n?.t('testRun.duplicateTpTicket', {}, 'TP 票號已重複') || 'TP 票號已重複';
         showSetTpInputError(message);
         return false;
     }
@@ -280,7 +281,7 @@ function renderSetTpTags() {
             <div class="tp-ticket-tag" data-ticket="${safe}">
                 <i class="fas fa-ticket-alt me-1"></i>
                 <span>${safe}</span>
-                <button type="button" class="remove-btn" onclick="removeSetTpTicket('${safe}')" aria-label="移除 ${safe}">
+                <button type="button" class="remove-btn" onclick="removeSetTpTicket('${safe}')" aria-label="${escapeHtml(window.i18n?.t('testRun.removeTicketNamed', { ticket }, `移除 ${ticket}`) || `移除 ${ticket}`)}">
                     <i class="fas fa-times"></i>
                 </button>
             </div>

@@ -70,7 +70,10 @@
     "saving": "儲存中...",
     "processing": "處理中...",
     "languageMalay": "馬來語",
-    "languageJapanese": "日語"
+    "languageJapanese": "日語",
+    "viewToggle": "檢視切換",
+    "system": "系統",
+    "languageLoadFailed": "無法載入語言檔：{language}"
   },
   "user": {
     "menu": {
@@ -98,6 +101,23 @@
     "customRangeMissing": "請選擇開始與結束日期",
     "customRangeInvalid": "結束日期不可早於開始日期",
     "customRangeTooLong": "日期區間不可超過 {max} 天",
+    "userInfoFailed": "無法取得使用者資訊，請重新登入",
+    "adminRequired": "權限不足：需要 Admin 或更高權限",
+    "initFailed": "初始化統計頁面失敗",
+    "loading": "載入統計資料中...",
+    "loadSuccess": "統計資料載入完成",
+    "loadFailed": "載入統計資料失敗",
+    "noData": "無資料",
+    "noRecentActivity": "無活動記錄",
+    "noCriticalActions": "無關鍵操作記錄",
+    "noDepartmentData": "無部門資料",
+    "teamNameFallback": "團隊 #{id}",
+    "chart": {
+      "actionCount": "操作次數",
+      "activityCount": "活動次數",
+      "recordCount": "記錄數",
+      "actionTotal": "操作總數"
+    },
     "teamFilter": {
       "label": "顯示團隊",
       "summaryAll": "全部",
@@ -316,7 +336,17 @@
       "aiRatioTeamRanking": "團隊 AI 生成比例排行",
       "inspectionTitle": "需求分析 (Council Inspection) Token 統計",
       "inspectionCalls": "分析呼叫數",
-      "inspectionTokens": "分析 Token 總計"
+      "inspectionTokens": "分析 Token 總計",
+      "stageSeed": "種子生成",
+      "stageSeedRefine": "種子精煉",
+      "stageTestCase": "測試案例生成",
+      "stageRepair": "修復",
+      "stageInspectionExtractionA": "需求分析 - 抽取 A",
+      "stageInspectionExtractionB": "需求分析 - 抽取 B",
+      "stageInspectionExtractionC": "需求分析 - 抽取 C",
+      "stageInspectionConsolidation": "需求分析 - 整合",
+      "promptTokenAbbreviation": "P",
+      "completionTokenAbbreviation": "C"
     }
   },
   "profile": {
@@ -353,7 +383,8 @@
     "currentPasswordPlaceholder": "請輸入目前密碼",
     "newPasswordPlaceholder": "請輸入新密碼",
     "confirmPasswordPlaceholder": "請再次輸入新密碼",
-    "emailInUse": "電子信箱已被使用"
+    "emailInUse": "電子信箱已被使用",
+    "togglePassword": "顯示或隱藏密碼"
   },
   "roles": {
     "super_admin": "超級管理員",
@@ -451,6 +482,9 @@
     "deleteAttachment": "確定要刪除附件 \"{filename}\" 嗎？"
   },
   "errors": {
+    "auth": {
+      "alreadyInitialized": "此帳號已完成初始化，請直接登入"
+    },
     "attachmentDeleteFailed": "刪除附件失敗",
     "attachmentDownloadFailed": "附件下載失敗",
     "batchDeleteFailed": "批次刪除失敗",
@@ -463,6 +497,7 @@
     "fileSizeLimit": "檔案超過 10MB 大小限制",
     "fileSizeLimitExceeded": "檔案 \"{fileName}\" 超過 10MB 大小限制",
     "loadFailed": "載入失敗",
+    "loading": "載入中...",
     "loadTestCasesFailed": "載入測試案例失敗",
     "loadTestRunsFailed": "載入測試執行記錄失敗",
     "markdownParseError": "Markdown 解析錯誤",
@@ -512,7 +547,11 @@
     "duplicateExternal": "與既有 Case Number 衝突：{numbers}",
     "badRequest": "請求格式錯誤",
     "validationError": "輸入資料格式錯誤",
-    "operationFailed": "操作失敗，請稍後再試"
+    "operationFailed": "操作失敗，請稍後再試",
+    "attachmentUploadRetry": "附件上傳失敗，請重試",
+    "invalidJson": "JSON 格式不正確",
+    "invalidJsonCannotFormat": "JSON 格式不正確，無法格式化",
+    "invalidJsonCannotSave": "JSON 格式不正確，請修正後再儲存"
   },
   "copyModal": {
     "title": "手動複製連結",
@@ -585,7 +624,9 @@
     "traditional": "繁體中文",
     "simplifiedChinese": "簡體中文",
     "malay": "馬來語",
-    "japanese": "日語"
+    "japanese": "日語",
+    "switchSuccess": "已切換至 {language}",
+    "switchFailed": "語言切換失敗，請重試"
   },
   "loading": {
     "completed": "載入完成",
@@ -629,6 +670,7 @@
     "loadCompleted": "載入完成",
     "loadConfigsFailed": "載入 Test Run 設定失敗",
     "loadFailed": "載入失敗",
+    "loading": "載入中...",
     "loadingTeams": "載入團隊資料中...",
     "loadingTestCases": "載入測試案例中...",
     "loadingTestRuns": "載入測試執行記錄",
@@ -654,7 +696,12 @@
     "validationFailed": "驗證失敗",
     "warning": "警告",
     "permissionDenied": "無權限執行此操作",
-    "batchCopySuccess": "已成功複製 {count} 筆測試案例"
+    "batchCopySuccess": "已成功複製 {count} 筆測試案例",
+    "uploadingAttachments": "正在上傳附件...",
+    "processingFiles": "請稍等，正在處理您的檔案"
+  },
+  "notifications": {
+    "warning": "警告"
   },
   "navigation": {
     "backToHome": "首頁",
@@ -700,6 +747,7 @@
       "viewTestLabel": "Tests",
       "expandAll": "全部展開",
       "collapseAll": "全部收合",
+      "expandCollapseAll": "全部展開或收合",
       "testCountHint": "此檔案宣告的測試數",
       "togglePreview": "顯示 / 隱藏原始碼"
     },
@@ -802,6 +850,8 @@
       "noScripts": "尚無可用 scripts",
       "noUncovered": "所有 cases 都已有 automation coverage。",
       "searchPlaceholder": "搜尋案件編號或標題",
+      "breakdownAriaLabel": "覆蓋率分布",
+      "sortAriaLabel": "排序覆蓋率",
       "statusAll": "全部",
       "sortWorst": "覆蓋率 低→高",
       "sortBest": "覆蓋率 高→低",
@@ -1580,7 +1630,11 @@
       "suffixHint": "從起始值開始，以 10 遞增；最大 990，超出將提示錯誤",
       "prefix": "主單號",
       "middleCode": "中間號",
-      "suffixStart": "末尾單號（開始號）"
+      "suffixStart": "末尾單號（開始號）",
+      "openFailed": "開啟批次複製失敗",
+      "failed": "批次複製失敗",
+      "notAvailable": "不適用",
+      "untitled": "無標題"
     },
     "bulkEdit": {
       "title": "批量編輯模式",
@@ -1600,11 +1654,42 @@
       "dragToFill": "拖曳以填充",
       "doubleClickToEdit": "雙擊編輯",
       "selectMultiple": "按住 Ctrl/Cmd 點擊多選，Shift 點擊範圍選取",
-      "copyPaste": "Ctrl+C 複製，Ctrl+V 貼上"
-    }
+      "copyPaste": "Ctrl+C 複製，Ctrl+V 貼上",
+      "noTestCases": "沒有可編輯的測試案例",
+      "openFailed": "開啟大量編輯失敗",
+      "undoneCells": "已復原 {count} 個儲存格",
+      "selectCellsFirst": "請先選取儲存格",
+      "copiedCells": "已複製 {count} 個儲存格",
+      "internalClipboardSaved": "已儲存到內部剪貼簿（{count} 個儲存格）",
+      "pastedCells": "已貼上 {count} 個儲存格",
+      "pasteFailed": "貼上失敗",
+      "enterSearchText": "請輸入搜尋內容",
+      "noSearchResults": "未找到符合項目",
+      "searchFirst": "請先執行搜尋",
+      "selectReplaceResults": "請選擇至少一個結果進行取代",
+      "replaceCompleted": "取代完成，共取代 {count} 個位置，更新 {records} 筆資料",
+      "recordNotFound": "找不到記錄：{recordId}",
+      "updateFailed": "更新 {recordId} 失敗：{reason}",
+      "savedWithFailures": "儲存成功 {success} 筆，失敗 {failed} 筆",
+      "allUpdatesFailed": "所有資料都更新失敗",
+      "saveFailedDetails": "儲存失敗：\n{details}",
+      "saveFailedWithReason": "儲存失敗：{reason}",
+      "foundPrefix": "找到",
+      "foundSuffix": "個符合項目",
+      "invertSelection": "反選"
+    },
+    "moveFailed": "移動測試案例失敗：{reason}",
+    "tcgBatchPlaceholder": "點擊此處填寫 TCG 單號...",
+    "tcgBatchInputPlaceholder": "輸入 TCG 單號（逗號分隔）",
+    "confirmBatchDelete": "確定要刪除以下 {count} 個測試案例嗎？",
+    "editJson": "編輯 JSON",
+    "formatJson": "格式化"
   },
   "testCaseSet": {
     "pageSubtitle": "選擇或建立一個測試案例集合來開始管理測試案例",
+    "notFound": "找不到測試案例集合",
+    "selectTitle": "選擇測試案例集合",
+    "manage": "管理集合",
     "caseCount": "測試案例數量",
     "setName": "集合名稱",
     "createSet": "新增測試案例集合",
@@ -1629,10 +1714,13 @@
     "setAsDefault": "設為預設",
     "setDefaultTitle": "設為預設 Test Case Set",
     "setDefaultConfirm": "確定要將「{name}」設為預設 Test Case Set 嗎？",
+    "setDefaultConfirmGeneric": "確定要將此集合設為預設 Test Case Set 嗎？",
     "setDefaultHintTitle": "注意事項",
     "setDefaultHint": "既有 Test Case 不會被搬移，之後新建立的 ad-hoc run 與新 Test Case 會預設放入這個集合。",
     "setDefaultSuccess": "已更新預設 Test Case Set。",
     "selectAtLeastOne": "請至少選擇一個測試案例",
+    "testRunName": "Test Run 名稱",
+    "testRunNamePlaceholder": "預設：Test Run - YYYY-MM-DD",
     "deleteSuccess": "集合已刪除，Test Case 已移至預設集合",
     "addSet": "新增集合",
     "createSetHint": "建立新的測試案例集合",
@@ -1650,7 +1738,28 @@
     },
     "exportCsv": "匯出 CSV",
     "exportCsvSuccess": "CSV 匯出成功",
-    "exportCsvFailed": "CSV 匯出失敗"
+    "exportCsvFailed": "CSV 匯出失敗",
+    "crossSet": {
+      "authUnavailable": "驗證用戶端無法使用",
+      "noOtherSets": "沒有其他可用的測試案例集",
+      "copyTitle": "複製到其他測試案例集",
+      "moveTitle": "搬移到其他測試案例集",
+      "targetSet": "目標測試案例集",
+      "selectSet": "選擇測試案例集...",
+      "selectSetFirst": "請先選擇測試案例集...",
+      "selectTargetSet": "請選擇目標測試案例集",
+      "move": "搬移",
+      "moveWarning": "搬移後，測試案例將從目前的測試案例集移除。",
+      "copyCount": "將複製 {count} 個測試案例",
+      "moveCount": "將搬移 {count} 個測試案例",
+      "copyRequestFailed": "複製測試案例失敗",
+      "moveRequestFailed": "搬移測試案例失敗",
+      "copySuccess": "成功複製 {count} 個測試案例",
+      "moveSuccess": "成功搬移 {count} 個測試案例",
+      "copyFailed": "複製失敗：{reason}",
+      "moveFailed": "搬移失敗：{reason}",
+      "moveConfirm": "確定要搬移 {count} 個測試案例嗎？此操作無法復原。"
+    }
   },
   "section": {
     "unassigned": "Unassigned",
@@ -1674,9 +1783,46 @@
     "sectionNamePlaceholder": "例如: Smoke Tests",
     "descriptionPlaceholder": "區段描述",
     "noEditableSections": "沒有可編輯的區段",
-    "singleCreateSuccess": "已成功建立區段「{name}」"
+    "singleCreateSuccess": "已成功建立區段「{name}」",
+    "sectionList": "區段列表",
+    "noSections": "沒有區段",
+    "systemSectionEditForbidden": "無法編輯系統區段「{name}」",
+    "systemSectionDeleteForbidden": "無法刪除系統區段「{name}」",
+    "teamIdUnavailable": "無法取得團隊 ID",
+    "createFailed": "建立區段失敗：{reason}",
+    "updateFailed": "更新區段失敗：{reason}",
+    "deleteConfirmMoveUnassigned": "確定要刪除此區段嗎？該區段下的測試案例將移至 Unassigned。",
+    "deleteFailed": "刪除區段失敗：{reason}",
+    "enterNewName": "輸入新的區段名稱：",
+    "loadFailed": "載入區段失敗：{reason}",
+    "selectSetFirst": "請先選擇一個 Test Case Set",
+    "editNameTitle": "點擊編輯名稱",
+    "level": "層級",
+    "pendingDelete": "待刪除",
+    "moveUpTitle": "向上移動（同層）",
+    "moveDownTitle": "向下移動（同層）",
+    "decreaseLevelTitle": "減少層級（反縮排）",
+    "increaseLevelTitle": "增加層級（縮排）",
+    "cancelDelete": "取消刪除",
+    "markDelete": "標記刪除",
+    "increaseLevelNoParent": "無法增加層級：找不到可掛接的父區段",
+    "increaseLevelMaxExceeded": "無法增加層級：最多支援 {max} 層",
+    "saveFailed": "儲存區段變更失敗：{reason}",
+    "crossSection": {
+      "copyTitle": "複製到其他區段",
+      "targetSection": "目標區段",
+      "selectTargetSection": "請選擇目標區段",
+      "loadFailed": "載入區段失敗",
+      "copyComingSoon": "後續版本將支援複製功能",
+      "copyFailed": "複製失敗：{reason}"
+    }
   },
   "testRun": {
+    "executionSubtitle": "執行測試案例並記錄結果",
+    "rerunNamePlaceholder": "重新執行 - ",
+    "statusFilterButtons": "狀態篩選按鈕",
+    "statusFilterLabel": "狀態篩選",
+    "ticketNumberPlaceholder": "例如：PRJ-123",
     "currentExecution": "現在執行：",
     "currentExecutionWithName": "現在執行：{name}",
     "addBugTicket": "新增 Bug Ticket",
@@ -1759,9 +1905,14 @@
       },
       "hideAutomationCovered": "隱藏已被 Automation Suite 涵蓋的案例",
       "automationCoveredBadge": "已自動化",
-      "automationCoveredHint": "此案例已由 Test Run Set 內的 Automation Suite 涵蓋"
+      "automationCoveredHint": "此案例已由 Test Run Set 內的 Automation Suite 涵蓋",
+      "searchResultsInSet": "搜尋「{search}」，共 {count} 筆（{set}）",
+      "searchResults": "搜尋「{search}」，共 {count} 筆",
+      "filteredResults": "共 {count} 筆（目前篩選：{set}，全部 {total} 筆）",
+      "resultsCount": "共 {count} 筆"
     },
     "caseTitle": "標題",
+    "sectionNumber": "區段 #{id}",
     "changeStatus": "狀態",
     "changeStatusFailed": "變更狀態失敗",
     "chartsLoadError": "圖表載入失敗，請重新整理後重試",
@@ -2098,8 +2249,43 @@
     "noComment": "暫無註釋",
     "saveComment": "儲存",
     "cancelComment": "取消",
+    "deleted": "已刪除",
+    "deletedTestCase": "測試案例已刪除",
+    "unknownError": "未知錯誤",
+    "requestFailed": "請求失敗",
+    "itemError": "項目 {itemId}：{error}",
+    "testCaseAlreadyDeleted": "此測試案例已刪除",
+    "attachmentNumber": "附件 {number}",
+    "viewAttachment": "點擊查看附件：{name}",
+    "downloadFileNamed": "點擊下載 {fileName}",
+    "fileDownloadFailed": "下載檔案失敗",
+    "commentSaved": "註釋已儲存",
+    "saveCommentFailed": "儲存註釋失敗：{error}",
+    "missingItemId": "缺少項目 ID",
+    "selectTestItem": "請先選擇一個測試項目",
+    "openJiraTicketFailed": "無法開啟 JIRA Ticket，請稍後再試",
+    "loadFailedWithError": "載入失敗：{error}",
+    "noSummaryAvailable": "無摘要資訊",
+    "refreshingBugStatus": "更新中...",
+    "bugStatusUpdated": "Bug Tickets 狀態已更新",
+    "refreshBugStatusFailed": "更新狀態失敗：{error}",
+    "invalidTpTicketFormat": "TP 票號格式無效，請使用 TP-12345",
+    "duplicateTpTicket": "此 TP 票號已存在",
+    "removeTicket": "移除此票號",
+    "removeTicketNamed": "移除 {ticket}",
     "sets": {
+      "report": {
+        "testRun": "測試執行",
+        "version": "版本",
+        "summary": "測試執行：{runs} · 測試案例總數：{totalCases} · 執行率：{executionRate}% · 通過率：{passRate}%",
+        "draftOther": "草稿／其他",
+        "available": "已有報告，可直接開啟",
+        "notGenerated": "尚未生成報告",
+        "statusFailed": "查詢報告狀態失敗",
+        "copyLinkPrompt": "請手動複製此連結："
+      },
       "heading": "Test Run Set",
+      "setNumber": "集合 #{id}",
       "subtitle": "集中管理多個 Test Run 組合",
       "selectSet": "選擇 Test Case Set",
       "selectSets": "選擇 Test Case Sets",
@@ -2191,6 +2377,9 @@
         "openReport": "開啟報告",
         "automationSuites": "Automation Suites",
         "automationSuitesEmpty": "尚未關聯任何 Automation Suite",
+        "automationSuiteFallback": "Suite #{id}",
+        "automationSuiteNotInSet": "Automation Suite 不在目前 Set 中",
+        "setNotLoaded": "Set 尚未載入，請重新整理頁面",
         "manageAutomationSuites": "管理 Automation Suites",
         "automationSuiteType": "Test Automation Suite",
         "removeAutomationSuite": "移除 Automation Suite",
@@ -2199,6 +2388,8 @@
         "runAutomationSuite": "執行",
         "runAutomationSuiteConfirm": "即將觸發「{name}」automation suite。\n確認後將送 CIProvider.trigger_run。",
         "runAutomationSuiteSuccess": "已觸發「{name}」automation suite run",
+        "runAutomationConfirm": "確定要觸發此 Set 的所有 Automation Suites？",
+        "runAutomationSuccess": "Automation Suites 已成功觸發",
         "runAutomationHint": "依序觸發每個 Automation Suite 內所有 scripts（透過 CIProvider）",
         "runAutomationTriggered": "Automation suites 執行已觸發",
         "runAutomationFailed": "觸發 automation suites 失敗",
@@ -2278,7 +2469,12 @@
     "assignedTo": "指派給",
     "created": "建立日期",
     "openInJira": "在 JIRA 中開啟",
-    "updated": "更新日期"
+    "updated": "更新日期",
+    "noTitle": "無標題",
+    "unknownStatus": "未知狀態",
+    "unassigned": "未指派",
+    "ticketInfoUnavailable": "無法取得 {ticket} 的資訊",
+    "loadFailedRetry": "載入失敗，請稍後再試"
   },
   "tooltips": {
     "clickEditTcg": "點擊編輯 TCG",
@@ -2303,6 +2499,7 @@
   "version": {
     "updateAvailable": "有新版本",
     "updating": "更新中...",
+    "updateTooltip": "點擊更新至最新版本",
     "checkFailed": "版本檢查失敗",
     "switchFailed": "切換失敗，請重試"
   },
@@ -2563,7 +2760,8 @@
     "goToTestRunManageHint": "您要前往 Test Run 管理頁面查看嗎？",
     "stayHere": "留在本頁",
     "goToManage": "前往查看",
-    "applyText": "套用文字到地圖"
+    "applyText": "套用文字到地圖",
+    "loading": "載入中..."
   },
   "setup": {
     "title": "系統初始化",
@@ -2598,7 +2796,32 @@
     "usernameMax": "使用者名稱不能超過50個字符",
     "passwordMin": "密碼至少需要8個字符",
     "passwordMismatch": "密碼與確認密碼不一致",
-    "processing": "處理中..."
+    "processing": "處理中...",
+    "pageTitle": "系統初始化 - Test Case Repository Web Tool",
+    "togglePassword": "顯示或隱藏密碼",
+    "passwordMismatchShort": "密碼不一致",
+    "alreadyInitializedTitle": "系統已初始化",
+    "alreadyInitializedMsg": "系統已有超級管理員，正在重新導向至登入頁面。",
+    "initializing": "正在初始化系統...",
+    "validationErrorTitle": "驗證錯誤",
+    "initSuccessTitle": "初始化成功！",
+    "initSuccessMsg": "系統初始化成功，正在前往登入頁面。"
+  },
+  "hiddenMode": {
+    "title": "隱藏模式",
+    "systemMonitoring": "系統監控",
+    "serverResourceMonitoring": "伺服器資源監控",
+    "loading": "讀取中...",
+    "loadFailed": "讀取失敗：{error}",
+    "uptime": "運行時間",
+    "cpu": "CPU",
+    "loadAverage": "平均負載（1/5/15）",
+    "processRss": "程序 RSS",
+    "memoryUsed": "已用記憶體",
+    "memoryAvailableTotal": "可用／總記憶體",
+    "accessDeniedTitle": "404 - 存取被拒",
+    "accessDeniedMessage": "您無權限存取此隱藏模式。",
+    "morseCode": "摩斯電碼：404 Not Found"
   },
   "adhoc": {
     "card": {
@@ -2631,7 +2854,8 @@
       "save": "儲存",
       "create": "建立",
       "saveFailed": "儲存失敗",
-      "createFailed": "建立失敗"
+      "createFailed": "建立失敗",
+      "selectedTickets": "已選票號："
     },
     "execution": {
       "title": "Ad-hoc Test Run",
@@ -2647,6 +2871,11 @@
       },
       "renameSheet": "重新命名分頁",
       "sheetNamePrompt": "分頁名稱",
+      "deleteSheet": "刪除分頁",
+      "defaultRunName": "Ad-hoc Test Run",
+      "documentTitle": "{name} - Ad-hoc Test Run",
+      "noSheetsHint": "目前沒有分頁，請點擊 + 建立分頁。",
+      "defaultSheetName": "分頁{number}",
       "deleteRow": "刪除列",
       "backToMgmt": "返回管理頁面",
       "charts": "圖表與報告",
@@ -2679,6 +2908,10 @@
         "loadReportFailed": "載入報告失敗"
       }
     },
+    "searchReplace": {
+      "noneReplaced": "沒有取代任何符合項目。",
+      "replaced": "已取代 {count} 個符合項目。"
+    },
     "status": {
       "active": "進行中",
       "completed": "已完成",
@@ -2695,7 +2928,8 @@
       "rerunConfirm": "基於此執行建立新的 Run？執行結果將會重置。",
       "rerunSuccess": "重新執行建立成功",
       "rerunFailed": "重新執行失敗",
-      "statusUpdated": "狀態已變更為 {status}"
+      "statusUpdated": "狀態已變更為 {status}",
+      "noAvailable": "沒有可用的操作"
     },
     "create": "建立 Ad-hoc Run",
     "edit": "編輯 Ad-hoc Run",
@@ -2769,6 +3003,10 @@
   },
   "qaAiHelper": {
     "pageTitle": "QA AI Helper",
+    "councilTitle": "COUNCIL 審查",
+    "councilRole1": "AI #1",
+    "councilRole2": "AI #2",
+    "councilRole3": "AI #3",
     "pageSubtitle": "從需求單整理驗證重點與測試種子，逐步產生可提交到 Test Case Set 的 Test Cases。",
     "screen1Title": "載入需求單",
     "screen1Hint": "輸入 Ticket Number 後才建立 session，並直接載入畫面二的唯讀票單確認資料。",
@@ -3372,6 +3610,74 @@
     "noTokens": "無 App Token",
     "loading": "載入中...",
     "nameRequired": "權杖名稱為必填項",
-    "scopeRequired": "至少需要選擇一個權限範圍"
+    "scopeRequired": "至少需要選擇一個權限範圍",
+    "statusActive": "啟用中",
+    "statusRevoked": "已撤銷",
+    "neverExpires": "永不過期",
+    "rotateAction": "輪替",
+    "revokeAction": "撤銷",
+    "loadFailedWithReason": "載入權杖失敗：{reason}",
+    "createFailedWithReason": "建立權杖失敗：{reason}",
+    "revokeFailedWithReason": "撤銷權杖失敗：{reason}",
+    "rotateFailedWithReason": "輪替權杖失敗：{reason}"
+  },
+  "login": {
+    "pageTitle": "登入 - Test Case Repository Web Tool",
+    "title": "使用者登入",
+    "productName": "測試案例儲存庫",
+    "stepAccount": "步驟 1：輸入帳號",
+    "stepPassword": "步驟 2：輸入密碼",
+    "usernameOrEmail": "使用者名稱或電子郵件",
+    "usernamePlaceholder": "請輸入使用者名稱或電子郵件",
+    "usernameRequired": "請輸入使用者名稱或電子郵件",
+    "usernameFirst": "請先輸入使用者名稱",
+    "password": "密碼",
+    "passwordPlaceholder": "請輸入密碼",
+    "passwordRequired": "請輸入密碼",
+    "togglePassword": "顯示或隱藏密碼",
+    "rememberMe": "記住我的登入狀態",
+    "back": "返回",
+    "next": "下一步",
+    "submit": "登入",
+    "processing": "處理中...",
+    "help": "若登入時遇到問題，請聯絡系統管理員",
+    "accountCheckFailed": "無法確認帳號狀態",
+    "accountNotFound": "找不到對應的帳號",
+    "accountDeactivated": "帳號已停用，請聯絡系統管理員",
+    "accountDeactivatedShort": "帳號已停用，請聯絡系統管理員",
+    "preLoginFailed": "登入前檢查失敗，請稍後再試",
+    "challengeFailed": "無法取得驗證挑戰",
+    "successRedirecting": "登入成功！正在重新導向...",
+    "networkError": "網路錯誤，請檢查連線後重試",
+    "invalidCredentials": "使用者名稱或密碼錯誤",
+    "tooManyAttempts": "登入嘗試次數過多，請稍後再試",
+    "serverError": "伺服器錯誤，請聯絡系統管理員",
+    "failed": "登入失敗，請重試",
+    "setupRequired": "系統需要初始化，正在前往設定頁面..."
+  },
+  "firstLogin": {
+    "pageTitle": "首次登入設定 - Test Case Repository",
+    "title": "首次登入設定",
+    "subtitle": "為了帳號安全，請設定新密碼",
+    "tip": "請為帳號設定新的安全密碼。完成後即可直接登入。",
+    "newPassword": "新密碼",
+    "newPasswordPlaceholder": "請設定新密碼（至少 8 個字元）",
+    "confirmPassword": "確認新密碼",
+    "confirmPasswordPlaceholder": "請再次輸入新密碼",
+    "togglePassword": "顯示或隱藏密碼",
+    "lengthRequirement": "至少 8 個字元",
+    "complexityRequirement": "建議混合使用英文大小寫與數字",
+    "submit": "設定密碼",
+    "processing": "處理中...",
+    "backToLogin": "返回登入頁面",
+    "missingUser": "缺少使用者資訊，請從登入頁面開始",
+    "passwordTooShort": "新密碼至少需要 8 個字元",
+    "complexityWarning": "建議混合使用英文大小寫與數字，以提高安全性",
+    "passwordMismatch": "兩次輸入的密碼不一致",
+    "setupFailedInput": "設定失敗，請檢查輸入資料",
+    "successLoggingIn": "密碼設定成功！正在登入...",
+    "setupFailed": "設定失敗，請稍後再試",
+    "accountLabel": "帳號：",
+    "accountInstruction": "請為此帳號設定新密碼。"
   }
 }

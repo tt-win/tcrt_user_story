@@ -52,10 +52,15 @@ async function fetchJIRATicketInfo(tcgNumber) {
 
 // 格式化 ticket tooltip 內容
 function formatJIRATicketTooltip(tcgNumber, ticketData) {
-    const summary = ticketData.summary || '無標題';
-    const status = ticketData.status?.name || '未知狀態';
-    const assignee = ticketData.assignee?.displayName || '未指派';
-    const url = ticketData.url || `https://jira.example.com/browse/${tcgNumber}`;
+    const summary = String(ticketData.summary || treTranslate('tooltip.noTitle', '無標題'));
+    const status = String(ticketData.status?.name || treTranslate('tooltip.unknownStatus', '未知狀態'));
+    const assignee = String(ticketData.assignee?.displayName || treTranslate('tooltip.unassigned', '未指派'));
+    const rawUrl = ticketData.url || `https://jira.example.com/browse/${encodeURIComponent(tcgNumber)}`;
+    let url = '#';
+    try {
+        const parsedUrl = new URL(rawUrl, window.location.origin);
+        if (parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:') url = parsedUrl.href;
+    } catch (_) {}
 
     let statusClass = 'status-todo';
     if (status.toLowerCase().includes('in progress')) {
@@ -67,26 +72,26 @@ function formatJIRATicketTooltip(tcgNumber, ticketData) {
     return `
         <div class="tcg-tooltip-header">
             <div class="tcg-ticket-info">
-                <span class="tcg-ticket-number">${tcgNumber}</span>
-                <span class="tcg-ticket-status ${statusClass}">${status}</span>
+                <span class="tcg-ticket-number">${escapeHtml(String(tcgNumber))}</span>
+                <span class="tcg-ticket-status ${statusClass}">${escapeHtml(status)}</span>
             </div>
         </div>
 
         <div class="tcg-ticket-content">
-            <div class="tcg-ticket-title">${summary}</div>
+            <div class="tcg-ticket-title">${escapeHtml(summary)}</div>
 
             <div class="tcg-ticket-meta">
                 <div class="tcg-assignee">
-                    <span class="tcg-label">負責人:</span>
-                    <span class="tcg-value">${assignee}</span>
+                    <span class="tcg-label">${escapeHtml(treTranslate('tooltip.assignedTo', '負責人'))}:</span>
+                    <span class="tcg-value">${escapeHtml(assignee)}</span>
                 </div>
             </div>
         </div>
 
         <div class="tcg-tooltip-footer">
-            <a href="${url}" target="_blank" class="tcg-jira-link">
+            <a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="tcg-jira-link">
                 <i class="fas fa-external-link-alt me-1"></i>
-                在 JIRA 中檢視
+                ${escapeHtml(treTranslate('tooltip.openInJira', '在 JIRA 中檢視'))}
             </a>
         </div>
     `;
@@ -138,14 +143,15 @@ async function showTCGPreviewInTestRun(tcgNumber, eventObj) {
     const tooltip = createJIRATooltip();
 
     // 設定載入狀態
-    tooltip.innerHTML = `
+    const loadingHtml = `
         <div class="d-flex align-items-center">
             <div class="spinner-border spinner-border-sm me-2" role="status">
-                <span class="visually-hidden">Loading...</span>
+                <span class="visually-hidden">${escapeHtml(treTranslate('common.loading', '載入中...'))}</span>
             </div>
-            <span>載入中...</span>
+            <span>${escapeHtml(treTranslate('common.loading', '載入中...'))}</span>
         </div>
     `;
+    tooltip.innerHTML = loadingHtml;
 
     // 顯示 tooltip
     positionJIRATooltip(tooltip, triggerButton);
@@ -156,12 +162,13 @@ async function showTCGPreviewInTestRun(tcgNumber, eventObj) {
         if (ticketData) {
             tooltip.innerHTML = formatJIRATicketTooltip(tcgNumber, ticketData);
         } else {
-            tooltip.innerHTML = `
+            const unavailableHtml = `
                 <div class="text-muted small">
                     <i class="fas fa-exclamation-triangle me-1"></i>
-                    無法取得 ${tcgNumber} 的資訊
+                    ${escapeHtml(treTranslate('tooltip.ticketInfoUnavailable', { ticket: tcgNumber }, `無法取得 ${tcgNumber} 的資訊`))}
                 </div>
             `;
+            tooltip.innerHTML = unavailableHtml;
         }
 
         // 重新定位
@@ -194,12 +201,13 @@ async function showTCGPreviewInTestRun(tcgNumber, eventObj) {
 
     } catch (error) {
         console.error('JIRA tooltip 載入失敗:', error);
-        tooltip.innerHTML = `
+        const failedHtml = `
             <div class="text-danger small">
                 <i class="fas fa-times-circle me-1"></i>
-                載入失敗
+                ${escapeHtml(treTranslate('messages.loadFailed', '載入失敗'))}
             </div>
         `;
+        tooltip.innerHTML = failedHtml;
 
         // 重新定位
         positionJIRATooltip(tooltip, triggerButton);

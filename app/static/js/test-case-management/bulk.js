@@ -47,7 +47,7 @@ function openTestCaseBatchCopyModal() {
         batchCopyModalInstance.show();
     } catch (e) {
         console.error('openTestCaseBatchCopyModal error:', e);
-        AppUtils.showError('開啟批次複製失敗');
+        AppUtils.showError(window.i18n ? window.i18n.t('testCase.batchCopy.openFailed', {}, '開啟批次複製失敗') : '開啟批次複製失敗');
     }
 }
 
@@ -256,7 +256,7 @@ function onSaveBatchCopy() {
 async function confirmBatchCopyRequest() {
     try {
         const currentTeam = AppUtils.getCurrentTeam();
-        if (!currentTeam || !currentTeam.id) throw new Error('請先選擇團隊');
+        if (!currentTeam || !currentTeam.id) throw new Error(window.i18n ? window.i18n.t('errors.pleaseSelectTeam', {}, '請先選擇團隊') : '請先選擇團隊');
 
         const btn = document.getElementById('confirmBatchCopyBtn');
         const originalHtml = btn.innerHTML;
@@ -288,7 +288,8 @@ async function confirmBatchCopyRequest() {
                 renderBatchCopyTable();
                 return;
             }
-            const msg = (data && data.errors && data.errors.join('; ')) || (resp.statusText || '建立失敗');
+            const msg = (data && data.errors && data.errors.join('; ')) || resp.statusText ||
+                (window.i18n ? window.i18n.t('messages.createFailed', {}, '建立失敗') : '建立失敗');
             AppUtils.showError(msg);
             // 回到編輯
             if (batchCopyModalInstance) batchCopyModalInstance.show();
@@ -313,7 +314,7 @@ async function confirmBatchCopyRequest() {
         } catch (_) {}
     } catch (e) {
         console.error('confirmBatchCopyRequest error:', e);
-        AppUtils.showError('批次複製失敗');
+        AppUtils.showError(window.i18n ? window.i18n.t('testCase.batchCopy.failed', {}, '批次複製失敗') : '批次複製失敗');
         if (batchCopyModalInstance) batchCopyModalInstance.show();
     } finally {
         const btn = document.getElementById('confirmBatchCopyBtn');
@@ -842,7 +843,7 @@ async function startBulkTextCreate() {
 async function checkBulkConflicts(caseNumbers) {
     const currentTeam = AppUtils.getCurrentTeam();
     if (!currentTeam || !currentTeam.id) {
-        throw new Error('請先選擇團隊');
+        throw new Error(window.i18n ? window.i18n.t('errors.pleaseSelectTeam', {}, '請先選擇團隊') : '請先選擇團隊');
     }
 
     // 簡化版：直接檢查現有 testCases 陣列
@@ -919,13 +920,13 @@ function showBulkPreviewModal(items) {
  */
 async function confirmBulkTextCreate() {
     if (!bulkTextParsedItems.length) {
-        AppUtils.showError('沒有項目可以建立');
+        AppUtils.showError(window.i18n ? window.i18n.t('testCase.bulkTextToast.noValidItems', {}, '沒有項目可以建立') : '沒有項目可以建立');
         return;
     }
 
     const currentTeam = AppUtils.getCurrentTeam();
     if (!currentTeam || !currentTeam.id) {
-        AppUtils.showError('請先選擇團隊');
+        AppUtils.showError(window.i18n ? window.i18n.t('errors.pleaseSelectTeam', {}, '請先選擇團隊') : '請先選擇團隊');
         return;
     }
 
@@ -995,7 +996,8 @@ async function confirmBulkTextCreate() {
                 return;
             }
 
-            const errorMsg = (data.errors && data.errors.join('; ')) || response.statusText || '未知錯誤';
+            const errorMsg = (data.errors && data.errors.join('; ')) || response.statusText ||
+                (window.i18n ? window.i18n.t('messages.createFailed', {}, '建立失敗') : '建立失敗');
             throw new Error(errorMsg);
         }
 
@@ -1017,7 +1019,7 @@ async function confirmBulkTextCreate() {
 
     } catch (error) {
         console.error('Bulk create failed:', error);
-        const message = error.message || '建立失敗';
+        const message = error.message || (window.i18n ? window.i18n.t('messages.createFailed', {}, '建立失敗') : '建立失敗');
         AppUtils.showError(message);
 
     } finally {
@@ -1143,7 +1145,7 @@ function showCloneSelector() {
                             <select class="form-select" id="cloneSourceSelect">
                                 <option value="">${window.i18n ? window.i18n.t('common.pleaseSelect') : '請選擇...'}</option>
                                 ${testCases.map(tc =>
-                                    `<option value="${tc.record_id}">${tc.test_case_number || 'N/A'} - ${tc.title || 'No Title'}</option>`
+                                    `<option value="${tc.record_id}">${tc.test_case_number || (window.i18n ? window.i18n.t('testCase.batchCopy.notAvailable', {}, 'N/A') : 'N/A')} - ${tc.title || (window.i18n ? window.i18n.t('testCase.batchCopy.untitled', {}, '無標題') : '無標題')}</option>`
                                 ).join('')}
                             </select>
                         </div>

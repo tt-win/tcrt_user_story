@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Test Case Repository Web Tool{% endblock %}</title>
+    <title data-i18n="{{ page_title_i18n_key|default('navigation.title') }}">{% block title %}Test Case Repository{% endblock %}</title>
     
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="{{ asset_url('favicon.ico') }}">
@@ -29,7 +29,7 @@
             <div class="py-2">
                 {% block page_title %}
                 <div class="d-flex align-items-center gap-2">
-                    <h1 class="h5 mb-0">{% block page_title_text %}頁面標題{% endblock %}</h1>
+                    <h1 class="h5 mb-0">{% block page_title_text %}<span data-i18n="navigation.title">Test Case Repository</span>{% endblock %}</h1>
                     <!-- 團隊名稱標籤（可點擊，展開 team-scoped 頁面導覽） -->
                     <div id="team-nav-badge-wrapper" class="dropdown d-none">
                         <span id="team-name-badge" class="badge bg-primary dropdown-toggle" style="font-size: 0.75rem; cursor: pointer;" data-bs-toggle="dropdown" aria-expanded="false">
@@ -41,7 +41,7 @@
                 </div>
                 {% endblock %}
                 {% block page_subtitle %}
-                <small class="text-muted">{% block page_subtitle_text %}頁面副標題{% endblock %}</small>
+                <small class="text-muted">{% block page_subtitle_text %}<span data-i18n="navigation.subtitle">選擇團隊開始管理測試案例</span>{% endblock %}</small>
                 {% endblock %}
             </div>
             {% block page_actions %}
@@ -81,13 +81,13 @@
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="languageDropdown">
                         <li><a class="dropdown-item" href="#" data-language="zh-TW">
-                            <i class="fas fa-check me-2 text-success" id="check-zh-TW" style="visibility: hidden;"></i><span data-i18n="common.languageZhTw" data-i18n-fallback="Traditional Chinese">Traditional Chinese</span>
+                            <i class="fas fa-check me-2 text-success" id="check-zh-TW" style="visibility: hidden;"></i><span translate="no" data-i18n-ignore>繁體中文</span>
                         </a></li>
                         <li><a class="dropdown-item" href="#" data-language="zh-CN">
-                            <i class="fas fa-check me-2 text-success" id="check-zh-CN" style="visibility: hidden;"></i><span data-i18n="common.languageZhCn" data-i18n-fallback="Simplified Chinese">Simplified Chinese</span>
+                            <i class="fas fa-check me-2 text-success" id="check-zh-CN" style="visibility: hidden;"></i><span translate="no" data-i18n-ignore>简体中文</span>
                         </a></li>
                         <li><a class="dropdown-item" href="#" data-language="en-US">
-                            <i class="fas fa-check me-2 text-success" id="check-en-US" style="visibility: visible;"></i><span data-i18n="common.languageEnUs" data-i18n-fallback="English">English</span>
+                            <i class="fas fa-check me-2 text-success" id="check-en-US" style="visibility: visible;"></i><span translate="no" data-i18n-ignore>English</span>
                         </a></li>
                     </ul>
                 </div>
@@ -256,17 +256,19 @@
     }
 
     function showLanguageSwitchSuccess(language) {
-        const languageNames = {
-            'zh-TW': 'Traditional Chinese',
-            'zh-CN': 'Simplified Chinese',
-            'en-US': 'English'
+        const langKeyMap = {
+            'zh-TW': 'language.traditional',
+            'zh-CN': 'language.simplifiedChinese',
+            'en-US': 'language.english'
         };
-
-        AppUtils.showSuccess(`已切換至 ${languageNames[language] || language}`);
+        const langName = window.i18n?.t(langKeyMap[language], {}, language) || language;
+        const msg = window.i18n?.t('language.switchSuccess', { language: langName }, `Switched to ${langName}`) || `Switched to ${langName}`;
+        AppUtils.showSuccess(msg);
     }
 
     function showLanguageSwitchError(message) {
-        AppUtils.showError(message);
+        const translated = window.i18n?.t('language.switchFailed', {}, message) || message;
+        AppUtils.showError(translated);
     }
 
     function updateLanguageSwitcher(currentLanguage) {

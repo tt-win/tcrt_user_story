@@ -14,11 +14,12 @@ function setupQuickSearch_TCM() {
         const overlay = document.createElement('div');
         overlay.id = 'quickSearchOverlay';
         overlay.style.cssText = 'position:fixed;inset:0;z-index:1060;display:none;background:rgba(0,0,0,0.35)';
+        const searchPlaceholder = window.i18n ? window.i18n.t('testCase.searchPlaceholder') : '搜尋測試案例...';
         overlay.innerHTML = `
           <div class="position-fixed" style="top:34vh; left:50%; transform: translateX(-50%); width:min(720px, 92vw);">
             <div class="card shadow">
               <div class="card-body p-2">
-                <input id=\"quickSearchInput\" type=\"text\" class=\"form-control form-control-lg\" placeholder=\"${window.i18n ? window.i18n.t('testCase.searchPlaceholder') : '搜尋測試案例...'}\" autocomplete=\"off\" />
+                 <input id="quickSearchInput" type="text" class="form-control form-control-lg" placeholder="${escapeHtml(searchPlaceholder)}" autocomplete="off" />
                 <div id=\"quickSearchResults\" class=\"list-group list-group-flush\" style=\"max-height:30vh; overflow:auto;\"></div>
               </div>
             </div>
@@ -56,7 +57,7 @@ document.addEventListener('DOMContentLoaded', function(){
     hint.className = 'position-fixed';
     hint.style.cssText = 'left:12px; bottom:12px; z-index:1040; opacity:0.85; pointer-events:none;';
     const label = window.i18n && window.i18n.isReady() ? window.i18n.t('hotkeys.quickSearch') : '按 / 開啟快速搜尋';
-    hint.innerHTML = `<span class="badge bg-secondary-subtle text-secondary border" style="--bs-bg-opacity:.65;">${label}</span>`;
+    hint.innerHTML = `<span class="badge bg-secondary-subtle text-secondary border" style="--bs-bg-opacity:.65;">${escapeHtml(label)}</span>`;
     document.body.appendChild(hint);
     // i18n 準備完成時也同步更新
     document.addEventListener('i18nReady', () => {
@@ -121,11 +122,12 @@ function quickSearchRender_TCM(query, container) {
         }).slice(0, 100);
     }
     if (matches.length === 0) {
-        container.innerHTML = `<div class=\"list-group-item text-muted\">${window.i18n ? window.i18n.t('errors.noMatchingTestCases') : '沒有找到符合條件的測試案例'}</div>`;
+        const noMatchesText = window.i18n ? window.i18n.t('errors.noMatchingTestCases') : '沒有找到符合條件的測試案例';
+        container.innerHTML = `<div class="list-group-item text-muted">${escapeHtml(noMatchesText)}</div>`;
         return;
     }
     container.innerHTML = matches.map((tc, idx) => `
-      <button type=\"button\" class=\"list-group-item list-group-item-action ${idx===0?'active':''}\" data-id=\"${tc.record_id}\">\n        <div class=\"d-flex justify-content-between align-items-center\">\n          <code class=\"small me-2\">${escapeHtml(tc.test_case_number || '')}</code>\n          <span class=\"text-truncate\">${escapeHtml(tc.title || '')}</span>\n        </div>\n      </button>`).join('');
+      <button type="button" class="list-group-item list-group-item-action ${idx===0?'active':''}" data-id="${escapeHtml(tc.record_id)}">\n        <div class="d-flex justify-content-between align-items-center">\n          <code class="small me-2">${escapeHtml(tc.test_case_number || '')}</code>\n          <span class="text-truncate">${escapeHtml(tc.title || '')}</span>\n        </div>\n      </button>`).join('');
     container.querySelectorAll('.list-group-item').forEach(btn => {
         btn.addEventListener('click', () => {
             const id = btn.getAttribute('data-id');
@@ -140,7 +142,9 @@ function quickEdit(recordId, field) {
     const testCase = testCases.find(tc => tc.record_id === recordId);
     if (!testCase) return;
 
-    const cell = document.querySelector(`[data-record-id="${recordId}"][data-field="${field}"]`);
+    const cell = Array.from(document.querySelectorAll('[data-record-id][data-field]')).find(element =>
+        element.dataset.recordId === String(recordId) && element.dataset.field === String(field)
+    );
     if (!cell) return;
 
     // 獲取當前值
@@ -184,14 +188,14 @@ function quickEdit(recordId, field) {
         testCase[field] = newValue;
         
         // 優化：直接更新 DOM 而不重繪整個表格
-        if (field === 'test_case_number') {
-            cell.innerHTML = `<code class="hover-editable" onclick="quickEdit('${recordId}', 'test_case_number')">${escapeHtml(newValue)} <i class="fas fa-pencil-alt hover-edit-btn"></i></code>`;
-        } else if (field === 'title') {
-            cell.innerHTML = `<div class="hover-editable" onclick="quickEdit('${recordId}', 'title')">${escapeHtml(newValue)} <i class="fas fa-pencil-alt hover-edit-btn"></i></div>`;
-        } else {
-            // Fallback for other fields
-            cell.innerHTML = `<div class="hover-editable" onclick="quickEdit('${recordId}', '${field}')">${escapeHtml(newValue)} <i class="fas fa-pencil-alt hover-edit-btn"></i></div>`;
-        }
+        const valueElement = document.createElement(field === 'test_case_number' ? 'code' : 'div');
+        valueElement.className = 'hover-editable';
+        valueElement.append(document.createTextNode(`${newValue} `));
+        const editIcon = document.createElement('i');
+        editIcon.className = 'fas fa-pencil-alt hover-edit-btn';
+        valueElement.appendChild(editIcon);
+        valueElement.addEventListener('click', () => quickEdit(recordId, field));
+        cell.replaceChildren(valueElement);
 
         // 在背景處理儲存
         try {
@@ -376,7 +380,7 @@ async function startTCGSearch() {
     const editorHtml = `
         <div class="tcg-inline-editor" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 1000; display: flex; align-items: center;">
             <input type="text" class="form-control form-control-sm tcg-search-input"
-                   placeholder="輸入 TCG 單號，以逗號分隔 (例: TCG-123, TCG-456)"
+                   placeholder="${escapeHtml(window.i18n ? window.i18n.t('testCase.tcgBatchInputPlaceholder') : '輸入 TCG 單號，以逗號分隔 (例: TCG-123, TCG-456)')}"
                    autocomplete="off"
                    onkeydown="handleTCGSearchKeydown(event)"
                    oninput="handleTCGSearchInput(event)"
@@ -492,18 +496,18 @@ function updateTCGCellDisplay(cell, tcgNumbers) {
     const baseClass = editable ? 'tcg-edit-area tcg-editable' : 'tcg-edit-area tcg-readonly';
     const baseStyle = 'display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; align-items: center; min-height: 24px; padding: 2px;'
         + (editable ? ' cursor: pointer;' : ' cursor: default;');
-    const clickAttr = editable ? ` onclick="editTCG('${recordId}')"` : '';
-
-    if (tcgNumbers.length === 0) {
-        // 清除後留白，但保留點擊事件/狀態
-        cell.innerHTML = `<div class="${baseClass}"${clickAttr} data-i18n-title="tooltips.clickEditTcg" style="${baseStyle}"></div>`;
-    } else {
-        // 顯示 TCG 標籤，保留點擊事件
-        const tcgHtml = tcgNumbers.map(tcg =>
-            `<span class="tcg-tag">${tcg}</span>`
-        ).join('');
-        cell.innerHTML = `<div class="${baseClass}"${clickAttr} data-i18n-title="tooltips.clickEditTcg" style="${baseStyle}">${tcgHtml}</div>`;
-    }
+    const display = document.createElement('div');
+    display.className = baseClass;
+    display.dataset.i18nTitle = 'tooltips.clickEditTcg';
+    display.style.cssText = baseStyle;
+    tcgNumbers.forEach(tcg => {
+        const tag = document.createElement('span');
+        tag.className = 'tcg-tag';
+        tag.textContent = tcg;
+        display.appendChild(tag);
+    });
+    if (editable) display.addEventListener('click', () => editTCG(recordId));
+    cell.replaceChildren(display);
 
     // 重新應用翻譯到新生成的內容
     if (window.i18n && window.i18n.isReady()) {
@@ -549,7 +553,8 @@ function updateTCGPreview(tcgNumbers) {
     if (!container) return;
 
     if (tcgNumbers.length === 0) {
-        container.innerHTML = '<div class="text-muted small">未輸入任何單號</div>';
+        const emptyText = window.i18n ? window.i18n.t('userStoryMap.noJiraTickets', {}, '未輸入任何單號') : '未輸入任何單號';
+        container.innerHTML = `<div class="text-muted small">${escapeHtml(emptyText)}</div>`;
     } else {
         const badgesHtml = tcgNumbers
             .map(tcg => `<span class="tcg-tag">${escapeHtml(tcg)}</span>`)

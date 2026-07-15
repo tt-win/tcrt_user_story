@@ -17,7 +17,7 @@ class TestCaseDragDrop {
 
   authFetch(url, options = {}) {
     if (!window.AuthClient || typeof window.AuthClient.fetch !== 'function') {
-      throw new Error('AuthClient unavailable');
+      throw new Error(window.i18n ? window.i18n.t('messages.error', {}, '操作失敗') : '操作失敗');
     }
     return window.AuthClient.fetch(url, options);
   }
@@ -252,7 +252,7 @@ class TestCaseDragDrop {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.detail || 'Failed to move test case');
+        throw new Error(error.detail || response.statusText || (window.i18n ? window.i18n.t('messages.error', {}, '操作失敗') : '操作失敗'));
       }
 
       // 刷新表格
@@ -264,7 +264,7 @@ class TestCaseDragDrop {
 
     } catch (error) {
       console.error('Error moving test case:', error);
-      alert('移動測試案例失敗: ' + error.message);
+      alert(window.i18n ? window.i18n.t('testCase.moveFailed', { reason: error.message }, `移動測試案例失敗: ${error.message}`) : `移動測試案例失敗: ${error.message}`);
     }
   }
 

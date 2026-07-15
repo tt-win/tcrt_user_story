@@ -28,15 +28,16 @@ function handleAttachmentUpload(event) {
 
     // 顯示上傳中狀態
     const attachmentsList = document.getElementById('attachmentsList');
+    const loadingText = window.i18n ? window.i18n.t('common.loading', {}, '上傳中...') : '上傳中...';
     const uploadingHtml = Array.from(files).map(file => `
         <div class="attachment-item d-flex align-items-center justify-content-between p-2 border rounded mb-2">
             <div class="d-flex align-items-center">
                 <i class="fas fa-file me-2 text-muted"></i>
-                <span>${file.name}</span>
+                <span>${escapeHtml(file.name)}</span>
                 <small class="text-muted ms-2">(${formatFileSize(file.size)})</small>
             </div>
             <div class="spinner-border spinner-border-sm text-primary" role="status">
-                <span class="visually-hidden">上傳中...</span>
+                <span class="visually-hidden">${escapeHtml(loadingText)}</span>
             </div>
         </div>
     `).join('');
@@ -61,17 +62,23 @@ async function uploadFilesToServer(files) {
 
     try {
         // 顯示上傳進度區域
+        const uploadingAttachmentsText = window.i18n
+            ? window.i18n.t('messages.uploadingAttachments', {}, '正在上傳附件...')
+            : '正在上傳附件...';
+        const processingFilesText = window.i18n
+            ? window.i18n.t('messages.processingFiles', {}, '請稍等，正在處理您的檔案')
+            : '請稍等，正在處理您的檔案';
         attachmentsList.innerHTML = `
             <div class="upload-progress-container mb-3 p-3 border rounded bg-light">
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                    <span class="fw-medium">正在上傳附件...</span>
+                    <span class="fw-medium">${escapeHtml(uploadingAttachmentsText)}</span>
                     <span class="text-muted">${completedFiles}/${totalFiles}</span>
                 </div>
                 <div class="progress">
                     <div class="progress-bar" role="progressbar" style="width: 0%"></div>
                 </div>
                 <div class="mt-2">
-                    <small class="text-muted">請稍等，正在處理您的檔案</small>
+                    <small class="text-muted">${escapeHtml(processingFilesText)}</small>
                 </div>
             </div>
         `;
@@ -187,10 +194,13 @@ async function uploadFilesToServer(files) {
         showError(uploadAttachmentFailedMessage + '：' + error.message);
 
         // 上傳失敗時顯示錯誤狀態
+        const retryText = window.i18n
+            ? window.i18n.t('errors.attachmentUploadRetry', {}, '附件上傳失敗，請重試')
+            : '附件上傳失敗，請重試';
         attachmentsList.innerHTML = `
             <div class="alert alert-danger d-flex align-items-center">
                 <i class="fas fa-exclamation-triangle me-2"></i>
-                <div>附件上傳失敗，請重試</div>
+                <div>${escapeHtml(retryText)}</div>
             </div>
         `;
     }
@@ -202,26 +212,29 @@ function renderAttachmentsList() {
     const attachmentsList = document.getElementById('attachmentsList');
     if (!uploadedAttachments || uploadedAttachments.length === 0) {
         const noAttachmentsMessage = window.i18n ? window.i18n.t('errors.noAttachments') : '尚無附件';
-        attachmentsList.innerHTML = `<p class="text-muted small mb-0">${noAttachmentsMessage}</p>`;
+        attachmentsList.innerHTML = `<p class="text-muted small mb-0">${escapeHtml(noAttachmentsMessage)}</p>`;
         return;
     }
 
     const attachmentsHtml = uploadedAttachments.map((attachment, index) => {
         const stored = attachment.stored_name || attachment.file_token || attachment.name;
-        const link = attachment.url ? `<a href="${attachment.url}" target="_blank" class="text-decoration-none me-2"><i class=\"fas fa-link\"></i></a>` : '';
+        const attachmentUrl = attachment.url ? String(attachment.url) : '';
+        const link = /^(?:https?:)?\/\//i.test(attachmentUrl) || attachmentUrl.startsWith('/')
+            ? `<a href="${escapeHtml(attachmentUrl)}" target="_blank" rel="noopener noreferrer" class="text-decoration-none me-2"><i class="fas fa-link"></i></a>`
+            : '';
         return `
         <div class="attachment-item d-flex align-items-center justify-content-between p-2 border rounded mb-2 bg-light">
             <div class="d-flex align-items-center">
                 <i class="fas fa-file me-2 text-primary"></i>
                 <div>
-                    <div class="fw-medium">${attachment.name}</div>
+                    <div class="fw-medium">${escapeHtml(attachment.name)}</div>
                     <div class="small text-muted">${formatFileSize(attachment.size || 0)}</div>
                 </div>
             </div>
             <div>
                 ${link}
-                <button type="button" class="btn btn-sm btn-danger"
-                        onclick="removeAttachment('${stored}', '${attachment.name}', ${index})" data-i18n-title="tooltips.removeAttachment">
+                <button type="button" class="btn btn-sm btn-danger remove-attachment-btn"
+                        data-index="${index}" data-file-token="${escapeHtml(stored)}" data-filename="${escapeHtml(attachment.name)}" data-i18n-title="tooltips.removeAttachment">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -230,10 +243,17 @@ function renderAttachmentsList() {
 
     attachmentsList.innerHTML = `
         <div class="attachments-header mb-2">
-            <h6 class="mb-0 text-secondary">${window.i18n ? window.i18n.t('form.uploadedAttachments') : '已上傳的附件'} (${uploadedAttachments.length})</h6>
+             <h6 class="mb-0 text-secondary">${escapeHtml(window.i18n ? window.i18n.t('form.uploadedAttachments') : '已上傳的附件')} (${uploadedAttachments.length})</h6>
         </div>
         ${attachmentsHtml}
     `;
+    attachmentsList.querySelectorAll('.remove-attachment-btn').forEach(button => {
+        button.addEventListener('click', () => removeAttachment(
+            button.dataset.fileToken,
+            button.dataset.filename,
+            Number(button.dataset.index)
+        ));
+    });
 }
 
 function removeAttachment(index) {
@@ -257,7 +277,9 @@ function downloadAttachment(storedName) {
         const currentTeam = AppUtils.getCurrentTeam();
         const tcNumberEl = document.getElementById('testCaseNumber');
         if (!currentTeam || !currentTeam.id || !tcNumberEl || !tcNumberEl.value) {
-            showError('無法判定附件路徑');
+            showError(window.i18n
+                ? window.i18n.t('errors.noAttachmentDownloadInfo', {}, '無法判定附件路徑')
+                : '無法判定附件路徑');
             return;
         }
         const url = `/attachments/test-cases/${encodeURIComponent(currentTeam.id)}/${encodeURIComponent(tcNumberEl.value.trim())}/${encodeURIComponent(storedName)}`;
@@ -692,8 +714,9 @@ function buildBatchSectionOptionsHtml() {
             const isUnassigned = isUnassignedSectionName(name);
             if (section?.id !== undefined && section?.id !== null) {
                 const prefix = depth > 0 ? '┣ '.repeat(depth) : '';
-                const displayName = isUnassigned ? `${name} (系統)` : name;
-                parts.push(`<option value="${section.id}">${prefix}${escapeHtml(displayName)}</option>`);
+                const systemLabel = window.i18n ? window.i18n.t('common.system', {}, '系統') : '系統';
+                const displayName = isUnassigned ? `${name} (${systemLabel})` : name;
+                parts.push(`<option value="${escapeHtml(section.id)}">${prefix}${escapeHtml(displayName)}</option>`);
             }
             // 檢查多種可能的子節點屬性名稱
             const children = section?.children || section?.child_sections || [];
@@ -740,8 +763,9 @@ function buildSectionOptionsForTestCase() {
             const isUnassigned = isUnassignedSectionName(name);
             if (section?.id !== undefined && section?.id !== null) {
                 const prefix = depth > 0 ? '　'.repeat(depth) + '└─ ' : '';
-                const displayName = isUnassigned ? `${name} (系統)` : name;
-                parts.push(`<option value="${section.id}">${prefix}${escapeHtml(displayName)}</option>`);
+                const systemLabel = window.i18n ? window.i18n.t('common.system', {}, '系統') : '系統';
+                const displayName = isUnassigned ? `${name} (${systemLabel})` : name;
+                parts.push(`<option value="${escapeHtml(section.id)}">${prefix}${escapeHtml(displayName)}</option>`);
             }
             // 檢查多種可能的子節點屬性名稱
             const children = section?.children || section?.child_sections || [];
@@ -809,7 +833,7 @@ function showNextTestCase() {
 function updatePageTitle() {
     const pageTitle = window.i18n ? window.i18n.t('testCase.management') : '測試案例管理';
     const siteTitle = window.i18n ? window.i18n.t('navigation.title') : 'Test Case Repository';
-    document.title = `${pageTitle} - ${siteTitle} Web Tool`;
+    document.title = `${pageTitle} - ${siteTitle}`;
 }
 
 // ===== 深連結與剪貼簿工具（TCM） =====

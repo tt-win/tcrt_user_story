@@ -400,7 +400,8 @@
       renderRunnerMenu(labels);
       if (status) {
         if (data && data.error) {
-          status.textContent = `${t('automationHub.providers.discoverFailed', 'Discovery failed')}: ${data.error}`;
+          const failedLabel = t('automationHub.providers.discoverFailed', 'Discovery failed');
+          status.textContent = `${failedLabel}: ${data.error}`;
           status.classList.remove('text-muted', 'text-success');
           status.classList.add('text-danger');
         } else if (!labels.length) {
@@ -408,7 +409,9 @@
           status.classList.remove('text-success', 'text-danger');
           status.classList.add('text-muted');
         } else {
-          status.textContent = `${t('automationHub.providers.discoverFound', 'Found')} ${labels.length} ${t('automationHub.providers.discoverFoundSuffix', 'labels — pick from the list.')}`;
+          const foundLabel = t('automationHub.providers.discoverFound', 'Found');
+          const foundSuffix = t('automationHub.providers.discoverFoundSuffix', 'labels — pick from the list.');
+          status.textContent = `${foundLabel} ${labels.length} ${foundSuffix}`;
           status.classList.remove('text-muted', 'text-danger');
           status.classList.add('text-success');
         }

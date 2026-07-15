@@ -1061,7 +1061,8 @@
       .sort((a, b) => String(a.ref_path || '').localeCompare(String(b.ref_path || '')));
 
     if (scripts.length === 0) {
-      container.innerHTML = `<div class="text-muted small p-3">${escapeHtml(t('automationHub.suites.pickerEmpty', 'No scripts match'))}</div>`;
+      const emptyMessage = escapeHtml(t('automationHub.suites.pickerEmpty', 'No scripts match'));
+      container.innerHTML = `<div class="text-muted small p-3">${emptyMessage}</div>`;
       return;
     }
 

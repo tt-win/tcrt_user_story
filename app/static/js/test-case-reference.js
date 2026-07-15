@@ -94,6 +94,8 @@ async function doSearch(query) {
 
 function renderResults(testCases) {
     const container = document.getElementById('referenceSearchResultsPage');
+    const missingNumber = window.i18n ? window.i18n.t('common.notSet', {}, '未設定') : '未設定';
+    const untitled = window.i18n ? window.i18n.t('userStoryMap.untitled', {}, '無標題') : '無標題';
     clearResults();
     document.getElementById('referenceInitialMessagePage').style.display = 'none';
     document.getElementById('referenceLoadingMessagePage').style.display = 'none';
@@ -103,9 +105,11 @@ function renderResults(testCases) {
         const div = document.createElement('div');
         div.className = 'reference-result-item border-bottom p-2';
         div.style.cursor = 'pointer';
+        const testCaseNumber = escapeHtml(tc.test_case_number || missingNumber);
+        const testCaseTitle = escapeHtml(tc.title || untitled);
         div.innerHTML = `
-        <div class="mb-1"><strong class="text-primary">${escapeHtml(tc.test_case_number || '無編號')}</strong></div>
-        <div class="text-dark" style="font-size:0.9em;line-height:1.3;">${escapeHtml(tc.title || '無標題')}</div>`;
+        <div class="mb-1"><strong class="text-primary">${testCaseNumber}</strong></div>
+        <div class="text-dark" style="font-size:0.9em;line-height:1.3;">${testCaseTitle}</div>`;
         div.addEventListener('click', () => selectTestCase(tc, div));
         div.addEventListener('mouseenter', ()=>{ div.style.backgroundColor = '#f8f9fa'; });
         div.addEventListener('mouseleave', ()=>{ if (!div.classList.contains('selected')) div.style.backgroundColor = ''; });

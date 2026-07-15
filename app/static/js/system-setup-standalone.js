@@ -14,6 +14,7 @@
             init() {
                 this.setupEventListeners();
                 this.checkSystemStatus();
+                this.translateDynamicContent();
             }
             
             setupEventListeners() {
@@ -38,7 +39,7 @@
                 const confirmInput = document.getElementById('confirm_password');
                 
                 if (confirmPassword && password !== confirmPassword) {
-                    confirmInput.setCustomValidity('密碼不一致');
+                    confirmInput.setCustomValidity(this.t('setup.passwordMismatchShort', 'Passwords do not match'));
                     confirmInput.classList.add('is-invalid');
                 } else {
                     confirmInput.setCustomValidity('');
@@ -52,7 +53,11 @@
                     const data = await response.json();
                     
                     if (data.is_initialized) {
-                        this.showAlert('warning', '系統已初始化', '系統已經有 Super Admin，將重導向到登入頁面。');
+                        this.showAlert(
+                            'warning',
+                            this.t('setup.alreadyInitializedTitle', 'System already initialized'),
+                            this.t('setup.alreadyInitializedMsg', 'A Super Admin already exists. Redirecting to the login page.')
+                        );
                         setTimeout(() => {
                             window.location.href = '/login';
                         }, 3000);
@@ -68,7 +73,7 @@
                 e.preventDefault();
                 
                 // 禁用提交按鈕
-                this.setSubmitState(true, '正在初始化系統...');
+                this.setSubmitState(true, this.t('setup.initializing', 'Initializing system...'));
                 
                 try {
                     const formData = new FormData(this.form);
@@ -81,7 +86,7 @@
                     // 前端驗證
                     const validationError = this.validateSetupData(setupData);
                     if (validationError) {
-                        this.showAlert('danger', '驗證錯誤', validationError);
+                        this.showAlert('danger', this.t('setup.validationErrorTitle', 'Validation error'), validationError);
                         this.setSubmitState(false);
                         return;
                     }
@@ -98,7 +103,11 @@
                     const result = await response.json();
                     
                     if (response.ok && result.success) {
-                        this.showAlert('success', '初始化成功！', result.message);
+                        this.showAlert(
+                            'success',
+                            this.t('setup.initSuccessTitle', 'Initialization successful!'),
+                            result.message || this.t('setup.initSuccessMsg', 'System initialized successfully. Redirecting to login.')
+                        );
                         
                         // 3秒後重導向到登入頁面
                         setTimeout(() => {
@@ -106,33 +115,37 @@
                         }, 3000);
                         
                     } else {
-                        const errorMsg = result.error || '初始化失敗，請稍後再試';
-                        this.showAlert('danger', '初始化失敗', errorMsg);
+                        const errorMsg = result.error || this.t('setup.initFailedMsg', 'Initialization failed, please try again later');
+                        this.showAlert('danger', this.t('setup.initFailedTitle', 'Initialization failed'), errorMsg);
                         this.setSubmitState(false);
                     }
                     
                 } catch (error) {
                     console.error('系統初始化錯誤:', error);
-                    this.showAlert('danger', '系統錯誤', '初始化時發生未知錯誤，請重新整理頁面後再試');
+                    this.showAlert(
+                        'danger',
+                        this.t('setup.systemErrorTitle', 'System error'),
+                        this.t('setup.systemErrorMsg', 'An unknown error occurred. Please refresh and try again.')
+                    );
                     this.setSubmitState(false);
                 }
             }
             
             validateSetupData(data) {
                 if (!data.username || data.username.length < 3) {
-                    return '使用者名稱至少需要3個字符';
+                    return this.t('setup.usernameMin', 'Username must be at least 3 characters');
                 }
                 
                 if (data.username.length > 50) {
-                    return '使用者名稱不能超過50個字符';
+                    return this.t('setup.usernameMax', 'Username cannot exceed 50 characters');
                 }
                 
                 if (!data.password || data.password.length < 8) {
-                    return '密碼至少需要8個字符';
+                    return this.t('setup.passwordMin', 'Password must be at least 8 characters');
                 }
                 
                 if (data.password !== data.confirm_password) {
-                    return '密碼與確認密碼不一致';
+                    return this.t('setup.passwordMismatch', 'Password and confirmation do not match');
                 }
                 
                 return null;
@@ -141,15 +154,16 @@
             setSubmitState(loading, text = null) {
                 if (loading) {
                     this.submitBtn.disabled = true;
+                    const loadingText = this.escapeHtml(text || this.t('setup.processing', 'Processing...'));
                     this.submitBtn.innerHTML = `
                         <i class="fas fa-spinner fa-spin me-2"></i>
-                        <span>${text || '處理中...'}</span>
+                        <span>${loadingText}</span>
                     `;
                 } else {
                     this.submitBtn.disabled = false;
                     this.submitBtn.innerHTML = `
                         <i class="fas fa-rocket me-2"></i>
-                        <span>建立 Super Admin 並初始化系統</span>
+                        <span data-i18n="setup.submit">${this.escapeHtml(this.t('setup.submit', 'Create Super Admin and initialize'))}</span>
                     `;
                 }
             }
@@ -157,9 +171,9 @@
             showAlert(type, title, message) {
                 const alertHtml = `
                     <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-                        <strong><i class="fas ${this.getAlertIcon(type)} me-2"></i>${title}</strong>
-                        <div>${message}</div>
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        <strong><i class="fas ${this.getAlertIcon(type)} me-2"></i>${this.escapeHtml(title)}</strong>
+                        <div>${this.escapeHtml(message)}</div>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="${this.escapeHtml(this.t('common.close', 'Close'))}"></button>
                     </div>
                 `;
                 
@@ -175,6 +189,28 @@
                     'info': 'fa-info-circle'
                 };
                 return icons[type] || 'fa-info-circle';
+            }
+
+            t(key, fallback, params = {}) {
+                return window.i18n?.t(key, params, fallback) || fallback;
+            }
+
+            escapeHtml(value) {
+                return String(value || '').replace(/[&<>"']/g, (character) => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#039;'
+                }[character]));
+            }
+
+            translateDynamicContent() {
+                document.title = this.t('setup.pageTitle', 'System Setup - Test Case Repository Web Tool');
+                if (!this.submitBtn.disabled) {
+                    this.setSubmitState(false);
+                }
+                this.validatePasswordMatch();
             }
         }
         
@@ -198,3 +234,6 @@
         document.addEventListener('DOMContentLoaded', () => {
             window.setupManager = new SystemSetupManager();
         });
+
+        document.addEventListener('i18nReady', () => window.setupManager?.translateDynamicContent());
+        document.addEventListener('languageChanged', () => window.setupManager?.translateDynamicContent());

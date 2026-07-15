@@ -267,7 +267,7 @@ class TestCaseSectionList {
 
     // 構建側邊欄面板 HTML
     // 此時 this.setName 應該已經被 fetchSetNameAndRender() 設置，直接使用它
-    let setNameDisplay = '區段列表';
+    let setNameDisplay = this.translate('section.sectionList', {}, '區段列表');
     if (this.setName) {
       setNameDisplay = `<span class="section-list-title" title="${this.escapeHtml(this.setName)}">${this.escapeHtml(this.setName)}</span>`;
     }
@@ -351,7 +351,7 @@ class TestCaseSectionList {
    */
   renderTree(sections) {
     if (!sections || sections.length === 0) {
-      return '<div class="text-muted text-center py-3"><small>沒有區段</small></div>';
+      return `<div class="text-muted text-center py-3"><small>${this.translate('section.noSections', {}, '沒有區段')}</small></div>`;
     }
 
     const orderedSections = this.sortSectionsForDisplay(sections);
@@ -889,7 +889,11 @@ class TestCaseSectionList {
 
     // 防止編輯 Unassigned Section
     if (originalName === "Unassigned" || originalName.includes("Unassigned")) {
-      alert('無法編輯系統區段 "Unassigned"');
+      alert(this.translate(
+        'section.systemSectionEditForbidden',
+        { name: 'Unassigned' },
+        '無法編輯系統區段 "Unassigned"',
+      ));
       return;
     }
 
@@ -950,7 +954,7 @@ class TestCaseSectionList {
         <div class="card shadow-sm">
           <div class="list-group list-group-flush" style="min-width: 200px;">
             <button class="list-group-item list-group-item-action py-2 text-danger" onclick="testCaseSectionList.deleteSection(${sectionId}); document.querySelector('.context-menu')?.remove()">
-              <i class="fas fa-trash"></i> 刪除
+              <i class="fas fa-trash"></i> ${this.translate('common.delete', {}, '刪除')}
             </button>
           </div>
         </div>
@@ -1275,7 +1279,7 @@ class TestCaseSectionList {
       const teamId = urlParams.get("team_id") || this.teamId;
 
       if (!teamId) {
-        alert("無法取得團隊 ID");
+        alert(this.translate('section.teamIdUnavailable', {}, '無法取得團隊 ID'));
         return;
       }
 
@@ -1325,7 +1329,11 @@ class TestCaseSectionList {
       this.refreshParentOptionsInForm();
     } catch (error) {
       console.error("Error creating section:", error);
-      alert("建立區段失敗: " + error.message);
+      alert(this.translate(
+        'section.createFailed',
+        { reason: error.message },
+        `建立區段失敗: ${error.message}`,
+      ));
     }
   }
 
@@ -1352,7 +1360,11 @@ class TestCaseSectionList {
       await this.loadSections({ reloadTestCases: true });
     } catch (error) {
       console.error("Error updating section:", error);
-      alert("更新區段失敗: " + error.message);
+      alert(this.translate(
+        'section.updateFailed',
+        { reason: error.message },
+        `更新區段失敗: ${error.message}`,
+      ));
     }
   }
 
@@ -1363,12 +1375,20 @@ class TestCaseSectionList {
     // 防止刪除 Unassigned Section
     const section = this.findSection(sectionId);
     if (section && section.name === "Unassigned") {
-      alert('無法刪除系統區段 "Unassigned"');
+      alert(this.translate(
+        'section.systemSectionDeleteForbidden',
+        { name: 'Unassigned' },
+        '無法刪除系統區段 "Unassigned"',
+      ));
       return;
     }
 
     if (
-      !confirm("確定要刪除此區段嗎？該區段下的測試案例將被移到 Unassigned。")
+      !confirm(this.translate(
+        'section.deleteConfirmMoveUnassigned',
+        {},
+        '確定要刪除此區段嗎？該區段下的測試案例將被移到 Unassigned。',
+      ))
     ) {
       return;
     }
@@ -1389,7 +1409,11 @@ class TestCaseSectionList {
       await this.loadSections({ reloadTestCases: true });
     } catch (error) {
       console.error("Error deleting section:", error);
-      alert("刪除區段失敗: " + error.message);
+      alert(this.translate(
+        'section.deleteFailed',
+        { reason: error.message },
+        `刪除區段失敗: ${error.message}`,
+      ));
     }
   }
 
@@ -1473,12 +1497,19 @@ class TestCaseSectionList {
 
     // 防止編輯 Unassigned Section
     if (originalName === "Unassigned") {
-      alert('無法編輯系統區段 "Unassigned"');
+      alert(this.translate(
+        'section.systemSectionEditForbidden',
+        { name: 'Unassigned' },
+        '無法編輯系統區段 "Unassigned"',
+      ));
       return;
     }
 
     // 提示用戶輸入新名稱
-    const newName = prompt('輸入新的區段名稱:', originalName);
+    const newName = prompt(
+      this.translate('section.enterNewName', {}, '輸入新的區段名稱:'),
+      originalName,
+    );
 
     if (newName === null) {
       return; // 用戶取消
@@ -1487,7 +1518,7 @@ class TestCaseSectionList {
     const trimmedName = newName.trim();
 
     if (!trimmedName) {
-      alert('區段名稱不能為空');
+      alert(this.translate('section.nameRequired', {}, '區段名稱不能為空'));
       return;
     }
 
@@ -1534,7 +1565,11 @@ class TestCaseSectionList {
     // 防止刪除 Unassigned Section
     const section = this.findSection(sectionId);
     if (section && section.name === "Unassigned") {
-      alert('無法刪除系統區段 "Unassigned"');
+      alert(this.translate(
+        'section.systemSectionDeleteForbidden',
+        { name: 'Unassigned' },
+        '無法刪除系統區段 "Unassigned"',
+      ));
       return;
     }
 
@@ -1580,7 +1615,11 @@ class TestCaseSectionList {
       this.refreshParentOptionsInForm();
     } catch (error) {
       console.error("Error loading sections:", error);
-      alert("載入區段失敗: " + error.message);
+      alert(this.translate(
+        'section.loadFailed',
+        { reason: error.message },
+        `載入區段失敗: ${error.message}`,
+      ));
     }
   }
 
@@ -1745,7 +1784,7 @@ class TestCaseSectionList {
     if (!headerH6) return;
 
     // 從 this.setName、DOM 的 currentSetName 或 sessionStorage 提取最新名稱
-    let setNameDisplay = '區段列表';
+    let setNameDisplay = this.translate('section.sectionList', {}, '區段列表');
     let displayName = null;
 
     // 優先使用已設置的 setName
@@ -1806,7 +1845,11 @@ class TestCaseSectionList {
    */
   showReorderModal() {
     if (!this.setId) {
-      alert('請先選擇一個 Test Case Set');
+      alert(this.translate(
+        'section.selectSetFirst',
+        {},
+        '請先選擇一個 Test Case Set',
+      ));
       return;
     }
 
@@ -1958,6 +2001,16 @@ class TestCaseSectionList {
       return `<div class="text-muted text-center py-3">${noSectionsMsg}</div>`;
     }
 
+    const editNameTitle = this.translate('section.editNameTitle', {}, '點擊編輯名稱');
+    const levelLabel = this.translate('section.level', {}, '層級');
+    const pendingDeleteLabel = this.translate('section.pendingDelete', {}, '待刪除');
+    const moveUpTitle = this.translate('section.moveUpTitle', {}, '向上移動（同層）');
+    const moveDownTitle = this.translate('section.moveDownTitle', {}, '向下移動（同層）');
+    const decreaseLevelTitle = this.translate('section.decreaseLevelTitle', {}, '減少層級（反縮排）');
+    const increaseLevelTitle = this.translate('section.increaseLevelTitle', {}, '增加層級（縮排）');
+    const cancelDeleteTitle = this.translate('section.cancelDelete', {}, '取消刪除');
+    const markDeleteTitle = this.translate('section.markDelete', {}, '標記刪除');
+
     return this.flatSections.map((section, index) => {
       const indent = (section.level - 1) * 20;
       const isMarkedForDelete = this.sectionsToDelete.has(section.id);
@@ -1978,39 +2031,39 @@ class TestCaseSectionList {
         <div class="list-group-item d-flex align-items-center py-2 ${isMarkedForDelete ? 'bg-danger bg-opacity-10' : ''}" data-section-index="${index}" data-section-id="${section.id}">
           <div style="margin-left: ${indent}px; flex: 1;">
             <i class="fas fa-folder text-muted me-2"></i>
-            <strong style="cursor: pointer; ${isMarkedForDelete ? 'text-decoration: line-through; color: #999;' : ''}" onclick="testCaseSectionList.editSectionNameInModal(${section.id})" title="點擊編輯名稱">${this.escapeHtml(section.name)}</strong>
+            <strong style="cursor: pointer; ${isMarkedForDelete ? 'text-decoration: line-through; color: #999;' : ''}" onclick="testCaseSectionList.editSectionNameInModal(${section.id})" title="${this.escapeHtml(editNameTitle)}">${this.escapeHtml(section.name)}</strong>
             <span class="badge bg-secondary ms-2">${section.test_case_count}</span>
-            <small class="text-muted ms-2">(層級 ${section.level})</small>
-            ${isMarkedForDelete ? '<span class="badge bg-danger ms-2">待刪除</span>' : ''}
+            <small class="text-muted ms-2">(${this.escapeHtml(levelLabel)} ${section.level})</small>
+            ${isMarkedForDelete ? `<span class="badge bg-danger ms-2">${this.escapeHtml(pendingDeleteLabel)}</span>` : ''}
           </div>
           <div class="btn-group btn-group-sm ms-2" role="group">
             <button type="button" class="btn btn-outline-primary" 
                     onclick="testCaseSectionList.moveUp(${index})" 
                     ${!canMoveUp || isMarkedForDelete ? 'disabled' : ''} 
-                    title="向上移動（同層）">
+                    title="${this.escapeHtml(moveUpTitle)}">
               <i class="fas fa-chevron-up"></i>
             </button>
             <button type="button" class="btn btn-outline-primary" 
                     onclick="testCaseSectionList.moveDown(${index})" 
                     ${!canMoveDown || isMarkedForDelete ? 'disabled' : ''} 
-                    title="向下移動（同層）">
+                    title="${this.escapeHtml(moveDownTitle)}">
               <i class="fas fa-chevron-down"></i>
             </button>
             <button type="button" class="btn btn-outline-secondary" 
                     onclick="testCaseSectionList.decreaseLevel(${index})" 
                     ${!canDecreaseLevel || isMarkedForDelete ? 'disabled' : ''} 
-                    title="減少層級（反縮排）">
+                    title="${this.escapeHtml(decreaseLevelTitle)}">
               <i class="fas fa-arrow-left"></i>
             </button>
             <button type="button" class="btn btn-outline-secondary" 
                     onclick="testCaseSectionList.increaseLevel(${index})" 
                     ${!canIncreaseLevel || isMarkedForDelete ? 'disabled' : ''} 
-                    title="增加層級（縮排）">
+                    title="${this.escapeHtml(increaseLevelTitle)}">
               <i class="fas fa-arrow-right"></i>
             </button>
             <button type="button" class="btn ${isMarkedForDelete ? 'btn-success' : 'btn-outline-danger'}" 
                     onclick="testCaseSectionList.toggleSectionDelete(${section.id})" 
-                    title="${isMarkedForDelete ? '取消刪除' : '標記刪除'}">
+                    title="${this.escapeHtml(isMarkedForDelete ? cancelDeleteTitle : markDeleteTitle)}">
               <i class="fas ${isMarkedForDelete ? 'fa-undo' : 'fa-trash'}"></i>
             </button>
           </div>
@@ -2269,7 +2322,11 @@ class TestCaseSectionList {
     
     if (!targetParent) {
       console.log('[SectionList] 無法增加層級：找不到可掛接的父節點');
-      alert('無法增加層級：找不到可掛接的父節點');
+      alert(this.translate(
+        'section.increaseLevelNoParent',
+        {},
+        '無法增加層級：找不到可掛接的父節點',
+      ));
       return;
     }
     
@@ -2279,7 +2336,11 @@ class TestCaseSectionList {
     // 檢查新層級是否超過限制
     if (newLevel > 5) {
       console.log('[SectionList] 無法增加層級：超過最大層級 5');
-      alert('無法增加層級：超過最大層級 5');
+      alert(this.translate(
+        'section.increaseLevelMaxExceeded',
+        { max: 5 },
+        '無法增加層級：超過最大層級 5',
+      ));
       return;
     }
 
@@ -2456,7 +2517,11 @@ class TestCaseSectionList {
       await this.loadSections({ reloadTestCases: true });
     } catch (error) {
       console.error('Error saving section order:', error);
-      alert('儲存失敗: ' + error.message);
+      alert(this.translate(
+        'section.saveFailed',
+        { reason: error.message },
+        `儲存失敗: ${error.message}`,
+      ));
     }
   }
 }

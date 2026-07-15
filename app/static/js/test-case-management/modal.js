@@ -201,7 +201,7 @@ function showTestCaseModal(testCase = null) {
             saveAndAddNextBtn.style.display = 'inline-block'; // 顯示「儲存並新增下一筆」按鈕
             // 重置按鈕文字為正常狀態
             const saveAndNextText = window.i18n ? window.i18n.t('form.saveAndNext') : '儲存並新增下一筆';
-            saveAndAddNextBtn.innerHTML = `<i class="fas fa-plus me-2"></i>${saveAndNextText}`;
+            saveAndAddNextBtn.innerHTML = `<i class="fas fa-plus me-2"></i>${escapeHtml(saveAndNextText)}`;
             // 新增模式顯示「複製並新增下一筆」按鈕
             if (cloneAndAddNextBtn) cloneAndAddNextBtn.style.display = 'inline-block';
         }
@@ -227,7 +227,7 @@ function showTestCaseModal(testCase = null) {
             const previewElement = document.querySelector(`.markdown-preview[data-target="${fieldId}"]`);
             if (previewElement) {
                 const previewPlaceholder = window.i18n ? window.i18n.t('errors.previewPlaceholder') : '預覽內容會在這裡顯示';
-                previewElement.innerHTML = `<p class="text-muted">${previewPlaceholder}</p>`;
+                previewElement.innerHTML = `<p class="text-muted">${escapeHtml(previewPlaceholder)}</p>`;
             }
         });
 
@@ -460,11 +460,12 @@ function deleteTestCase(id) {
 
     // 設置刪除確認 Modal 的內容
     const deleteList = document.getElementById('deleteList');
+    const deletePrompt = window.i18n ? window.i18n.t('testCase.confirmDeleteTestCase') : '確定要刪除此測試案例嗎？';
     deleteList.innerHTML = `
         <div class="mb-3">
-            <p class="mb-2">確定要刪除以下測試案例嗎？</p>
+            <p class="mb-2">${escapeHtml(deletePrompt)}</p>
             <div class="border rounded p-3 bg-light">
-                <strong class="text-primary">${testCase.test_case_number || testCase.record_id}: ${testCase.title}</strong>
+                <strong class="text-primary">${escapeHtml(testCase.test_case_number || testCase.record_id)}: ${escapeHtml(testCase.title)}</strong>
             </div>
         </div>
     `;
@@ -603,7 +604,7 @@ async function saveTestCase() {
     const saveBtn = document.getElementById('saveTestCaseBtn');
     saveBtn.disabled = true;
     const savingText = window.i18n ? window.i18n.t('messages.saving') : '儲存中...';
-    saveBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${savingText}`;
+    saveBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${escapeHtml(savingText)}`;
 
     // 顯示儲存中訊息
     const savingMessage = testCaseId ?
@@ -703,7 +704,7 @@ async function saveTestCase() {
             const saveBtn = document.getElementById('saveTestCaseBtn');
             saveBtn.disabled = false; // 儲存按鈕始終啟用
             const saveText = window.i18n ? window.i18n.t('common.save') : '儲存';
-            saveBtn.innerHTML = `<i class="fas fa-save me-2"></i>${saveText}`;
+            saveBtn.innerHTML = `<i class="fas fa-save me-2"></i>${escapeHtml(saveText)}`;
 
             // 如果是編輯模式，更新 originalFormData 以反映當前保存的狀態
             if (testCaseId) {
@@ -736,7 +737,7 @@ async function saveTestCase() {
             const saveBtn = document.getElementById('saveTestCaseBtn');
             saveBtn.disabled = false;
             const saveText = window.i18n ? window.i18n.t('common.save') : '儲存';
-            saveBtn.innerHTML = `<i class="fas fa-save me-2"></i>${saveText}`;
+            saveBtn.innerHTML = `<i class="fas fa-save me-2"></i>${escapeHtml(saveText)}`;
 
             const saveFailedMessage = window.i18n ? window.i18n.t('errors.saveFailed') : '儲存失敗';
             showError(saveFailedMessage + '：' + error.message);
@@ -806,7 +807,7 @@ async function saveAndAddNext() {
     saveBtn.disabled = true;
     saveAndAddNextBtn.disabled = true;
     const savingText = window.i18n ? window.i18n.t('messages.saving') : '儲存中...';
-    saveAndAddNextBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${savingText}`;
+    saveAndAddNextBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${escapeHtml(savingText)}`;
 
     showSuccess(window.i18n ? window.i18n.t('messages.testCaseSaving') : '測試案例新增中...');
 
@@ -938,7 +939,7 @@ async function saveAndAddNext() {
         saveBtn.disabled = false;
         saveAndAddNextBtn.disabled = false;
         const saveAndNextText = window.i18n ? window.i18n.t('testCase.saveAndNext') : '儲存並新增下一筆';
-        saveAndAddNextBtn.innerHTML = `<i class="fas fa-plus me-2"></i>${saveAndNextText}`;
+        saveAndAddNextBtn.innerHTML = `<i class="fas fa-plus me-2"></i>${escapeHtml(saveAndNextText)}`;
 
         const saveFailedMessage = window.i18n ? window.i18n.t('errors.saveFailed') : '儲存失敗';
         showError(saveFailedMessage + '：' + error.message);
@@ -999,7 +1000,7 @@ function getTCGTags(testCase) {
 
     // 創建柔和的 tag（每一個單號一個 tag）
     return tcgNumbers.map(tcg =>
-        `<span class=\"tcg-tag\">${tcg}</span>`
+        `<span class="tcg-tag">${escapeHtml(tcg)}</span>`
     ).join('');
 }
 
@@ -1189,13 +1190,13 @@ function updateFilterStatus() {
     if (hasFilters) {
         // 有篩選條件時，更新按鈕樣式和文字
         const filteredText = window.i18n ? window.i18n.t('common.filtered', {count: filteredTestCases.length}) : `已篩選 (${filteredTestCases.length})`;
-        applyBtn.innerHTML = '<i class="fas fa-filter me-2"></i>' + filteredText;
+        applyBtn.innerHTML = '<i class="fas fa-filter me-2"></i>' + escapeHtml(filteredText);
         applyBtn.className = 'btn btn-success me-2';
         clearBtn.style.display = 'inline-block';
     } else {
         // 無篩選條件時，恢復原始樣式
         const applyFilterText = window.i18n ? window.i18n.t('common.applyFilter') : '套用篩選';
-        applyBtn.innerHTML = '<i class="fas fa-filter me-2"></i>' + applyFilterText;
+        applyBtn.innerHTML = '<i class="fas fa-filter me-2"></i>' + escapeHtml(applyFilterText);
         applyBtn.className = 'btn btn-primary me-2';
         clearBtn.style.display = testCases.length === filteredTestCases.length ? 'none' : 'inline-block';
     }
@@ -1235,12 +1236,9 @@ function updateBatchToolbar() {
             window.i18n.updateElement(countWrapper);
         } else {
             // 如果 i18n 還未載入或無法更新，手動更新內容
-            const currentLang = localStorage.getItem('preferredLanguage') || 'zh-TW';
-            if (currentLang === 'zh-TW') {
-                countWrapper.textContent = `已選取 ${selectedCount} 個項目`;
-            } else {
-                countWrapper.textContent = `${selectedCount} items selected`;
-            }
+            countWrapper.textContent = window.i18n
+                ? window.i18n.t('testCase.selectedItems', {count: selectedCount})
+                : `${selectedCount}`;
         }
     }
 
@@ -1321,11 +1319,19 @@ function openTestCaseBatchModifyModal() {
             container.style.padding = '0.375rem';
             container.style.backgroundColor = '#ffffff';
             container.style.cursor = 'pointer';
-            container.setAttribute('title', '點擊編輯 TCG 單號');
+            container.setAttribute(
+                'title',
+                window.i18n
+                    ? window.i18n.t('errors.clickToEditTcg', {}, '點擊編輯 TCG 單號')
+                    : '點擊編輯 TCG 單號'
+            );
 
             // 新增一個提示文字當沒有選擇時
             if (batchTCGSelected.length === 0) {
-                container.innerHTML = '<span class="text-muted small">點擊此處填寫 TCG 單號...</span>';
+                const placeholder = window.i18n
+                    ? window.i18n.t('testCase.tcgBatchPlaceholder', {}, '點擊此處填寫 TCG 單號...')
+                    : '點擊此處填寫 TCG 單號...';
+                container.innerHTML = `<span class="text-muted small">${escapeHtml(placeholder)}</span>`;
             }
 
             // **關鍵修正**：重新綁定點擊事件，因為 innerHTML 會清除事件監聽器
@@ -1383,14 +1389,17 @@ function renderBatchTCGDisplay() {
 
     if (!Array.isArray(batchTCGSelected) || batchTCGSelected.length === 0) {
         // 顯示提示文字當沒有選擇時
-        container.innerHTML = '<span class="text-muted small">點擊此處填寫 TCG 單號...</span>';
+        const placeholder = window.i18n
+            ? window.i18n.t('testCase.tcgBatchPlaceholder', {}, '點擊此處填寫 TCG 單號...')
+            : '點擊此處填寫 TCG 單號...';
+        container.innerHTML = `<span class="text-muted small">${escapeHtml(placeholder)}</span>`;
         // 重新綁定點擊事件（因為 innerHTML 會清除事件）
         container.removeEventListener('click', openBatchTCGEditor);
         container.addEventListener('click', openBatchTCGEditor);
         return;
     }
 
-    const tags = batchTCGSelected.map(t => `<span class="tcg-tag">${t}</span>`).join(' ');
+    const tags = batchTCGSelected.map(t => `<span class="tcg-tag">${escapeHtml(t)}</span>`).join(' ');
     container.innerHTML = tags;
     // 重新綁定點擊事件（因為 innerHTML 會清除事件）
     container.removeEventListener('click', openBatchTCGEditor);
@@ -1414,7 +1423,7 @@ function openBatchTCGEditor() {
     const searchHtml = `
         <div class="tcg-search-container position-relative" style="min-height: 32px; height: 32px; display: flex; align-items: center; overflow: hidden;">
             <input type="text" class="form-control form-control-sm tcg-search-input"
-                   placeholder="輸入 TCG 單號（逗號分隔）" autocomplete="off"
+                   placeholder="${escapeHtml(window.i18n ? window.i18n.t('testCase.tcgBatchInputPlaceholder', {}, '輸入 TCG 單號（逗號分隔）') : '輸入 TCG 單號（逗號分隔）')}" autocomplete="off"
                    onkeydown="handleBatchTCGSearchKeydown(event)"
                    onclick="event.stopPropagation()"
                    style="height: 28px; width: 100%; font-size: 0.75rem; padding: 0.125rem 0.375rem; border: 1px solid #dee2e6; box-shadow: none; outline: none;">
@@ -1620,7 +1629,7 @@ async function populateBatchTestSetSelect(teamId) {
         const testSets = await response.json();
         if (!Array.isArray(testSets) || testSets.length === 0) {
             const msg = window.i18n ? window.i18n.t('errors.noTestSets', {}, '此團隊沒有 Test Sets') : '此團隊沒有 Test Sets';
-            select.innerHTML = `<option value="" disabled>${msg}</option>`;
+            select.innerHTML = `<option value="" disabled>${escapeHtml(msg)}</option>`;
             select.disabled = true;
             return;
         }
@@ -1630,7 +1639,7 @@ async function populateBatchTestSetSelect(teamId) {
 
         const defaultOption = '<option value="" data-i18n="testCase.selectTestSet" data-i18n-fallback="請選擇 Test Set">請選擇 Test Set</option>';
         const optionsHtml = filteredSets.map(set =>
-            `<option value="${set.id}">${set.name} (${set.test_case_count || 0})</option>`
+            `<option value="${escapeHtml(set.id)}">${escapeHtml(set.name)} (${Number(set.test_case_count) || 0})</option>`
         ).join('');
 
         select.innerHTML = defaultOption + optionsHtml;
@@ -1817,7 +1826,8 @@ async function performTestCaseBatchModify() {
         const confirmBtn = document.getElementById('confirmTestCaseBatchModifyBtn');
         const originalBtnText = confirmBtn.innerHTML;
         confirmBtn.disabled = true;
-        confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>修改中...';
+        const modifyingText = window.i18n ? window.i18n.t('common.processing') : '修改中...';
+        confirmBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${escapeHtml(modifyingText)}`;
 
         // 呼叫後端 API - 需要先擴展 API 支援更多欄位
         let success = true;
@@ -1988,13 +1998,16 @@ function batchDeleteTestCases() {
 
     // 設置批次刪除確認 Modal 的內容
     const deleteList = document.getElementById('deleteList');
+    const deletePrompt = window.i18n
+        ? window.i18n.t('testCase.confirmBatchDelete', {count: selectedCases.length}, `確定要刪除以下 ${selectedCases.length} 個測試案例嗎？`)
+        : `確定要刪除以下 ${selectedCases.length} 個測試案例嗎？`;
     deleteList.innerHTML = `
         <div class="mb-3">
-            <p class="mb-2">確定要刪除以下 ${selectedCases.length} 個測試案例嗎？</p>
+            <p class="mb-2">${escapeHtml(deletePrompt)}</p>
             <div class="border rounded p-3 bg-light" style="max-height: 300px; overflow-y: auto;">
                 ${selectedCases.map(tc => `
                     <div class="mb-2">
-                        <strong class="text-primary">${tc.test_case_number || tc.record_id}: ${tc.title}</strong>
+                        <strong class="text-primary">${escapeHtml(tc.test_case_number || tc.record_id)}: ${escapeHtml(tc.title)}</strong>
                     </div>
                 `).join('')}
             </div>
@@ -2063,12 +2076,13 @@ function batchDeleteTestCases() {
 function showLoadingState() {
     const stack = document.getElementById('testCasesStack');
     if (!stack) return;
+    const loadingText = window.i18n ? window.i18n.t('testCase.loadingTestCases') : '載入測試案例中...';
     stack.innerHTML = `
         <div class="text-center py-4">
             <div class="spinner-border text-primary" role="status" style="width: 2.5rem; height: 2.5rem;">
-                <span class="visually-hidden">載入中...</span>
+                <span class="visually-hidden">${escapeHtml(window.i18n ? window.i18n.t('common.loading') : '載入中...')}</span>
             </div>
-            <div class="mt-2 text-muted fs-6">載入測試案例中...</div>
+            <div class="mt-2 text-muted fs-6">${escapeHtml(loadingText)}</div>
         </div>
     `;
 }
@@ -2352,11 +2366,15 @@ function ensureJsonEditorModal() {
     modalEl.className = 'modal fade';
     modalEl.tabIndex = -1;
     modalEl.setAttribute('aria-hidden', 'true');
-    modalEl.innerHTML = `
+    const editJsonText = window.i18n ? window.i18n.t('testCase.editJson', {}, '編輯 JSON') : '編輯 JSON';
+    const formatJsonText = window.i18n ? window.i18n.t('testCase.formatJson', {}, '格式化') : '格式化';
+    const cancelText = window.i18n ? window.i18n.t('common.cancel') : '取消';
+    const saveText = window.i18n ? window.i18n.t('common.save') : '儲存';
+    const modalHtml = `
         <div class="modal-dialog modal-lg modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="fas fa-code me-2"></i>編輯 JSON</h5>
+                    <h5 class="modal-title"><i class="fas fa-code me-2"></i>${escapeHtml(editJsonText)}</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
@@ -2368,13 +2386,14 @@ function ensureJsonEditorModal() {
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary me-auto" id="testDataJsonPrettifyBtn">
-                        <i class="fas fa-magic me-1"></i>格式化
+                        <i class="fas fa-magic me-1"></i>${escapeHtml(formatJsonText)}
                     </button>
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                    <button type="button" class="btn btn-primary" id="testDataJsonEditorSaveBtn">儲存</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${escapeHtml(cancelText)}</button>
+                    <button type="button" class="btn btn-primary" id="testDataJsonEditorSaveBtn">${escapeHtml(saveText)}</button>
                 </div>
             </div>
         </div>`;
+    modalEl.innerHTML = modalHtml;
     document.body.appendChild(modalEl);
 
     const ta = modalEl.querySelector('#testDataJsonEditorTextarea');
@@ -2386,13 +2405,13 @@ function ensureJsonEditorModal() {
 
     ta.addEventListener('input', () => {
         if (!ta.value || window.TestDataUtils.isValidJson(ta.value)) showErr(null);
-        else showErr('JSON 格式不正確');
+        else showErr(window.i18n ? window.i18n.t('errors.invalidJson', {}, 'JSON 格式不正確') : 'JSON 格式不正確');
     });
 
     modalEl.querySelector('#testDataJsonPrettifyBtn').addEventListener('click', () => {
         if (!ta.value) return;
         if (!window.TestDataUtils.isValidJson(ta.value)) {
-            showErr('JSON 格式不正確，無法格式化');
+            showErr(window.i18n ? window.i18n.t('errors.invalidJsonCannotFormat', {}, 'JSON 格式不正確，無法格式化') : 'JSON 格式不正確，無法格式化');
             return;
         }
         ta.value = window.TestDataUtils.tryPrettyJson(ta.value);
@@ -2401,7 +2420,7 @@ function ensureJsonEditorModal() {
 
     modalEl.querySelector('#testDataJsonEditorSaveBtn').addEventListener('click', () => {
         if (ta.value && !window.TestDataUtils.isValidJson(ta.value)) {
-            showErr('JSON 格式不正確，請修正後再儲存');
+            showErr(window.i18n ? window.i18n.t('errors.invalidJsonCannotSave', {}, 'JSON 格式不正確，請修正後再儲存') : 'JSON 格式不正確，請修正後再儲存');
             return;
         }
         if (_testDataJsonEditingIdx !== null && currentTestData[_testDataJsonEditingIdx]) {

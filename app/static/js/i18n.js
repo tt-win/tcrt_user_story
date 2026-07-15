@@ -240,7 +240,11 @@ async switchLanguage(language) {
                 if (this.currentLanguage && this.translations[this.currentLanguage]) {
                     this.translatePage();
                 }
-                alert(`無法載入語言檔：${language}`);
+                alert(this.t(
+                    'common.languageLoadFailed',
+                    { language },
+                    `無法載入語言檔：${language}`
+                ));
                 return false;
             }
         }
