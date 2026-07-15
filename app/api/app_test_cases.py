@@ -41,6 +41,7 @@ from app.models.test_case import (
     TestCaseCreate,
     TestCaseUpdate,
     normalize_test_data_items,
+    redact_credential_test_data,
 )
 from app.models.test_case_set import (
     TestCaseSectionCreate,
@@ -48,7 +49,11 @@ from app.models.test_case_set import (
     TestCaseSetCreate,
     TestCaseSetUpdate,
 )
-from app.services.attachment_storage import build_attachment_metadata, get_attachments_root_dir
+from app.services.attachment_storage import (
+    build_attachment_metadata,
+    ensure_within_root,
+    get_attachments_root_dir,
+)
 from app.services.test_case_section_service import TestCaseSectionService
 from app.services.test_case_set_service import TestCaseSetService
 from app.services.test_run_scope_service import TestRunScopeService
@@ -76,16 +81,6 @@ def _serialize_test_case(tc: TestCaseLocalDB) -> Dict[str, Any]:
     }
 
 
-def _redact_test_data(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    result = []
-    for item in items:
-        redacted = dict(item)
-        if str(item.get("category", "")).lower() == "credential":
-            redacted["value"] = "[REDACTED]"
-        result.append(redacted)
-    return result
-
-
 async def _audit_mutation(
     request: Request,
     principal: AppTokenPrincipal,
@@ -96,7 +91,7 @@ async def _audit_mutation(
 ) -> None:
     redacted = {k: v for k, v in details.items()}
     if "test_data" in redacted:
-        redacted["test_data"] = _redact_test_data(redacted["test_data"])
+        redacted["test_data"] = redact_credential_test_data(redacted["test_data"])
     await log_app_token_audit(
         request,
         principal,
@@ -261,10 +256,38 @@ async def update_app_test_case(
             tc.expected_result = body.expected_result
         if body.test_result is not None:
             tc.test_result = body.test_result
+        # Validate Set / Section ownership before reassigning (mirror create + JWT update paths)
         if body.test_case_set_id is not None:
-            tc.test_case_set_id = body.test_case_set_id
+            target_set = (
+                sync_db.query(TestCaseSetDB)
+                .filter(
+                    TestCaseSetDB.id == body.test_case_set_id,
+                    TestCaseSetDB.team_id == team_id,
+                )
+                .first()
+            )
+            if not target_set:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Test Case Set {body.test_case_set_id} 不存在或不屬於此 Team",
+                )
+            tc.test_case_set_id = target_set.id
         if body.test_case_section_id is not None:
-            tc.test_case_section_id = body.test_case_section_id
+            effective_set_id = tc.test_case_set_id
+            target_section = (
+                sync_db.query(TestCaseSectionDB)
+                .filter(
+                    TestCaseSectionDB.id == body.test_case_section_id,
+                    TestCaseSectionDB.test_case_set_id == effective_set_id,
+                )
+                .first()
+            )
+            if not target_section:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Section {body.test_case_section_id} 不存在或不屬於 Test Case Set {effective_set_id}",
+                )
+            tc.test_case_section_id = target_section.id
         if body.tcg is not None:
             tcg_list = body.tcg if isinstance(body.tcg, list) else [body.tcg]
             tc.tcg_json = json.dumps(tcg_list)
@@ -785,6 +808,7 @@ async def upload_app_test_case_attachments(
 
     root_dir = get_attachments_root_dir(PROJECT_ROOT)
     base_dir = root_dir / "test-cases" / str(team_id) / item.test_case_number
+    ensure_within_root(base_dir, root_dir)
     base_dir.mkdir(parents=True, exist_ok=True)
 
     existing: List[Dict[str, Any]] = []

@@ -56,7 +56,7 @@ def resolve_relative_attachment_path(relative_path: str | Path, *, project_root:
     root_dir = get_attachments_root_dir(project_root)
     rel_path = ensure_relative_attachment_path(relative_path)
     candidate = (root_dir / rel_path).resolve()
-    _ensure_within_root(candidate, root_dir)
+    ensure_within_root(candidate, root_dir)
     return candidate
 
 
@@ -85,7 +85,7 @@ def resolve_attachment_metadata_path(
         absolute = metadata.get("absolute_path")
         if absolute:
             candidate = Path(str(absolute)).expanduser().resolve()
-            _ensure_within_root(candidate, root_dir)
+            ensure_within_root(candidate, root_dir)
             return candidate
 
     raise AttachmentPathResolutionError("附件 metadata 缺少可用路徑")
@@ -103,7 +103,7 @@ def build_attachment_metadata(
 ) -> dict[str, Any]:
     resolved_root = root_dir.resolve()
     resolved_path = stored_path.resolve()
-    _ensure_within_root(resolved_path, resolved_root)
+    ensure_within_root(resolved_path, resolved_root)
     return {
         "name": original_name,
         "stored_name": stored_name,
@@ -137,7 +137,8 @@ def normalize_attachment_metadata(
     return normalized
 
 
-def _ensure_within_root(candidate: Path, root_dir: Path) -> None:
+def ensure_within_root(candidate: Path, root_dir: Path) -> None:
+    """Raise AttachmentPathResolutionError if candidate resolves outside root_dir."""
     try:
         candidate.resolve().relative_to(root_dir.resolve())
     except ValueError as exc:

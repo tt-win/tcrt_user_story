@@ -375,11 +375,20 @@ class TestLegacyDatabaseStartup:
 
 from app.auth.app_token_dependencies import (  # noqa: E402
     AppTokenErrorCodes,
+    _auth_fail_buckets,
     generate_app_token,
     get_current_app_token_principal,
     require_app_team_access,
 )
 from app.models.app_token import AppTokenPrincipal  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _reset_auth_fail_buckets():
+    """Isolate the per-IP auth-failure rate-limit bucket between tests."""
+    _auth_fail_buckets.clear()
+    yield
+    _auth_fail_buckets.clear()
 
 _test_router = APIRouter(prefix="/test/app")
 
@@ -703,6 +712,39 @@ class TestAppTokenAuth:
         with temp_db() as session:
             token = session.query(TeamAppToken).filter_by(name="read-only").one()
             assert token.last_used_at == old_time
+
+    def test_repeated_invalid_tokens_are_rate_limited(self, temp_db):
+        from app.config import get_settings
+
+        with temp_db() as session:
+            _seed_app_tokens(session)
+        limit = get_settings().auth.app_token_auth_fail_limit
+        with TestClient(app) as client:
+            statuses = [
+                client.get(
+                    "/test/app/teams/1/ping",
+                    headers=_bearer("tcrt_app_invalid_token_xyz"),
+                ).status_code
+                for _ in range(limit + 5)
+            ]
+            # Early attempts are rejected as 401; once the bucket is drained the
+            # dependency returns 429 before doing DB work or writing audit rows.
+            assert 401 in statuses
+            assert statuses[-1] == 429
+
+    def test_valid_token_not_rate_limited(self, temp_db):
+        from app.config import get_settings
+
+        with temp_db() as session:
+            seeded = _seed_app_tokens(session)
+        limit = get_settings().auth.app_token_auth_fail_limit
+        with TestClient(app) as client:
+            for _ in range(limit + 10):
+                resp = client.get(
+                    f"/test/app/teams/{seeded['team_a_id']}/ping",
+                    headers=_bearer(seeded["read_token"]),
+                )
+                assert resp.status_code == 200
 
 
 class TestAppTokenPrincipalModel:

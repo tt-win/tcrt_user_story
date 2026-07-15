@@ -31,6 +31,7 @@ from app.models.database_models import (
     TestRunSet as TestRunSetDB,
     TestRunSetMembership as TestRunSetMembershipDB,
 )
+from app.models.test_case import redact_credential_test_data
 from app.models.lark_types import Priority, TestResultStatus
 from app.models.mcp import (
     MCPAdhocRunItem,
@@ -117,7 +118,8 @@ def _parse_tcg_list(tcg_json: Optional[str]) -> list[str]:
 
 def _parse_json_list(raw_json: Optional[str]) -> list[Dict[str, Any]]:
     # MCP read API 對 JSON 陣列欄位（如 test_data, attachments）採 dict 直接 passthrough，
-    # 不做欄位正規化；test_data 必須完整保留 id/name/category/value 四欄位由下游自行處理 redaction。
+    # 不做欄位正規化，保留 id/name/category/value 四欄位；credential 類 test_data 的 value
+    # 由 _build_case_payload 於回應組裝時以 redact_credential_test_data() 遮蔽。
     if not raw_json:
         return []
     try:
@@ -187,11 +189,11 @@ def _build_case_payload(
                 "user_story_map": _parse_json_list(row.user_story_map_json),
                 "parent_record": _parse_json_list(row.parent_record_json),
                 "raw_fields": _parse_json_dict(row.raw_fields_json),
-                "test_data": _parse_json_list(row.test_data_json),
+                "test_data": redact_credential_test_data(_parse_json_list(row.test_data_json)),
             }
         )
     elif include_test_data:
-        payload["test_data"] = _parse_json_list(row.test_data_json)
+        payload["test_data"] = redact_credential_test_data(_parse_json_list(row.test_data_json))
     return payload
 
 

@@ -210,12 +210,15 @@ class TestAppReadTeams:
             team_a_item = next(t for t in data["items"] if t["id"] == seeded["team_a_id"])
             assert team_a_item["test_case_count"] == 1
 
-    def test_app_teams_with_legacy_token(self, temp_db):
+    def test_app_teams_legacy_token_denied_on_app_namespace(self, temp_db):
+        # Legacy MCP machine credentials are confined to /api/mcp/*; they are rejected
+        # with 401 on the /api/app/* namespace.
         with temp_db() as session:
             seeded = _seed_read_data(session)
         with TestClient(app) as client:
             resp = client.get("/api/app/teams", headers=_bearer(seeded["legacy_token"]))
-            assert resp.status_code == 200
+            assert resp.status_code == 401
+            assert resp.json()["detail"]["code"] == "APP_TOKEN_INVALID"
 
     def test_app_teams_no_token_rejected(self, temp_db):
         with temp_db() as session:
@@ -302,6 +305,27 @@ class TestAppReadTestCases:
             )
             assert resp.status_code == 200
             assert resp.json()["test_case"]["id"] == seeded["tc_id"]
+
+    def test_app_test_case_detail_redacts_credential_test_data(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_read_data(session)
+            case = session.query(TestCaseLocal).filter_by(id=seeded["tc_id"]).one()
+            case.test_data_json = json.dumps(
+                [
+                    {"id": "td-1", "name": "email", "category": "email", "value": "qa@example.com"},
+                    {"id": "td-2", "name": "pw", "category": "credential", "value": "S3cret!"},
+                ]
+            )
+            session.commit()
+        with TestClient(app) as client:
+            resp = client.get(
+                f"/api/app/teams/{seeded['team_a_id']}/test-cases/{seeded['tc_id']}",
+                headers=_bearer(seeded["app_token"]),
+            )
+            assert resp.status_code == 200
+            test_data = {td["name"]: td["value"] for td in resp.json()["test_case"]["test_data"]}
+            assert test_data["email"] == "qa@example.com"
+            assert test_data["pw"] == "[REDACTED]"
 
     def test_app_test_case_denied_other_team(self, temp_db):
         with temp_db() as session:

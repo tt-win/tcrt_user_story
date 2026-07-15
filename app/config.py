@@ -401,6 +401,9 @@ class AuthConfig(BaseModel):
     session_cleanup_days: int = 30
     # 以角色為唯一權限來源，預設停用團隊權限機制
     use_team_permissions: bool = False
+    # /api/app/* 與 /api/mcp/* 認證「失敗」的 per-IP rate limit（token-bucket）
+    app_token_auth_fail_limit: int = 30
+    app_token_auth_fail_window_seconds: int = 60
 
     @classmethod
     def from_env(cls, fallback: "AuthConfig" = None) -> "AuthConfig":
@@ -422,6 +425,18 @@ class AuthConfig(BaseModel):
                 os.getenv("SESSION_CLEANUP_DAYS", str(fallback.session_cleanup_days if fallback else 30))
             ),
             use_team_permissions=False,
+            app_token_auth_fail_limit=int(
+                os.getenv(
+                    "APP_TOKEN_AUTH_FAIL_LIMIT",
+                    str(fallback.app_token_auth_fail_limit if fallback else 30),
+                )
+            ),
+            app_token_auth_fail_window_seconds=int(
+                os.getenv(
+                    "APP_TOKEN_AUTH_FAIL_WINDOW_SECONDS",
+                    str(fallback.app_token_auth_fail_window_seconds if fallback else 60),
+                )
+            ),
         )
 
 
@@ -433,6 +448,8 @@ class AuditConfig(BaseModel):
     batch_size: int = 100
     cleanup_days: int = 365
     max_detail_size: int = 10240
+    # 寫入失敗時保留於記憶體的重排緩衝上限，避免審計 DB 故障時無限增長
+    max_buffer_size: int = 10000
     excluded_fields: list = ["password", "token", "secret", "key"]
     debug_sql: bool = False
 
@@ -446,6 +463,9 @@ class AuditConfig(BaseModel):
             cleanup_days=int(os.getenv("AUDIT_CLEANUP_DAYS", str(fallback.cleanup_days if fallback else 365))),
             max_detail_size=int(
                 os.getenv("AUDIT_MAX_DETAIL_SIZE", str(fallback.max_detail_size if fallback else 10240))
+            ),
+            max_buffer_size=int(
+                os.getenv("AUDIT_MAX_BUFFER_SIZE", str(fallback.max_buffer_size if fallback else 10000))
             ),
             excluded_fields=fallback.excluded_fields if fallback else ["password", "token", "secret", "key"],
             debug_sql=os.getenv("AUDIT_DEBUG_SQL", str(fallback.debug_sql if fallback else False)).lower() == "true",

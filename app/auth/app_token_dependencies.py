@@ -8,6 +8,7 @@ import json
 import logging
 import re
 import secrets
+import time
 from typing import Any, Dict, Optional
 
 from fastapi import Depends, HTTPException, Request, Security, status
@@ -16,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import ActionType, AuditSeverity, ResourceType, audit_service
+from app.config import get_settings
 from app.database import get_db
 from app.db_access.main import create_main_access_boundary_for_session
 from app.models.app_token import (
@@ -38,6 +40,38 @@ logger = logging.getLogger(__name__)
 MCP_READ_PERMISSION = "mcp_read"
 AUDIT_RESOURCE_ID_MAX_LEN = 100
 _app_bearer = HTTPBearer(auto_error=False)
+
+# Per-IP token bucket for authentication *failures* on /api/app/* and /api/mcp/*.
+# Successful auth never consumes a token, so legitimate traffic is never throttled;
+# a source generating many failures depletes its bucket and receives HTTP 429.
+# In-process state (per worker), matching the existing public-webhook limiter.
+_auth_fail_buckets: dict[str, tuple[float, float]] = {}
+
+
+def _auth_fail_rate_over_limit(client_ip: str) -> Optional[int]:
+    """Peek the failure bucket without consuming. Returns Retry-After seconds if over limit."""
+    auth_cfg = get_settings().auth
+    capacity = max(1, auth_cfg.app_token_auth_fail_limit)
+    window = max(1, auth_cfg.app_token_auth_fail_window_seconds)
+    refill_per_second = capacity / window
+
+    now = time.monotonic()
+    tokens, updated_at = _auth_fail_buckets.get(client_ip, (float(capacity), now))
+    elapsed = max(now - updated_at, 0)
+    tokens = min(float(capacity), tokens + elapsed * refill_per_second)
+    _auth_fail_buckets[client_ip] = (tokens, now)
+    if tokens < 1:
+        return max(1, int((1 - tokens) / refill_per_second))
+    return None
+
+
+def _record_auth_failure(client_ip: str) -> None:
+    """Consume one token from the failure bucket for this IP."""
+    auth_cfg = get_settings().auth
+    capacity = max(1, auth_cfg.app_token_auth_fail_limit)
+    now = time.monotonic()
+    tokens, _updated_at = _auth_fail_buckets.get(client_ip, (float(capacity), now))
+    _auth_fail_buckets[client_ip] = (max(0.0, tokens - 1), now)
 
 
 class AppTokenErrorCodes:
@@ -230,6 +264,37 @@ async def get_current_app_token_principal(
     db: AsyncSession = Depends(get_db),
     credentials: Optional[HTTPAuthorizationCredentials] = Security(_app_bearer),
 ) -> AppTokenPrincipal:
+    """Authenticate an app/MCP credential, applying a per-IP failure rate limit.
+
+    Peeks the failure bucket first (429 before any DB work or audit write when the IP
+    is over its limit), then records a failure for every 401 so repeated invalid-token
+    attempts from one source deplete the bucket while valid traffic is unaffected.
+    """
+    client_ip = request.client.host if request.client else "unknown"
+    retry_after = _auth_fail_rate_over_limit(client_ip)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "code": "APP_TOKEN_RATE_LIMITED",
+                "message": "Too many authentication attempts",
+            },
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    try:
+        return await _authenticate_app_token(request, db, credentials)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            _record_auth_failure(client_ip)
+        raise
+
+
+async def _authenticate_app_token(
+    request: Request,
+    db: AsyncSession,
+    credentials: Optional[HTTPAuthorizationCredentials],
+) -> AppTokenPrincipal:
     """Resolve an app token (or legacy machine credential) into an AppTokenPrincipal."""
     if not credentials or not credentials.credentials:
         await log_app_token_audit(request, None, allowed=False, reason="missing_app_token")
@@ -279,6 +344,18 @@ async def get_current_app_token_principal(
     except Exception as exc:  # noqa: BLE001
         logger.warning("App token resolution failed: %s", exc, exc_info=True)
         raise
+
+    # Legacy MCP machine credentials are confined to /api/mcp/*; reject them on the
+    # /api/app/* namespace so a leaked read-only legacy token cannot reach the larger
+    # app read surface. New team app tokens (is_legacy=False) are unaffected.
+    if principal.is_legacy and request.url.path.startswith("/api/app/"):
+        await log_app_token_audit(
+            request, principal, allowed=False, reason="legacy_credential_on_app_namespace"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": AppTokenErrorCodes.INVALID, "message": "Invalid app token"},
+        )
 
     request.state.app_token_principal = principal
     return principal

@@ -680,6 +680,8 @@ def test_mcp_team_test_case_detail_and_scope(temp_db):
         assert case["user_story_map"] == [{"id": "US-1", "title": "Login"}]
         assert case["parent_record"] == [{"record_id": "rec-parent"}]
         assert case["raw_fields"] == {"custom_field": "custom-value"}
+        # credential-category test_data value is redacted in read responses;
+        # non-credential values pass through unchanged.
         assert case["test_data"] == [
             {
                 "id": "td-1",
@@ -691,7 +693,7 @@ def test_mcp_team_test_case_detail_and_scope(temp_db):
                 "id": "td-2",
                 "name": "admin_password",
                 "category": "credential",
-                "value": "P@ssw0rd!",
+                "value": "[REDACTED]",
             },
         ]
 
@@ -815,6 +817,7 @@ def test_mcp_list_test_cases_include_test_data_flag(temp_db):
         assert with_payload["filters"]["include_test_data"] is True
         cases_by_id = {case["id"]: case for case in with_payload["test_cases"]}
         target_case = cases_by_id[seeded["tc_a1_id"]]
+        # credential-category value is redacted; non-credential values pass through
         assert target_case["test_data"] == [
             {
                 "id": "td-1",
@@ -826,7 +829,7 @@ def test_mcp_list_test_cases_include_test_data_flag(temp_db):
                 "id": "td-2",
                 "name": "admin_password",
                 "category": "credential",
-                "value": "P@ssw0rd!",
+                "value": "[REDACTED]",
             },
         ]
         # tc_a2 has no test_data set, should still expose empty array
@@ -886,11 +889,11 @@ def test_mcp_lookup_include_test_data_flag(temp_db):
         assert len(with_payload["items"]) == 1
         item_case = with_payload["items"][0]["test_case"]
         assert any(td["category"] == "credential" for td in item_case["test_data"])
-        # Credential value MUST NOT be redacted at the API layer.
+        # Credential value MUST be redacted at the API layer (read responses).
         credential_item = next(
             td for td in item_case["test_data"] if td["category"] == "credential"
         )
-        assert credential_item["value"] == "P@ssw0rd!"
+        assert credential_item["value"] == "[REDACTED]"
 
 
 def test_mcp_test_data_respects_team_scope(temp_db):

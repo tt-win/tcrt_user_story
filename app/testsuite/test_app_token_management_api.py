@@ -190,6 +190,33 @@ class TestCreateAppToken:
             )
             assert resp.status_code == 400
 
+    def test_create_token_negative_expiry_rejected(self, temp_db):
+        with temp_db() as session:
+            data = _seed_data(session)
+        _override_user(data)
+
+        with TestClient(app) as client:
+            resp = client.post(
+                f"/api/teams/{data['team_id']}/app-tokens",
+                json={"name": "Neg", "scopes": ["test_case:read"], "expires_in_days": -1},
+                headers=_bearer_jwt(),
+            )
+            assert resp.status_code == 422
+
+    def test_create_token_excessive_expiry_rejected(self, temp_db):
+        with temp_db() as session:
+            data = _seed_data(session)
+        _override_user(data)
+
+        with TestClient(app) as client:
+            resp = client.post(
+                f"/api/teams/{data['team_id']}/app-tokens",
+                json={"name": "Huge", "scopes": ["test_case:read"], "expires_in_days": 10**9},
+                headers=_bearer_jwt(),
+            )
+            # bounded validation returns 422, never a 500 from timedelta overflow
+            assert resp.status_code == 422
+
     def test_non_admin_cannot_create_token(self, temp_db):
         with temp_db() as session:
             data = _seed_data(session, role=UserRole.USER, team_permission=PermissionType.READ)

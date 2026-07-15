@@ -34,7 +34,10 @@ class AppTokenCreateRequest(BaseModel):
     description: Optional[str] = None
     scopes: List[str] = Field(..., min_length=1)
     expires_in_days: Optional[int] = Field(
-        None, description="Days until expiry; omit for 90-day default, 0 for non-expiring"
+        None,
+        ge=0,
+        le=3650,
+        description="Days until expiry; omit for 90-day default, 0 for non-expiring",
     )
 
 
