@@ -33,7 +33,9 @@ fi
 echo "Starting server in background..."
 UVICORN_ARGS=(--host "$HOST" --port "$PORT" --proxy-headers --forwarded-allow-ips '*')
 if [ "$UVICORN_RELOAD" = "1" ]; then
-    UVICORN_ARGS+=(--reload)
+    # Watch only the source tree; watching the whole CWD (large .db files, .venv,
+    # graphify-out, backups) makes the reload watcher spin at ~40% CPU.
+    UVICORN_ARGS+=(--reload --reload-dir app)
 fi
 # nohup + log redirect: survive terminal close, and never block callers
 # that capture this script's output (the background child would otherwise
