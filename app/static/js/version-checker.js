@@ -240,7 +240,9 @@ class VersionChecker {
         button.type = 'button';
         button.className = 'btn btn-info btn-sm';
         button.innerHTML = '<i class="fas fa-sync-alt me-1"></i><span data-i18n="version.updateAvailable">有新版本</span>';
-        button.title = '點擊更新到最新版本';
+        button.title = window.i18n
+            ? window.i18n.t('version.updateTooltip', {}, '點擊更新到最新版本')
+            : '點擊更新到最新版本';
         button.style.display = 'none';
 
         // 綁定點擊事件
@@ -297,7 +299,9 @@ class VersionChecker {
         console.log('強制重新載入頁面');
 
         if (window.AppUtils && window.AppUtils.showInfo) {
-            window.AppUtils.showInfo('正在更新到最新版本...');
+            window.AppUtils.showInfo(window.i18n
+                ? window.i18n.t('version.updating', {}, '正在更新到最新版本...')
+                : '正在更新到最新版本...');
         }
 
         try {

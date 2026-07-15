@@ -95,23 +95,6 @@ JIRA 連接與同步操作分析 - 執行摘要
 ├─ 第 269 行：time.sleep(sleep_seconds) - 重試延遲 [最多 5秒]
 └─ 第 282 行：time.sleep(sleep_seconds) - 重試延遲 [最多 5秒]
 
-【Preview 功能代碼位置】
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-後端 API：
-┌─ /app/api/usm_import.py
-│  ├─ preview_lark_table() [302-364] - GET /api/usm-import/lark-preview
-│  │  └─ await lark_service.fetch_lark_table(lark_url) [第 321 行]
-│  └─ import_usm_from_lark() [206-299]
-│
-
-前端調用：
-┌─ /app/static/js/usm_import.js
-│  ├─ preprocessLarkTable() [77-126]
-│  │  └─ await fetch('/api/usm-import/lark-preview') [第 99 行]
-│  └─ confirmUSMImport() [133-215]
-│
-
 人員管理 Preview：
 ┌─ /app/static/js/personnel_management.js
 │  ├─ fetchLarkPreview() [601-623]

@@ -18,9 +18,9 @@
 
   // key = model_label from backend ("A", "B", "C")
   const ROLES = [
-    { key: 'A', code: 'AI #1', label: 'AI #1' },
-    { key: 'B', code: 'AI #2', label: 'AI #2' },
-    { key: 'C', code: 'AI #3', label: 'AI #3' },
+    { key: 'A', labelKey: 'qaAiHelper.councilRole1', label: 'AI #1' },
+    { key: 'B', labelKey: 'qaAiHelper.councilRole2', label: 'AI #2' },
+    { key: 'C', labelKey: 'qaAiHelper.councilRole3', label: 'AI #3' },
   ];
 
   const STATUS = { IDLE: 'idle', RUNNING: 'running', DONE: 'done', ERROR: 'error' };
@@ -39,7 +39,7 @@
   /*  Helpers                                                            */
   /* ------------------------------------------------------------------ */
 
-  function t(key, params, fallback) {
+  function translate(key, params, fallback) {
     if (_opts.t) return _opts.t(key, params, fallback);
     return fallback || key;
   }
@@ -57,33 +57,44 @@
   function buildOverlay() {
     const overlay = document.createElement('div');
     overlay.className = 'council-overlay';
+    const title = escapeHtml(translate('qaAiHelper.councilTitle', {}, 'COUNCIL REVIEW'));
+    const phaseOneLabel = escapeHtml(translate('qaAiHelper.councilPhase1', {}, 'Phase 1 — Parallel Extraction'));
+    const idleLabel = escapeHtml(translate('qaAiHelper.councilIdle', {}, 'STANDBY'));
+    const consolidationLabel = escapeHtml(translate('qaAiHelper.councilConsolidation', {}, 'Phase 2 — Consolidation'));
+    const runningLabel = escapeHtml(translate('qaAiHelper.councilRunning', {}, 'PROCESSING...'));
+    const cancelLabel = escapeHtml(translate('qaAiHelper.councilCancel', {}, '取消'));
+    const rolePanels = ROLES.map(r => {
+      const roleKey = escapeHtml(r.key);
+      const roleLabel = escapeHtml(translate(r.labelKey, {}, r.label));
+      return `
+          <div class="council-panel" data-role="${roleKey}" id="councilPanel_${roleKey}">
+            <div class="council-panel-header">
+              <span class="council-panel-code">${roleLabel}</span>
+              <span class="council-indicator council-indicator--idle" id="councilInd_${roleKey}"></span>
+            </div>
+            <div class="council-panel-label">${roleLabel}</div>
+            <div class="council-panel-status" id="magcouncilStatus_${roleKey}">${idleLabel}</div>
+          </div>`;
+    }).join('');
     overlay.innerHTML = `
       <div class="council-container">
         <div class="council-header">
-          <div class="council-title">COUNCIL REVIEW</div>
-          <div class="council-subtitle" id="councilSubtitle">${escapeHtml(t('qaAiHelper.councilPhase1', {}, 'Phase 1 — Parallel Extraction'))}</div>
+          <div class="council-title">${title}</div>
+          <div class="council-subtitle" id="councilSubtitle">${phaseOneLabel}</div>
         </div>
         <div class="council-panels" id="councilPanels">
-          ${ROLES.map(r => `
-          <div class="council-panel" data-role="${r.key}" id="councilPanel_${r.key}">
-            <div class="council-panel-header">
-              <span class="council-panel-code">${r.code}</span>
-              <span class="council-indicator council-indicator--idle" id="councilInd_${r.key}"></span>
-            </div>
-            <div class="council-panel-label">${r.label}</div>
-            <div class="council-panel-status" id="magcouncilStatus_${r.key}">${escapeHtml(t('qaAiHelper.councilIdle', {}, 'STANDBY'))}</div>
-          </div>`).join('')}
+          ${rolePanels}
         </div>
         <div class="council-consolidation" id="councilConsolidation" style="display:none;">
-          <div class="council-consolidation-label">${escapeHtml(t('qaAiHelper.councilConsolidation', {}, 'Phase 2 — Consolidation'))}</div>
-          <div class="council-consolidation-status" id="councilConsolidationStatus">${escapeHtml(t('qaAiHelper.councilRunning', {}, 'PROCESSING...'))}</div>
+          <div class="council-consolidation-label">${consolidationLabel}</div>
+          <div class="council-consolidation-status" id="councilConsolidationStatus">${runningLabel}</div>
         </div>
         <div class="council-verdict" id="councilVerdict" style="display:none;">
           <span class="council-verdict-text" id="councilVerdictText"></span>
         </div>
         <div class="council-footer">
           <button type="button" class="btn btn-outline-light btn-sm council-cancel-btn" id="councilCancelBtn">
-            <i class="fas fa-xmark me-1"></i>${escapeHtml(t('qaAiHelper.councilCancel', {}, '取消'))}
+            <i class="fas fa-xmark me-1"></i>${cancelLabel}
           </button>
         </div>
       </div>`;
@@ -122,10 +133,10 @@
     }
     if (statusEl) {
       const labels = {
-        [STATUS.IDLE]: t('qaAiHelper.councilIdle', {}, 'STANDBY'),
-        [STATUS.RUNNING]: t('qaAiHelper.councilRunning', {}, 'PROCESSING...'),
-        [STATUS.DONE]: t('qaAiHelper.councilDone', {}, 'COMPLETE'),
-        [STATUS.ERROR]: detail || t('qaAiHelper.councilError', {}, 'ERROR'),
+        [STATUS.IDLE]: translate('qaAiHelper.councilIdle', {}, 'STANDBY'),
+        [STATUS.RUNNING]: translate('qaAiHelper.councilRunning', {}, 'PROCESSING...'),
+        [STATUS.DONE]: translate('qaAiHelper.councilDone', {}, 'COMPLETE'),
+        [STATUS.ERROR]: detail || translate('qaAiHelper.councilError', {}, 'ERROR'),
       };
       statusEl.textContent = labels[status] || status;
     }
@@ -134,7 +145,7 @@
   function transitionToPhase2() {
     _phase = 2;
     const subtitle = document.getElementById('councilSubtitle');
-    if (subtitle) subtitle.textContent = t('qaAiHelper.councilPhase2', {}, 'Phase 2 — Consolidation');
+    if (subtitle) subtitle.textContent = translate('qaAiHelper.councilPhase2', {}, 'Phase 2 — Consolidation');
     const panels = document.getElementById('councilPanels');
     if (panels) panels.classList.add('council-panels--shrink');
     const consol = document.getElementById('councilConsolidation');
@@ -148,8 +159,8 @@
     verdict.style.display = '';
     verdict.classList.add(success ? 'council-verdict--ok' : 'council-verdict--fail');
     text.textContent = message || (success
-      ? t('qaAiHelper.councilAllApproved', {}, 'ALL APPROVED')
-      : t('qaAiHelper.councilFailed', {}, 'INSPECTION FAILED'));
+      ? translate('qaAiHelper.councilAllApproved', {}, 'ALL APPROVED')
+      : translate('qaAiHelper.councilFailed', {}, 'INSPECTION FAILED'));
     // hide cancel button
     const cancelBtn = document.getElementById('councilCancelBtn');
     if (cancelBtn) cancelBtn.style.display = 'none';
@@ -237,12 +248,12 @@
         break;
       case 'consolidation_complete': {
         const consolStatus = document.getElementById('councilConsolidationStatus');
-        if (consolStatus) consolStatus.textContent = t('qaAiHelper.councilDone', {}, 'COMPLETE');
+        if (consolStatus) consolStatus.textContent = translate('qaAiHelper.councilDone', {}, 'COMPLETE');
         break;
       }
       case 'consolidation_error': {
         const consolStatus = document.getElementById('councilConsolidationStatus');
-        if (consolStatus) consolStatus.textContent = data.error || t('qaAiHelper.councilError', {}, 'ERROR');
+        if (consolStatus) consolStatus.textContent = data.error || translate('qaAiHelper.councilError', {}, 'ERROR');
         showVerdict(false, data.error);
         break;
       }

@@ -2,6 +2,12 @@
 
 let _appTokenCurrentTeamId = null;
 
+function translateAppToken(key, params, fallback) {
+    return window.i18n && window.i18n.t
+        ? window.i18n.t(key, params || {}, fallback)
+        : fallback;
+}
+
 function openAppTokenModal(teamId, teamName) {
     _appTokenCurrentTeamId = teamId;
     const nameEl = document.getElementById('appTokenTeamName');
@@ -16,7 +22,8 @@ function openAppTokenModal(teamId, teamName) {
 async function loadAppTokens() {
     if (!_appTokenCurrentTeamId) return;
     const tbody = document.getElementById('appTokenTableBody');
-    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Loading...</td></tr>';
+    const loadingMessage = escapeHtml(translateAppToken('appToken.loading', {}, '載入中...'));
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">${loadingMessage}</td></tr>`;
     try {
         const resp = await fetch(`/api/teams/${_appTokenCurrentTeamId}/app-tokens`, {
             headers: { 'Authorization': `Bearer ${getJwtToken()}` }
@@ -25,28 +32,36 @@ async function loadAppTokens() {
         const data = await resp.json();
         renderAppTokenList(data.items || []);
     } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">Failed to load tokens: ${escapeHtml(err.message)}</td></tr>`;
+        const failureMessage = escapeHtml(translateAppToken(
+            'appToken.loadFailedWithReason',
+            { reason: err.message },
+            `載入權杖失敗: ${err.message}`
+        ));
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">${failureMessage}</td></tr>`;
     }
 }
 
 function renderAppTokenList(tokens) {
     const tbody = document.getElementById('appTokenTableBody');
     if (!tokens.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No app tokens</td></tr>';
+        const emptyMessage = escapeHtml(translateAppToken('appToken.noTokens', {}, '無 App Token'));
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">${emptyMessage}</td></tr>`;
         return;
     }
     tbody.innerHTML = tokens.map(t => {
         const isActive = t.status === 'active';
         const statusBadge = isActive
-            ? '<span class="badge bg-success">active</span>'
-            : '<span class="badge bg-secondary">revoked</span>';
+            ? `<span class="badge bg-success">${translateAppToken('appToken.statusActive', {}, '啟用中')}</span>`
+            : `<span class="badge bg-secondary">${translateAppToken('appToken.statusRevoked', {}, '已撤銷')}</span>`;
         const prefixDisplay = t.token_prefix ? t.token_prefix.substring(0, 12) + '...' : '-';
         const scopesDisplay = (t.scopes || []).join(', ') || '-';
-        const expiryDisplay = t.expires_at ? new Date(t.expires_at).toLocaleDateString() : 'Never';
+        const expiryDisplay = t.expires_at
+            ? new Date(t.expires_at).toLocaleDateString()
+            : translateAppToken('appToken.neverExpires', {}, '永不過期');
         const lastUsedDisplay = t.last_used_at ? new Date(t.last_used_at).toLocaleString() : '-';
         const actions = isActive
-            ? `<button class="btn btn-warning btn-sm me-1" onclick="rotateAppToken(${t.id})" title="Rotate"><i class="fas fa-sync-alt"></i></button>` +
-              `<button class="btn btn-danger btn-sm" onclick="revokeAppToken(${t.id})" title="Revoke"><i class="fas fa-ban"></i></button>`
+            ? `<button class="btn btn-warning btn-sm me-1" onclick="rotateAppToken(${t.id})" data-i18n-title="appToken.rotateAction" title="輪替"><i class="fas fa-sync-alt"></i></button>` +
+              `<button class="btn btn-danger btn-sm" onclick="revokeAppToken(${t.id})" data-i18n-title="appToken.revokeAction" title="撤銷"><i class="fas fa-ban"></i></button>`
             : '<span class="text-muted">-</span>';
         return `<tr>
             <td>${escapeHtml(t.name)}</td>
@@ -83,10 +98,10 @@ function hideCreateAppTokenForm() {
 async function createAppToken() {
     if (!_appTokenCurrentTeamId) return;
     const name = document.getElementById('appTokenName').value.trim();
-    if (!name) { alert('Token name is required'); return; }
+    if (!name) { alert(translateAppToken('appToken.nameRequired', {}, '權杖名稱為必填項')); return; }
     const description = document.getElementById('appTokenDescription').value.trim() || null;
     const scopes = Array.from(document.querySelectorAll('.app-token-scope:checked')).map(cb => cb.value);
-    if (!scopes.length) { alert('At least one scope is required'); return; }
+    if (!scopes.length) { alert(translateAppToken('appToken.scopeRequired', {}, '至少需要選擇一個權限範圍')); return; }
     const noExpiry = document.getElementById('appTokenNoExpiry').checked;
     const expiryDays = noExpiry ? 0 : parseInt(document.getElementById('appTokenExpiryDays').value, 10);
     const payload = { name, scopes, expires_in_days: noExpiry ? 0 : (isNaN(expiryDays) ? null : expiryDays) };
@@ -108,12 +123,16 @@ async function createAppToken() {
         document.getElementById('appTokenRawTokenDisplay').style.display = 'block';
         loadAppTokens();
     } catch (err) {
-        alert(`Failed to create token: ${err.message}`);
+        alert(translateAppToken(
+            'appToken.createFailedWithReason',
+            { reason: err.message },
+            `建立權杖失敗: ${err.message}`
+        ));
     }
 }
 
 async function revokeAppToken(tokenId) {
-    if (!confirm('Revoke this token? This action cannot be undone.')) return;
+    if (!confirm(translateAppToken('appToken.revokeConfirm', {}, '撤銷此權杖？此操作無法復原。'))) return;
     try {
         const resp = await fetch(`/api/teams/${_appTokenCurrentTeamId}/app-tokens/${tokenId}`, {
             method: 'DELETE',
@@ -122,12 +141,20 @@ async function revokeAppToken(tokenId) {
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         loadAppTokens();
     } catch (err) {
-        alert(`Failed to revoke token: ${err.message}`);
+        alert(translateAppToken(
+            'appToken.revokeFailedWithReason',
+            { reason: err.message },
+            `撤銷權杖失敗: ${err.message}`
+        ));
     }
 }
 
 async function rotateAppToken(tokenId) {
-    if (!confirm('Rotate this token? The old token will be immediately invalidated with no grace period. You must update any integrations using the old token.')) return;
+    if (!confirm(translateAppToken(
+        'appToken.rotateConfirm',
+        {},
+        '輪替此權杖？舊權杖將立即失效，沒有寬限期。您必須更新使用舊權杖的任何整合。'
+    ))) return;
     try {
         const resp = await fetch(`/api/teams/${_appTokenCurrentTeamId}/app-tokens/${tokenId}/rotate`, {
             method: 'POST',
@@ -142,7 +169,11 @@ async function rotateAppToken(tokenId) {
         document.getElementById('appTokenRawTokenDisplay').style.display = 'block';
         loadAppTokens();
     } catch (err) {
-        alert(`Failed to rotate token: ${err.message}`);
+        alert(translateAppToken(
+            'appToken.rotateFailedWithReason',
+            { reason: err.message },
+            `輪替權杖失敗: ${err.message}`
+        ));
     }
 }
 

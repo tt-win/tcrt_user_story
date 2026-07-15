@@ -118,16 +118,16 @@ class TestResultsManager {
         try {
             if (!this.tcAttachmentsContainer) return;
             const listDiv = this.tcAttachmentsContainer.querySelector('[data-role="attachments-list"]');
-            if (listDiv) listDiv.innerHTML = `<div class="text-muted small">${window.i18n ? window.i18n.t('messages.loading') : '載入中...'}</div>`;
+            if (listDiv) listDiv.innerHTML = `<div class="text-muted small">${treTranslate('messages.loading', '載入中...')}</div>`;
             const resp = await window.AuthClient.fetch(`/api/teams/${this.teamId}/testcases/by-number/${encodeURIComponent(this.testCaseNumber)}`);
             if (!resp.ok) {
-                if (listDiv) listDiv.innerHTML = `<div class="text-muted small">${window.i18n ? window.i18n.t('errors.noAttachments') : '尚無附件'}</div>`;
+                if (listDiv) listDiv.innerHTML = `<div class="text-muted small">${treTranslate('errors.noAttachments', '尚無附件')}</div>`;
                 return;
             }
             const data = await resp.json();
             const attachments = Array.isArray(data.attachments) ? data.attachments : [];
             if (!attachments.length) {
-                if (listDiv) listDiv.innerHTML = `<div class="text-muted small">${window.i18n ? window.i18n.t('errors.noAttachments') : '尚無附件'}</div>`;
+                if (listDiv) listDiv.innerHTML = `<div class="text-muted small">${treTranslate('errors.noAttachments', '尚無附件')}</div>`;
                 return;
             }
             const html = attachments.map(att => {
@@ -232,7 +232,7 @@ class TestResultsManager {
             return;
         }
         if (this.isUploading) {
-            AppUtils.showWarning(i18n.t('testRun.uploadInProgress'));
+            AppUtils.showWarning(treTranslate('testRun.uploadInProgress', '檔案上傳進行中，請稍候'));
             return;
         }
         
@@ -251,7 +251,7 @@ class TestResultsManager {
             const result = await response.json();
             
             if (response.ok && result.success) {
-                AppUtils.showSuccess(i18n.t('testRun.uploadSuccess'));
+                AppUtils.showSuccess(treTranslate('testRun.uploadSuccess', '檔案上傳成功'));
                 this.loadExistingResults();
                 this.toggleUploadArea();
 
@@ -264,12 +264,12 @@ class TestResultsManager {
                     window.loadTestRunItemsWithoutLoading();
                 }
             } else {
-                const errorMsg = result.error_messages?.join('; ') || i18n.t('testRun.uploadFailed');
+                const errorMsg = result.error_messages?.join('; ') || treTranslate('testRun.uploadFailed', '檔案上傳失敗');
                 AppUtils.showError(errorMsg);
             }
         } catch (error) {
             console.error('上傳異常:', error);
-            AppUtils.showError(i18n.t('testRun.uploadError'));
+            AppUtils.showError(treTranslate('testRun.uploadError', '檔案上傳發生錯誤'));
         } finally {
             this.isUploading = false;
             this.showProgress(false);
@@ -322,7 +322,7 @@ class TestResultsManager {
                  data-config-id="${this.configId}"
                  data-item-id="${this.testRunItemId}"
                  style="cursor: pointer;"
-                 title="點擊下載 ${this.escapeHtml(file.name)}">
+                  title="${this.escapeHtml(treTranslate('testRun.downloadFileNamed', { fileName: file.name }, `點擊下載 ${file.name}`))}">
                 <div class="file-info">
                     <i class="${fileIcon} file-icon"></i>
                     <div>
@@ -393,7 +393,7 @@ class TestResultsManager {
             window.open(downloadUrl.toString(), '_blank');
         } catch (error) {
             console.error('下載檔案失敗:', error);
-            AppUtils.showError('下載檔案失敗');
+            AppUtils.showError(treTranslate('testRun.fileDownloadFailed', '下載檔案失敗'));
         }
     }
     
@@ -403,7 +403,7 @@ class TestResultsManager {
             return;
         }
         const confirmed = await AppUtils.showConfirm(
-            i18n.t('testRun.confirmDeleteFile', { fileName })
+            treTranslate('testRun.confirmDeleteFile', { fileName }, `確定要刪除檔案 "${fileName}" 嗎？`)
         );
         
         if (!confirmed) return;
@@ -416,7 +416,7 @@ class TestResultsManager {
             const result = await response.json();
             
             if (response.ok && result.success) {
-                AppUtils.showSuccess(i18n.t('testRun.fileDeleteSuccess'));
+                AppUtils.showSuccess(treTranslate('testRun.fileDeleteSuccess', '檔案刪除成功'));
                 
                 const fileItem = document.querySelector(`[data-file-token="${fileToken}"]`);
                 if (fileItem) {
@@ -443,12 +443,12 @@ class TestResultsManager {
                     window.loadTestRunItemsWithoutLoading();
                 }
             } else {
-                const errorMsg = result.error || i18n.t('testRun.fileDeleteFailed');
+                const errorMsg = result.error || treTranslate('testRun.fileDeleteFailed', '檔案刪除失敗');
                 AppUtils.showError(errorMsg);
             }
         } catch (error) {
             console.error('刪除檔案異常:', error);
-            AppUtils.showError(i18n.t('testRun.fileDeleteFailed'));
+            AppUtils.showError(treTranslate('testRun.fileDeleteFailed', '檔案刪除失敗'));
         }
     }
     

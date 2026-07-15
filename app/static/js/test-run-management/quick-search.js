@@ -37,11 +37,13 @@ function setupQuickSearch_TPTicket() {
                 if (window.i18n && window.i18n.isReady && window.i18n.isReady()) {
                     let text = window.i18n.t('tp.searchPlaceholder');
                     if (!text || text === 'tp.searchPlaceholder') {
-                        text = '搜尋 TP 票號...';
+                        text = window.i18n.t('tp.searchPlaceholder', {}, '搜尋 TP 票號...');
                     }
                     input.placeholder = text;
                 } else {
-                    input.placeholder = '搜尋 TP 票號...';
+                    input.placeholder = window.i18n
+                        ? window.i18n.t('tp.searchPlaceholder', {}, '搜尋 TP 票號...')
+                        : '搜尋 TP 票號...';
                 }
             };
             

@@ -81,13 +81,13 @@
 
             cachedUserInfo = await authClient.getUserInfo();
             if (!cachedUserInfo) {
-                AppUtils.showError('無法取得使用者資訊，請重新登入');
+                AppUtils.showError(translate('teamStats.userInfoFailed', '無法取得使用者資訊，請重新登入'));
                 setTimeout(() => window.location.href = '/login', 1500);
                 return;
             }
 
             if (!hasAdminAccess(cachedUserInfo)) {
-                AppUtils.showError('權限不足：需要 Admin 或更高權限');
+                AppUtils.showError(translate('teamStats.adminRequired', '權限不足：需要 Admin 或更高權限'));
                 setTimeout(() => window.location.href = '/', 2000);
                 return;
             }
@@ -102,7 +102,7 @@
             });
         } catch (error) {
             console.error('初始化團隊統計頁面失敗:', error);
-            AppUtils.showError('初始化統計頁面失敗');
+            AppUtils.showError(translate('teamStats.initFailed', '初始化統計頁面失敗'));
         }
     });
 
@@ -140,6 +140,11 @@
             console.warn('翻譯字串取得失敗:', err);
         }
         return fallback;
+    }
+
+    function emptyTableRow(colspan, key = 'teamStats.noData', fallback = '無數據') {
+        const message = escapeHtml(translate(key, fallback));
+        return `<tr><td colspan="${colspan}" class="text-center text-muted">${message}</td></tr>`;
     }
 
     async function initTeamFilter() {
@@ -201,9 +206,10 @@
         // 不再移除 data-i18n 屬性，讓 i18n 系統有機會處理初始的載入提示
 
         if (!Array.isArray(teamFilterTeams) || teamFilterTeams.length === 0) {
+            const noTeamsLabel = escapeHtml(translate('teamStats.teamFilter.noTeams', '無可用團隊'));
             container.innerHTML = `
                 <div class="text-muted small">
-                    ${translate('teamStats.teamFilter.noTeams', '無可用團隊')}
+                    ${noTeamsLabel}
                 </div>
             `;
             return;
@@ -218,7 +224,7 @@
                     id="team-filter-${escapeHtml(String(team.id))}"
                 />
                 <label class="form-check-label" for="team-filter-${escapeHtml(String(team.id))}">
-                    ${escapeHtml(team.name || `Team #${team.id}`)}
+                    ${escapeHtml(team.name || translate('teamStats.teamNameFallback', 'Team #{id}', { id: team.id }))}
                 </label>
             </div>
         `).join('');
@@ -551,7 +557,7 @@
      * 載入所有統計數據
      */
     async function loadAllStatistics() {
-        AppUtils.showLoading('載入統計數據中...');
+        AppUtils.showLoading(translate('teamStats.loading', '載入統計數據中...'));
 
         // Reset helper dashboard cache so refresh reloads it
         helperDataLoaded = false;
@@ -576,10 +582,10 @@
 
             await Promise.all(tasks);
 
-            AppUtils.showSuccess('統計數據載入完成');
+            AppUtils.showSuccess(translate('teamStats.loadSuccess', '統計數據載入完成'));
         } catch (error) {
             console.error('載入統計數據失敗:', error);
-            AppUtils.showError('載入統計數據失敗');
+            AppUtils.showError(translate('teamStats.loadFailed', '載入統計數據失敗'));
         } finally {
             AppUtils.hideLoading(true);
         }
@@ -642,7 +648,7 @@
                     </tr>
                 `).join('');
             } else {
-                teamTestCasesTbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">無數據</td></tr>';
+                teamTestCasesTbody.innerHTML = emptyTableRow(2);
             }
 
             // 更新團隊 Test Run 統計表格
@@ -655,7 +661,7 @@
                     </tr>
                 `).join('');
             } else {
-                teamTestRunsTbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">無數據</td></tr>';
+                teamTestRunsTbody.innerHTML = emptyTableRow(2);
             }
 
             // 更新最近活動表格
@@ -671,7 +677,7 @@
                     </tr>
                 `).join('');
             } else {
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">無活動記錄</td></tr>';
+                tbody.innerHTML = emptyTableRow(5, 'teamStats.noRecentActivity', '無活動記錄');
             }
         } catch (error) {
             console.error('載入總覽數據失敗:', error);
@@ -710,7 +716,7 @@
                     </tr>
                 `).join('');
             } else {
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">無數據</td></tr>';
+                tbody.innerHTML = emptyTableRow(5);
             }
         } catch (error) {
             console.error('載入團隊活動數據失敗:', error);
@@ -791,7 +797,7 @@
                     </tr>
                 `).join('');
             } else {
-                tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">無數據</td></tr>';
+                tbody.innerHTML = emptyTableRow(2);
             }
         } catch (error) {
             console.error('載入測試執行指標失敗:', error);
@@ -865,7 +871,7 @@
                     </tr>
                 `).join('');
             } else {
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">無關鍵操作記錄</td></tr>';
+                tbody.innerHTML = emptyTableRow(5, 'teamStats.noCriticalActions', '無關鍵操作記錄');
             }
         } catch (error) {
             console.error('載入審計分析數據失敗:', error);
@@ -902,7 +908,7 @@
                     `;
                 }).join('');
             } else {
-                deptTbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">無部門數據</td></tr>';
+                deptTbody.innerHTML = emptyTableRow(2, 'teamStats.noDepartmentData', '無部門數據');
             }
 
             // 渲染使用者角色分佈圖表
@@ -920,7 +926,7 @@
                     </tr>
                 `).join('');
             } else {
-                usersTbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">無數據</td></tr>';
+                usersTbody.innerHTML = emptyTableRow(2);
             }
         } catch (error) {
             console.error('載入部門統計失敗:', error);
@@ -1323,7 +1329,7 @@
             data: {
                 labels: data.map(t => t.team_name),
                 datasets: [{
-                    label: '操作次數',
+                    label: translate('teamStats.chart.actionCount', '操作次數'),
                     data: data.map(t => t.total),
                     backgroundColor: 'rgba(54, 162, 235, 0.6)',
                     borderColor: 'rgba(54, 162, 235, 1)',
@@ -1379,7 +1385,7 @@
         return perTeam.map((team, index) => {
             const baseColor = teamColorPalette[index % teamColorPalette.length];
             return {
-                label: team.team_name || `Team #${team.team_id}`,
+                label: team.team_name || translate('teamStats.teamNameFallback', 'Team #{id}', { id: team.team_id }),
                 data: team.daily.map(entry => entry[valueKey] ?? 0),
                 borderColor: baseColor,
                 backgroundColor: toRgba(baseColor, 0.15),
@@ -1477,7 +1483,7 @@
         if (!tbody) return;
 
         if (!Array.isArray(perTeam) || perTeam.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">無數據</td></tr>';
+            tbody.innerHTML = emptyTableRow(4);
             return;
         }
 
@@ -1491,7 +1497,7 @@
                 }
                 rows.push({
                     date: entry.date,
-                    teamName: team.team_name || `Team #${team.team_id}`,
+                    teamName: team.team_name || translate('teamStats.teamNameFallback', 'Team #{id}', { id: team.team_id }),
                     created,
                     updated
                 });
@@ -1499,7 +1505,7 @@
         });
 
         if (rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">無數據</td></tr>';
+            tbody.innerHTML = emptyTableRow(4);
             return;
         }
 
@@ -1525,7 +1531,7 @@
         if (!tbody) return;
 
         if (!Array.isArray(perTeam) || perTeam.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">無數據</td></tr>';
+            tbody.innerHTML = emptyTableRow(3);
             return;
         }
 
@@ -1542,7 +1548,7 @@
 
         const rows = sortedTeams.map(team => `
             <tr>
-                <td>${escapeHtml(team.team_name || `Team #${team.team_id}`)}</td>
+                <td>${escapeHtml(team.team_name || translate('teamStats.teamNameFallback', 'Team #{id}', { id: team.team_id }))}</td>
                 <td><strong>${team.total_created}</strong></td>
                 <td>${team.total_updated}</td>
             </tr>
@@ -1658,7 +1664,10 @@
         charts['test-run-status-chart'] = new Chart(ctx, {
             type: 'pie',
             data: {
-                labels: Object.keys(data),
+                labels: Object.keys(data).map(status => translate(
+                    `testRun.status.${String(status).toLowerCase()}`,
+                    status
+                )),
                 datasets: [{
                     data: Object.values(data),
                     backgroundColor: [
@@ -1691,7 +1700,7 @@
             data: {
                 labels: data.map(u => u.username),
                 datasets: [{
-                    label: '操作次數',
+                    label: translate('teamStats.chart.actionCount', '操作次數'),
                     data: data.map(u => u.action_count),
                     backgroundColor: 'rgba(255, 159, 64, 0.6)',
                     borderColor: 'rgba(255, 159, 64, 1)',
@@ -1759,7 +1768,7 @@
             data: {
                 labels: Array.from({length: 24}, (_, i) => `${i}:00`),
                 datasets: [{
-                    label: '活動次數',
+                    label: translate('teamStats.chart.activityCount', '活動次數'),
                     data: hourlyData,
                     backgroundColor: 'rgba(153, 102, 255, 0.6)',
                     borderColor: 'rgba(153, 102, 255, 1)',
@@ -1792,7 +1801,7 @@
             data: {
                 labels: Object.keys(data),
                 datasets: [{
-                    label: '記錄數',
+                    label: translate('teamStats.chart.recordCount', '記錄數'),
                     data: Object.values(data),
                     backgroundColor: 'rgba(54, 162, 235, 0.6)',
                     borderColor: 'rgba(54, 162, 235, 1)',
@@ -1855,7 +1864,7 @@
             data: {
                 labels: data.map(d => d.date),
                 datasets: [{
-                    label: '操作數',
+                    label: translate('teamStats.chart.actionTotal', '操作數'),
                     data: data.map(d => d.count),
                     borderColor: 'rgba(255, 99, 132, 1)',
                     backgroundColor: 'rgba(255, 99, 132, 0.2)',
@@ -2080,8 +2089,8 @@
         // Trend chart
         if (data.overall_trend) {
             renderHelperLineChart('helper-adoption-trend-chart', data.overall_trend.dates, [
-                { label: 'Seed 採用率', data: data.overall_trend.seed_adoption, color: teamColorPalette[0] },
-                { label: 'TC 採用率', data: data.overall_trend.tc_adoption, color: teamColorPalette[1] },
+                { label: translate('teamStats.helperDash.kpiSeedAdoption', 'Seed 採用率'), data: data.overall_trend.seed_adoption, color: teamColorPalette[0] },
+                { label: translate('teamStats.helperDash.kpiTcAdoption', 'TC 採用率'), data: data.overall_trend.tc_adoption, color: teamColorPalette[1] },
             ], true);
         }
 
@@ -2131,9 +2140,9 @@
         if (data.overall_trend) {
             const t = data.overall_trend;
             renderHelperBarChart('helper-generation-trend-chart', t.dates, [
-                { label: 'Seeds', data: t.seeds_generated, color: teamColorPalette[0] },
-                { label: 'TCs', data: t.tcs_generated, color: teamColorPalette[1] },
-                { label: '入庫', data: t.tcs_committed, color: teamColorPalette[2] },
+                { label: translate('teamStats.helperDash.kpiSeedsGenerated', 'Seeds'), data: t.seeds_generated, color: teamColorPalette[0] },
+                { label: translate('teamStats.helperDash.kpiTcsGenerated', 'TCs'), data: t.tcs_generated, color: teamColorPalette[1] },
+                { label: translate('teamStats.helperDash.colCommitted', '入庫'), data: t.tcs_committed, color: teamColorPalette[2] },
             ]);
         }
 
@@ -2189,7 +2198,7 @@
                     data: {
                         labels: stages,
                         datasets: [{
-                            label: 'Sessions',
+                            label: translate('teamStats.helper.sessions', 'Sessions'),
                             data: values,
                             backgroundColor: stages.map((_, i) => toRgba(teamColorPalette[i % teamColorPalette.length], 0.7)),
                             borderColor: stages.map((_, i) => teamColorPalette[i % teamColorPalette.length]),
@@ -2245,14 +2254,14 @@
 
     // ---------- Render: Telemetry ----------
     const STAGE_LABELS = {
-        'seed': '種子生成',
-        'seed_refine': '種子精煉',
-        'testcase': '測試案例生成',
-        'repair': '修復',
-        'inspection_extraction_a': '需求分析 - 抽取 A',
-        'inspection_extraction_b': '需求分析 - 抽取 B',
-        'inspection_extraction_c': '需求分析 - 抽取 C',
-        'inspection_consolidation': '需求分析 - 整合',
+        'seed': ['teamStats.helperDash.stageSeed', '種子生成'],
+        'seed_refine': ['teamStats.helperDash.stageSeedRefine', '種子精煉'],
+        'testcase': ['teamStats.helperDash.stageTestCase', '測試案例生成'],
+        'repair': ['teamStats.helperDash.stageRepair', '修復'],
+        'inspection_extraction_a': ['teamStats.helperDash.stageInspectionExtractionA', '需求分析 - 抽取 A'],
+        'inspection_extraction_b': ['teamStats.helperDash.stageInspectionExtractionB', '需求分析 - 抽取 B'],
+        'inspection_extraction_c': ['teamStats.helperDash.stageInspectionExtractionC', '需求分析 - 抽取 C'],
+        'inspection_consolidation': ['teamStats.helperDash.stageInspectionConsolidation', '需求分析 - 整合'],
     };
     const INSPECTION_STAGES = new Set([
         'inspection_extraction_a', 'inspection_extraction_b', 'inspection_extraction_c',
@@ -2284,7 +2293,9 @@
             setText('helper-tel-inspection-tokens', fmtNum(insTokens));
             const insDetailEl = document.getElementById('helper-tel-inspection-detail');
             if (insDetailEl) {
-                insDetailEl.textContent = `P: ${fmtNum(insPrompt)} / C: ${fmtNum(insCompletion)}`;
+                const promptLabel = translate('teamStats.helperDash.promptTokenAbbreviation', 'P');
+                const completionLabel = translate('teamStats.helperDash.completionTokenAbbreviation', 'C');
+                insDetailEl.textContent = `${promptLabel}: ${fmtNum(insPrompt)} / ${completionLabel}: ${fmtNum(insCompletion)}`;
             }
         }
 
@@ -2292,8 +2303,8 @@
         if (data.token_trend) {
             const t = data.token_trend;
             renderHelperLineChart('helper-telemetry-trend-chart', t.dates, [
-                { label: 'Prompt Tokens', data: t.prompt_tokens, color: teamColorPalette[0] },
-                { label: 'Completion Tokens', data: t.completion_tokens, color: teamColorPalette[1] },
+                { label: translate('teamStats.helperDash.promptTokens', 'Prompt Tokens'), data: t.prompt_tokens, color: teamColorPalette[0] },
+                { label: translate('teamStats.helperDash.completionTokens', 'Completion Tokens'), data: t.completion_tokens, color: teamColorPalette[1] },
             ]);
         }
 
@@ -2326,7 +2337,7 @@
             const stageList = Object.entries(data.by_stage).map(([stage, info]) => ({ stage, ...info }));
             renderHelperTable('helper-telemetry-stage-tbody', stageList, (s) =>
                 `<tr>
-                    <td>${escapeHtml(STAGE_LABELS[s.stage] || s.stage)}</td>
+                    <td>${escapeHtml(STAGE_LABELS[s.stage] ? translate(...STAGE_LABELS[s.stage]) : s.stage)}</td>
                     <td>${fmtNum(s.calls)}</td>
                     <td>${fmtNum(s.prompt_tokens)}</td>
                     <td>${fmtNum(s.completion_tokens)}</td>
@@ -2403,14 +2414,14 @@
                         labels: t.dates || [],
                         datasets: [
                             {
-                                label: 'AI Committed',
+                                label: translate('teamStats.helperDash.aiRatioAi', 'AI Committed'),
                                 data: t.ai_committed || [],
                                 backgroundColor: toRgba(teamColorPalette[0], 0.7),
                                 borderColor: teamColorPalette[0],
                                 borderWidth: 1,
                             },
                             {
-                                label: 'Manual',
+                                label: translate('teamStats.helperDash.aiRatioManual', 'Manual'),
                                 data: t.manual_created || [],
                                 backgroundColor: toRgba(teamColorPalette[3], 0.7),
                                 borderColor: teamColorPalette[3],

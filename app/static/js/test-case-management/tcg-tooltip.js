@@ -8,6 +8,34 @@
 
 // NOTE: currentTooltip, tooltipTimeout, currentHoveredElement, isHoveringTooltip, isInitialized 已統一定義於 Section 2
 
+function getTCGTooltipText(key, fallback, params = {}) {
+    return window.i18n ? window.i18n.t(key, params, fallback) : fallback;
+}
+
+function renderTCGTooltipLoading(tooltip) {
+    const loadingText = getTCGTooltipText('common.loading', '載入中...');
+    tooltip.innerHTML = `
+        <div class="d-flex align-items-center">
+            <div class="spinner-border spinner-border-sm me-2" role="status">
+                <span class="visually-hidden">${escapeHtml(loadingText)}</span>
+            </div>
+            <span>${escapeHtml(loadingText)}</span>
+        </div>
+    `;
+}
+
+function renderTCGTooltipError(tooltip, tcgNumber = '') {
+    const message = tcgNumber
+        ? getTCGTooltipText('userStoryMap.jiraInfoUnavailable', `無法取得 ${tcgNumber} 的資訊`, {ticket: tcgNumber})
+        : getTCGTooltipText('userStoryMap.loadFailed', '載入失敗');
+    tooltip.innerHTML = `
+        <div class="${tcgNumber ? 'text-muted' : 'text-danger'} small">
+            <i class="fas fa-${tcgNumber ? 'exclamation-triangle' : 'times-circle'} me-1"></i>
+            ${escapeHtml(message)}
+        </div>
+    `;
+}
+
 // 建立 TCG tooltip 元素
 function createTCGTTooltip() {
     // 如果已經存在，先移除
@@ -52,14 +80,7 @@ async function showTCGTTooltip(tcgNumber, element) {
     const tooltip = createTCGTTooltip();
 
     // 設定載入狀態
-    tooltip.innerHTML = `
-        <div class="d-flex align-items-center">
-            <div class="spinner-border spinner-border-sm me-2" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-            <span>載入中...</span>
-        </div>
-    `;
+    renderTCGTooltipLoading(tooltip);
 
     // 顯示 tooltip
     tooltip.style.display = 'block';
@@ -83,12 +104,7 @@ async function showTCGTTooltip(tcgNumber, element) {
             console.log('Tooltip HTML 已設定'); // 除錯用
         } else {
             // 顯示錯誤訊息
-            tooltip.innerHTML = `
-                <div class="text-muted small">
-                    <i class="fas fa-exclamation-triangle me-1"></i>
-                    無法取得 ${tcgNumber} 的資訊
-                </div>
-            `;
+            renderTCGTooltipError(tooltip, tcgNumber);
         }
     } catch (error) {
         console.error('TCG tooltip 載入失敗:', error);
@@ -98,12 +114,7 @@ async function showTCGTTooltip(tcgNumber, element) {
             return;
         }
 
-        tooltip.innerHTML = `
-            <div class="text-danger small">
-                <i class="fas fa-times-circle me-1"></i>
-                載入失敗
-            </div>
-        `;
+        renderTCGTooltipError(tooltip);
     }
 
     // 重新定位 (內容改變後)
@@ -145,7 +156,7 @@ function hideTCGTTooltip(immediate = false) {
 async function fetchJIRATicketInfo(tcgNumber) {
     try {
         // 使用 API 端點取得 ticket 資訊
-        const response = await window.AuthClient.fetch(`/api/jira/ticket/${tcgNumber}`, {
+        const response = await window.AuthClient.fetch(`/api/jira/ticket/${encodeURIComponent(tcgNumber)}`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json'
@@ -173,10 +184,11 @@ async function fetchJIRATicketInfo(tcgNumber) {
 
 // 格式化 ticket tooltip 內容
 function formatTicketTooltip(tcgNumber, ticketData) {
-    const summary = ticketData.summary || '無標題';
-    const status = ticketData.status?.name || '未知狀態';
-    const assignee = ticketData.assignee?.displayName || '未指派';
+    const summary = ticketData.summary || getTCGTooltipText('testCase.batchCopy.untitled', '無標題');
+    const status = ticketData.status?.name || getTCGTooltipText('userStoryMap.unknownStatus', '未知狀態');
+    const assignee = ticketData.assignee?.displayName || getTCGTooltipText('userStoryMap.unassigned', '未指派');
     const url = ticketData.url || `https://jira.example.com/browse/${tcgNumber}`;
+    const safeUrl = /^https?:\/\//i.test(url) ? url : '#';
 
     let statusClass = 'status-todo';
     if (status.toLowerCase().includes('in progress')) {
@@ -188,26 +200,26 @@ function formatTicketTooltip(tcgNumber, ticketData) {
     return `
         <div class="tcg-tooltip-header">
             <div class="tcg-ticket-info">
-                <span class="tcg-ticket-number">${tcgNumber}</span>
-                <span class="tcg-ticket-status ${statusClass}">${status}</span>
+                 <span class="tcg-ticket-number">${escapeHtml(tcgNumber)}</span>
+                 <span class="tcg-ticket-status ${statusClass}">${escapeHtml(status)}</span>
             </div>
         </div>
 
         <div class="tcg-ticket-content">
-            <div class="tcg-ticket-title">${summary}</div>
+             <div class="tcg-ticket-title">${escapeHtml(summary)}</div>
 
             <div class="tcg-ticket-meta">
                 <div class="tcg-assignee">
-                    <span class="tcg-label">負責人:</span>
-                    <span class="tcg-value">${assignee}</span>
+                     <span class="tcg-label">${escapeHtml(getTCGTooltipText('userStoryMap.assigneeLabel', '負責人:'))}</span>
+                     <span class="tcg-value">${escapeHtml(assignee)}</span>
                 </div>
             </div>
         </div>
 
         <div class="tcg-tooltip-footer">
-            <a href="${url}" target="_blank" class="tcg-jira-link">
+             <a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" class="tcg-jira-link">
                 <i class="fas fa-external-link-alt me-1"></i>
-                在 JIRA 中檢視
+                 ${escapeHtml(getTCGTooltipText('userStoryMap.viewInJira', '在 JIRA 中檢視'))}
             </a>
         </div>
     `;
@@ -354,14 +366,7 @@ async function showTCGPreviewForModal() {
     `;
 
     // 設定載入狀態
-    tooltip.innerHTML = `
-        <div class="d-flex align-items-center">
-            <div class="spinner-border spinner-border-sm me-2" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-            <span>載入中...</span>
-        </div>
-    `;
+    renderTCGTooltipLoading(tooltip);
 
     document.body.appendChild(tooltip);
 
@@ -385,7 +390,7 @@ async function showTCGPreviewForModal() {
 
     try {
         // 從 JIRA 取得 ticket 資訊
-        const response = await window.AuthClient.fetch(`/api/jira/ticket/${tcgNumber}`, {
+        const response = await window.AuthClient.fetch(`/api/jira/ticket/${encodeURIComponent(tcgNumber)}`, {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' }
         });
@@ -395,87 +400,79 @@ async function showTCGPreviewForModal() {
             console.log('JIRA 資料:', ticketData); // 調試用
 
             // 格式化 tooltip 內容
-            const summary = ticketData.summary || '無標題';
-            const status = ticketData.status?.name || '未知狀態';
-            const assignee = ticketData.assignee?.displayName || '未指派';
+            const summary = ticketData.summary || getTCGTooltipText('testCase.batchCopy.untitled', '無標題');
+            const status = ticketData.status?.name || getTCGTooltipText('userStoryMap.unknownStatus', '未知狀態');
+            const assignee = ticketData.assignee?.displayName || getTCGTooltipText('userStoryMap.unassigned', '未指派');
             const created = ticketData.created || '';
             const updated = ticketData.updated || '';
 
             // 格式化日期
-            let createdDate = '未知';
+            let createdDate = getTCGTooltipText('userStoryMap.unknownStatus', '未知');
             let updatedDate = '';
             if (created) {
                 try {
-                    createdDate = new Date(created).toLocaleDateString('zh-TW');
+                    createdDate = new Date(created).toLocaleDateString();
                 } catch (e) {}
             }
             if (updated) {
                 try {
-                    updatedDate = new Date(updated).toLocaleDateString('zh-TW');
+                    updatedDate = new Date(updated).toLocaleDateString();
                 } catch (e) {}
             }
 
             const jiraUrl = ticketData.url || `https://jira.example.com/browse/${tcgNumber}`;
+            const safeJiraUrl = /^https?:\/\//i.test(jiraUrl) ? jiraUrl : '#';
 
-            tooltip.innerHTML = `
+            const tooltipHtml = `
                 <div class="jira-tooltip-content">
                     <div class="mb-2">
                         <div class="fw-bold">
-                            <a href="${jiraUrl}" target="_blank" class="text-primary text-decoration-none" style="cursor: pointer;">
-                                ${tcgNumber}
+                             <a href="${escapeHtml(safeJiraUrl)}" target="_blank" rel="noopener noreferrer" class="text-primary text-decoration-none" style="cursor: pointer;">
+                                 ${escapeHtml(tcgNumber)}
                                 <i class="fas fa-external-link-alt ms-1" style="font-size: 0.8em;"></i>
                             </a>
                         </div>
-                        <div class="small text-muted mb-2" style="word-break: break-word; line-height: 1.3;">${summary}</div>
+                         <div class="small text-muted mb-2" style="word-break: break-word; line-height: 1.3;">${escapeHtml(summary)}</div>
                     </div>
                     <div class="row g-2">
                         <div class="col-6">
                             <div class="small">
                                 <i class="fas fa-tasks me-1"></i>
-                                <strong>狀態:</strong>
+                                 <strong>${escapeHtml(getTCGTooltipText('common.status', '狀態'))}:</strong>
                             </div>
-                            <div class="small text-muted">${status}</div>
+                             <div class="small text-muted">${escapeHtml(status)}</div>
                         </div>
                         <div class="col-6">
                             <div class="small">
                                 <i class="fas fa-user me-1"></i>
-                                <strong>執行者:</strong>
+                                 <strong>${escapeHtml(getTCGTooltipText('common.assignee', '執行者'))}:</strong>
                             </div>
-                            <div class="small text-muted" style="word-break: break-word;">${assignee}</div>
+                             <div class="small text-muted" style="word-break: break-word;">${escapeHtml(assignee)}</div>
                         </div>
                         <div class="col-6">
                             <div class="small">
                                 <i class="fas fa-calendar me-1"></i>
-                                <strong>建立:</strong>
+                                 <strong>${escapeHtml(getTCGTooltipText('tooltip.created', '建立'))}:</strong>
                             </div>
-                            <div class="small text-muted">${createdDate}</div>
+                             <div class="small text-muted">${escapeHtml(createdDate)}</div>
                         </div>
                         <div class="col-6">
                             <div class="small">
                                 <i class="fas fa-clock me-1"></i>
-                                <strong>更新:</strong>
+                                 <strong>${escapeHtml(getTCGTooltipText('tooltip.updated', '更新'))}:</strong>
                             </div>
-                            <div class="small text-muted">${updatedDate || '無'}</div>
+                             <div class="small text-muted">${escapeHtml(updatedDate || getTCGTooltipText('common.none', '無'))}</div>
                         </div>
                     </div>
                 </div>
             `;
+            tooltip.innerHTML = tooltipHtml;
         } else {
-            tooltip.innerHTML = `
-                <div class="text-muted small">
-                    <i class="fas fa-exclamation-triangle me-1"></i>
-                    無法取得 ${tcgNumber} 的資訊
-                </div>
-            `;
+            renderTCGTooltipError(tooltip, tcgNumber);
         }
     } catch (error) {
         console.error('JIRA 請求失敗:', error);
-        tooltip.innerHTML = `
-            <div class="text-danger small">
-                <i class="fas fa-times-circle me-1"></i>
-                載入失敗
-            </div>
-        `;
+        renderTCGTooltipError(tooltip);
     }
 
     // 點擊其他地方關閉

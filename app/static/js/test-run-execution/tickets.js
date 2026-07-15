@@ -123,7 +123,7 @@ async function loadBugTickets(itemId) {
         
         bugTicketsLoading.style.display = 'none';
         bugTicketsEmpty.style.display = 'block';
-        bugTicketsEmpty.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i><span data-i18n="testRun.loadBugTicketsFailed">載入 Bug Tickets 失敗</span>';
+        bugTicketsEmpty.innerHTML = `<i class="fas fa-exclamation-triangle me-1"></i><span>${escapeHtml(treTranslate('testRun.loadBugTicketsFailed', '載入 Bug Tickets 失敗'))}</span>`;
         return [];
     }
 }
@@ -178,7 +178,7 @@ async function loadComment(testRunItemId) {
         console.error('載入 Comment 失敗:', error);
         const commentContent = document.getElementById('commentContent');
         if (commentContent) {
-            commentContent.innerHTML = '<span class="text-danger">載入失敗</span>';
+            commentContent.innerHTML = `<span class="text-danger">${escapeHtml(treTranslate('testRun.loadFailed', '載入失敗'))}</span>`;
             commentContent.removeAttribute('data-original-markdown');
         }
     }
@@ -225,14 +225,17 @@ async function editComment(testRunItemId) {
     commentContent.setAttribute('style', 'flex: 1; overflow-y: auto; display: flex; flex-direction: column;');
 
     // 替換成編輯模式
+    const commentPlaceholder = treTranslate('testRun.enterComment', '輸入註釋內容...');
+    const saveLabel = treTranslate('testRun.saveComment', '儲存');
+    const cancelLabel = treTranslate('testRun.cancelComment', '取消');
     commentContent.innerHTML = `
-        <textarea class="form-control mb-2" id="commentTextarea" rows="2" placeholder="輸入註釋內容..." style="flex: 1; resize: none; min-height: 60px;">${escapeHtml(currentComment)}</textarea>
+        <textarea class="form-control mb-2" id="commentTextarea" rows="2" placeholder="${escapeHtml(commentPlaceholder)}" style="flex: 1; resize: none; min-height: 60px;">${escapeHtml(currentComment)}</textarea>
         <div class="d-flex gap-2" style="flex-shrink: 0;">
             <button type="button" class="btn btn-primary" id="saveCommentBtn">
-                <i class="fas fa-save me-1"></i>儲存
+                <i class="fas fa-save me-1"></i>${escapeHtml(saveLabel)}
             </button>
             <button type="button" class="btn btn-secondary" id="cancelCommentBtn">
-                <i class="fas fa-times me-1"></i>取消
+                <i class="fas fa-times me-1"></i>${escapeHtml(cancelLabel)}
             </button>
         </div>
     `;
@@ -304,13 +307,13 @@ async function saveComment(testRunItemId, comment) {
 
         // 顯示成功訊息
         if (window.AppUtils && typeof window.AppUtils.showSuccess === 'function') {
-            window.AppUtils.showSuccess('註釋已儲存');
+            window.AppUtils.showSuccess(treTranslate('testRun.commentSaved', '註釋已儲存'));
         }
 
     } catch (error) {
         console.error('儲存 Comment 失敗:', error);
         if (window.AppUtils && typeof window.AppUtils.showError === 'function') {
-            window.AppUtils.showError('儲存註釋失敗: ' + error.message);
+            window.AppUtils.showError(treTranslate('testRun.saveCommentFailed', { error: error.message }, `儲存註釋失敗: ${error.message}`));
         }
     }
 }
@@ -344,12 +347,12 @@ async function addBugTicket() {
     const ticketNumber = cleanTicketNumber(rawTicketNumber);
 
     if (!ticketNumber) {
-        AppUtils.showError(window.i18n ? window.i18n.t('testRun.ticketNumberHelp') : '請輸入 JIRA Ticket 編號');
+        AppUtils.showError(treTranslate('testRun.ticketNumberHelp', '請輸入 JIRA Ticket 編號'));
         return;
     }
 
     if (!currentItemIdForBugTicket) {
-        AppUtils.showError('Missing item ID');
+        AppUtils.showError(treTranslate('testRun.missingItemId', 'Missing item ID'));
         return;
     }
 
@@ -366,7 +369,7 @@ async function addBugTicket() {
 
         if (!response.ok) {
             const error = await response.json();
-            throw new Error(error.detail || 'Failed to add bug ticket');
+            throw new Error(error.detail || treTranslate('testRun.addBugTicketFailed', '新增 Bug Ticket 失敗'));
         }
 
         // 關閉模態框並清空表單
@@ -376,11 +379,11 @@ async function addBugTicket() {
         // 重新載入 Bug Tickets 列表
         await loadBugTickets(currentItemIdForBugTicket);
 
-        AppUtils.showSuccess(window.i18n ? window.i18n.t('testRun.bugTicketAdded') : 'Bug Ticket 新增成功');
+        AppUtils.showSuccess(treTranslate('testRun.bugTicketAdded', 'Bug Ticket 新增成功'));
 
     } catch (error) {
         console.error('新增 Bug Ticket 失敗:', error);
-        AppUtils.showError(error.message || (window.i18n ? window.i18n.t('testRun.addBugTicketFailed') : '新增 Bug Ticket 失敗'));
+        AppUtils.showError(error.message || treTranslate('testRun.addBugTicketFailed', '新增 Bug Ticket 失敗'));
     }
 }
 
@@ -410,17 +413,17 @@ async function deleteBugTicket(itemId, ticketNumber) {
         });
         
         if (!response.ok) {
-            throw new Error('Failed to delete bug ticket');
+            throw new Error(treTranslate('testRun.deleteBugTicketFailed', '刪除 Bug Ticket 失敗'));
         }
         
         // 重新載入 Bug Tickets 列表
         await loadBugTickets(itemId);
         
-        AppUtils.showSuccess(window.i18n ? window.i18n.t('testRun.bugTicketDeleted') : 'Bug Ticket 已刪除');
+        AppUtils.showSuccess(treTranslate('testRun.bugTicketDeleted', 'Bug Ticket 已刪除'));
         
     } catch (error) {
         console.error('刪除 Bug Ticket 失敗:', error);
-        AppUtils.showError(error.message || (window.i18n ? window.i18n.t('testRun.deleteBugTicketFailed') : '刪除 Bug Ticket 失敗'));
+        AppUtils.showError(error.message || treTranslate('testRun.deleteBugTicketFailed', '刪除 Bug Ticket 失敗'));
     }
 }
 
@@ -446,7 +449,7 @@ function bindBugTicketEvents() {
                         document.getElementById('bugTicketNumber').focus();
                     }, 300);
                 } else {
-                    AppUtils.showError('請先選擇一個測試項目');
+                    AppUtils.showError(treTranslate('testRun.selectTestItem', '請先選擇一個測試項目'));
                 }
             });
         } else {
@@ -533,7 +536,7 @@ async function showBugTicketPreview(ticketNumber, triggerElement) {
     } catch (error) {
         console.error('打開 JIRA ticket 失敗:', error);
         // 如果出現錯誤，顯示提示訊息
-        alert('無法打開 JIRA ticket，請稍後重試');
+        alert(treTranslate('testRun.openJiraTicketFailed', '無法打開 JIRA ticket，請稍後重試'));
     }
 }
 
@@ -677,7 +680,8 @@ async function loadBugTicketsSummary() {
         console.error('載入失敗:', error);
         loadingEl.style.display = 'none';
         emptyEl.style.display = 'block';
-        emptyEl.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i><span class="text-danger">載入失敗: ' + error.message + '</span>';
+        const loadError = treTranslate('testRun.loadFailedWithError', { error: error.message }, `載入失敗: ${error.message}`);
+        emptyEl.innerHTML = `<i class="fas fa-exclamation-triangle me-2"></i><span class="text-danger">${escapeHtml(loadError)}</span>`;
     }
 }
 
@@ -751,7 +755,7 @@ function renderBugTicketsCards(summaryData, bugTicketsList) {
                             </h6>
                             <span class="badge ${badgeClass}">${ticketInfo.status.name}</span>
                             <p class="card-text mt-2">
-                                <small class="text-muted">${ticketInfo.summary || 'No summary available'}</small>
+                                <small class="text-muted">${ticketInfo.summary || escapeHtml(treTranslate('testRun.noSummaryAvailable', 'No summary available'))}</small>
                             </p>
                         </div>
                         <div class="col-md-8">
@@ -782,7 +786,7 @@ async function refreshBugTicketsStatus() {
     // 顯示重新整理進度
     const refreshBtn = document.querySelector('button[onclick="refreshBugTicketsStatus()"]');
     const originalHtml = refreshBtn.innerHTML;
-    refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>更新中...';
+    refreshBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i>${escapeHtml(treTranslate('testRun.refreshingBugStatus', '更新中...'))}`;
     refreshBtn.disabled = true;
     
     try {
@@ -803,11 +807,11 @@ async function refreshBugTicketsStatus() {
         
         // 重新渲染
         renderBugTicketsSummary(currentBugTicketsSummary);
-        AppUtils.showSuccess('Bug Tickets 狀態已更新');
+        AppUtils.showSuccess(treTranslate('testRun.bugStatusUpdated', 'Bug Tickets 狀態已更新'));
         
     } catch (error) {
         console.error('重新整理 Bug Tickets 狀態失敗:', error);
-        AppUtils.showError('更新狀態失敗: ' + error.message);
+        AppUtils.showError(treTranslate('testRun.refreshBugStatusFailed', { error: error.message }, `更新狀態失敗: ${error.message}`));
     } finally {
         refreshBtn.innerHTML = originalHtml;
         refreshBtn.disabled = false;

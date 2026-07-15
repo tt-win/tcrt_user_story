@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ i18n.t('testCase.referenceTestCasePopupTitle') if i18n else '參考測試案例' }} - Test Case Repository Web Tool{% endblock %}
+{% set page_title_i18n_key = "testCase.referenceTestCasePopupTitle" %}
 
 {% block head %}
 <link rel="stylesheet" href="/static/css/test-case-reference.css">

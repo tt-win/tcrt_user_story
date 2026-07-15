@@ -188,15 +188,16 @@ function renderTestRunItems() {
         if (!items.length) return;
         
         const displayName = getSectionDisplayName(sid, treSections);
+        const safeSectionId = escapeHtml(String(sid));
         
         const collapsed = sessionStorage.getItem(`tre-section-${sid}`) === 'collapsed';
         const caret = collapsed ? 'fa-chevron-right' : 'fa-chevron-down';
         const colspan = showCheckbox ? 7 : 6;
         rows.push(`
-            <tr class="tre-section-row" data-section-id="${sid}">
+            <tr class="tre-section-row" data-section-id="${safeSectionId}">
                 <td colspan="${colspan}">
                     <div class="d-flex align-items-center gap-2">
-                        <i class="fas ${caret} section-toggle" data-section-id="${sid}"></i>
+                        <i class="fas ${caret} section-toggle" data-section-id="${safeSectionId}"></i>
                         <span>${escapeHtml(displayName)}</span>
                         <span class="badge bg-light text-muted">${items.length}</span>
                     </div>
@@ -206,7 +207,7 @@ function renderTestRunItems() {
         items.forEach((item, idx) => {
             const rowHtml = createItemRow(item, idx + 1, canUpdate);
             const wrapped = collapsed ? rowHtml.replace('<tr ', '<tr style="display:none" ') : rowHtml;
-            rows.push(wrapped.replace('<tr ', `<tr data-section-id="${sid}" `));
+            rows.push(wrapped.replace('<tr ', `<tr data-section-id="${safeSectionId}" `));
         });
     });
 
@@ -363,23 +364,28 @@ function createItemRow(item, index, canUpdate) {
     const showCheckbox = shouldShowCheckbox(testRunConfig ? testRunConfig.status : 'draft');
     const hasExecutionHistory = item.executed_at !== null && item.executed_at !== undefined;
     const isDeleted = !!item.__testCaseDeleted;
-    const deletedBadge = `<span class="badge bg-danger-subtle text-danger ms-2">已刪除</span>`;
+    const deletedLabel = treTranslate('testRun.deleted', '已刪除');
+    const deletedTestCaseLabel = treTranslate('testRun.deletedTestCase', '測試案例已刪除');
+    const deletedBadge = `<span class="badge bg-danger-subtle text-danger ms-2">${escapeHtml(deletedLabel)}</span>`;
+    const safeItemId = escapeHtml(String(item.id));
+    const safeTestCaseNumber = escapeHtml(item.test_case_number || '');
+    const testCaseNumberArgument = escapeHtml(JSON.stringify(item.test_case_number || ''));
 
     const safeTitle = escapeHtml(item.title || '');
     const titleCellContent = isDeleted
-        ? `<span class="text-muted" title="${safeTitle || '測試案例已刪除'}">${safeTitle || '測試案例已刪除'}</span>${deletedBadge}`
-        : `<a href="#" class="text-decoration-none" onclick="navigateToTestCase('${item.test_case_number}'); return false;">${safeTitle}</a>`;
+        ? `<span class="text-muted" title="${safeTitle || escapeHtml(deletedTestCaseLabel)}">${safeTitle || escapeHtml(deletedTestCaseLabel)}</span>${deletedBadge}`
+        : `<a href="#" class="text-decoration-none" onclick="navigateToTestCase(${testCaseNumberArgument}); return false;">${safeTitle}</a>`;
 
     const priorityLabel = isDeleted ? '-' : (item.priority || 'Medium');
     const priorityBadgeClass = isDeleted ? 'badge bg-secondary-subtle text-muted priority-badge-lg border border-secondary-subtle' : 'badge bg-secondary priority-badge-lg';
 
     return `
-        <tr data-item-id="${item.id}">
+        <tr data-item-id="${safeItemId}">
             <td class="checkbox-cell">
-                <input type="checkbox" class="form-check-input test-run-item-checkbox" value="${item.id}">
+                <input type="checkbox" class="form-check-input test-run-item-checkbox" value="${safeItemId}">
             </td>
-            <td><code style="color: rgb(194, 54, 120); font-weight: 500;"><a href="#" class="text-decoration-none" style="color: rgb(194, 54, 120);" onclick="navigateToTestCase('${item.test_case_number}'); return false;">${escapeHtml(item.test_case_number)}</a></code></td>
-            <td class="text-truncate" title="${safeTitle || (isDeleted ? '測試案例已刪除' : '')}">${titleCellContent}</td>
+            <td><code style="color: rgb(194, 54, 120); font-weight: 500;"><a href="#" class="text-decoration-none" style="color: rgb(194, 54, 120);" onclick="navigateToTestCase(${testCaseNumberArgument}); return false;">${safeTestCaseNumber}</a></code></td>
+            <td class="text-truncate" title="${safeTitle || (isDeleted ? escapeHtml(deletedTestCaseLabel) : '')}">${titleCellContent}</td>
             <td><span class="${priorityBadgeClass}">${escapeHtml(priorityLabel)}</span></td>
             <td>
                 ${canUpdate ? `
@@ -395,7 +401,7 @@ function createItemRow(item, index, canUpdate) {
                         <option value="Skip" ${item.test_result === 'Skip' ? 'selected' : ''}>${escapeHtml(treTranslate('testRun.skip', 'Skip'))}</option>
                     </select>
                 ` : `
-                    <span class="badge result-badge-lg ${resultClass}">${resultText}</span>
+                    <span class="badge result-badge-lg ${resultClass}">${escapeHtml(resultText)}</span>
                 `}
             </td>
             <td>
@@ -405,13 +411,13 @@ function createItemRow(item, index, canUpdate) {
                            data-item-id="${item.id}"
                            data-assignee-selector
                            data-i18n-placeholder="testRun.enterAssigneeName"
-                           placeholder="${treTranslate('testRun.enterAssigneeName', '輸入執行者姓名')}"
+                           placeholder="${escapeHtml(treTranslate('testRun.enterAssigneeName', '輸入執行者姓名'))}"
                            onblur="updateAssignee(${item.id}, this.value)">
                 ` : `
-                    ${assigneeName}
+                    ${escapeHtml(assigneeName)}
                 `}
             </td>
-            <td class="small text-muted">${executedAt}</td>
+            <td class="small text-muted">${escapeHtml(executedAt)}</td>
         </tr>
     `;
 }
@@ -537,34 +543,35 @@ function showItemDetail(itemId) {
     const expectedResultsLabel = treTranslate('testRun.expectedResults', '預期結果');
     const minutesLabel = treTranslate('testRun.minutes', '分鐘');
     const isDeleted = !!item.__testCaseDeleted;
-    const titleValue = escapeHtml(item.title || (isDeleted ? '測試案例已刪除' : ''));
+    const deletedTestCaseLabel = treTranslate('testRun.deletedTestCase', '測試案例已刪除');
+    const titleValue = escapeHtml(item.title || (isDeleted ? deletedTestCaseLabel : ''));
     const priorityValue = isDeleted ? '-' : (item.priority || 'Medium');
-    const deletedNote = isDeleted ? `<span class="badge bg-danger-subtle text-danger ms-2">已刪除</span>` : '';
+    const deletedNote = isDeleted ? `<span class="badge bg-danger-subtle text-danger ms-2">${escapeHtml(treTranslate('testRun.deleted', '已刪除'))}</span>` : '';
     
     const content = `
         <div class="row">
             <div class="col-md-6">
-                <h6>${basicInfoLabel}</h6>
+                <h6>${escapeHtml(basicInfoLabel)}</h6>
                 <table class="table table-sm">
-                    <tr><td>${testCaseNumberLabel}</td><td><code style="color: rgb(194, 54, 120); font-weight: 500;">${escapeHtml(item.test_case_number)}</code></td></tr>
-                    <tr><td>${titleLabel}</td><td><span class="${isDeleted ? 'text-muted' : ''}">${titleValue || '-'}</span>${deletedNote}</td></tr>
-                    <tr><td>${priorityLabel}</td><td>${escapeHtml(priorityValue)}</td></tr>
-                    <tr><td>${testResultLabel}</td><td><span class="badge ${getResultClass(item.test_result)}">${getResultText(item.test_result)}</span></td></tr>
+                    <tr><td>${escapeHtml(testCaseNumberLabel)}</td><td><code style="color: rgb(194, 54, 120); font-weight: 500;">${escapeHtml(item.test_case_number)}</code></td></tr>
+                    <tr><td>${escapeHtml(titleLabel)}</td><td><span class="${isDeleted ? 'text-muted' : ''}">${titleValue || '-'}</span>${deletedNote}</td></tr>
+                    <tr><td>${escapeHtml(priorityLabel)}</td><td>${escapeHtml(priorityValue)}</td></tr>
+                    <tr><td>${escapeHtml(testResultLabel)}</td><td><span class="badge ${getResultClass(item.test_result)}">${escapeHtml(getResultText(item.test_result))}</span></td></tr>
                 </table>
             </div>
             <div class="col-md-6">
-                <h6>${executionInfoLabel}</h6>
+                <h6>${escapeHtml(executionInfoLabel)}</h6>
                 <table class="table table-sm">
-                    <tr><td>${executorLabel}</td><td>${escapeHtml(item.assignee_name || '-')}</td></tr>
-                    <tr><td>${executionTimeLabel}</td><td>${item.executed_at ? AppUtils.formatDate(item.executed_at, 'datetime') : '-'}</td></tr>
-                    <tr><td>${executionDurationLabel}</td><td>${item.execution_duration ? item.execution_duration + ' ' + minutesLabel : '-'}</td></tr>
-                    <tr><td>${attachmentCountLabel}</td><td>${item.attachment_count || 0}</td></tr>
+                    <tr><td>${escapeHtml(executorLabel)}</td><td>${escapeHtml(item.assignee_name || '-')}</td></tr>
+                    <tr><td>${escapeHtml(executionTimeLabel)}</td><td>${escapeHtml(item.executed_at ? AppUtils.formatDate(item.executed_at, 'datetime') : '-')}</td></tr>
+                    <tr><td>${escapeHtml(executionDurationLabel)}</td><td>${escapeHtml(item.execution_duration ? item.execution_duration + ' ' + minutesLabel : '-')}</td></tr>
+                    <tr><td>${escapeHtml(attachmentCountLabel)}</td><td>${escapeHtml(String(item.attachment_count || 0))}</td></tr>
                 </table>
             </div>
         </div>
-        ${!isDeleted && item.precondition ? `<div class="mt-3"><h6>${preconditionsLabel}</h6><p class="text-muted">${escapeHtml(item.precondition)}</p></div>` : ''}
-        ${!isDeleted && item.steps ? `<div class="mt-3"><h6>${testStepsLabel}</h6><p class="text-muted">${escapeHtml(item.steps).replace(/\n/g, '<br>')}</p></div>` : ''}
-        ${!isDeleted && item.expected_result ? `<div class="mt-3"><h6>${expectedResultsLabel}</h6><p class="text-muted">${escapeHtml(item.expected_result)}</p></div>` : ''}
+        ${!isDeleted && item.precondition ? `<div class="mt-3"><h6>${escapeHtml(preconditionsLabel)}</h6><p class="text-muted">${escapeHtml(item.precondition)}</p></div>` : ''}
+        ${!isDeleted && item.steps ? `<div class="mt-3"><h6>${escapeHtml(testStepsLabel)}</h6><p class="text-muted">${escapeHtml(item.steps).replace(/\n/g, '<br>')}</p></div>` : ''}
+        ${!isDeleted && item.expected_result ? `<div class="mt-3"><h6>${escapeHtml(expectedResultsLabel)}</h6><p class="text-muted">${escapeHtml(item.expected_result)}</p></div>` : ''}
     `;
     
     document.getElementById('item-detail-content').innerHTML = content;
@@ -789,11 +796,7 @@ function updateItemSelectionUI() {
     
     // 更新選中項目計數
     if (countDisplay) {
-        if (window.i18n && window.i18n.isReady()) {
-            countDisplay.textContent = window.i18n.t('testRun.selectedItemsCount', {count: selectedCount});
-        } else {
-            countDisplay.textContent = `已選取 ${selectedCount} 個項目`;
-        }
+        countDisplay.textContent = treTranslate('testRun.selectedItemsCount', { count: selectedCount }, `已選取 ${selectedCount} 個項目`);
         countDisplay.setAttribute('data-i18n-params', JSON.stringify({count: selectedCount}));
     }
 }
@@ -993,7 +996,8 @@ async function batchModifyItems(modifications) {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(`HTTP ${response.status}: ${errorData.detail || 'Unknown error'}`);
+            const reason = errorData.detail || treTranslate('testRun.unknownError', 'Unknown error');
+            throw new Error(`HTTP ${response.status}: ${reason}`);
         }
 
         // 解析API響應
@@ -1162,7 +1166,7 @@ async function batchDeleteItems() {
                         testRunItems.splice(idx, 1);
                     }
                 } else {
-                    let errorMessage = 'Unknown error';
+                    let errorMessage = treTranslate('testRun.unknownError', 'Unknown error');
                     try {
                         const errorData = await response.json();
                         if (typeof errorData.detail === 'string') {
@@ -1173,12 +1177,12 @@ async function batchDeleteItems() {
                             errorMessage = errorData.message;
                         }
                     } catch (e) {
-                        errorMessage = response.statusText || 'Request failed';
+                        errorMessage = response.statusText || treTranslate('testRun.requestFailed', 'Request failed');
                     }
-                    errorMessages.push(`項目 ${itemId}: ${errorMessage}`);
+                    errorMessages.push(treTranslate('testRun.itemError', { itemId, error: errorMessage }, `項目 ${itemId}: ${errorMessage}`));
                 }
             } catch (error) {
-                errorMessages.push(`項目 ${itemId}: ${error.message}`);
+                errorMessages.push(treTranslate('testRun.itemError', { itemId, error: error.message }, `項目 ${itemId}: ${error.message}`));
             }
         }
 
@@ -1251,7 +1255,7 @@ function navigateToTestCase(testCaseNumber) {
         if (Array.isArray(testRunItems)) {
             const item = testRunItems.find(it => it.test_case_number === testCaseNumber);
             if (item && item.__testCaseDeleted) {
-                AppUtils.showWarning('此測試案例已刪除');
+                AppUtils.showWarning(treTranslate('testRun.testCaseAlreadyDeleted', '此測試案例已刪除'));
                 return;
             }
         }
@@ -1407,7 +1411,7 @@ async function loadTestCaseDetail(testCaseNumber) {
         }
         const testCases = await response.json();
         if (!Array.isArray(testCases) || testCases.length === 0) {
-            throw new Error('找不到指定的測試案例');
+            throw new Error(treTranslate('errors.testCaseNotFound', '找不到指定的測試案例'));
         }
         const fallback = testCases.find(tc => tc.test_case_number === testCaseNumber) || testCases[0];
         setCachedTestCase(testCaseNumber, fallback);
@@ -1717,14 +1721,18 @@ function generateScrollableContentHtml(testCase) {
                                 default: iconClass = 'fas fa-file'; iconColor = 'text-secondary';
                             }
                             const attachmentToken = attachment.file_token || attachment.token || '';
-                            const attachmentName = attachment.name || ('附件 ' + (index + 1));
+                            const attachmentName = attachment.name || treTranslate('testRun.attachmentNumber', { number: index + 1 }, `附件 ${index + 1}`);
                             const attachmentUrl = attachment.url || '';
+                            const attachmentTitle = treTranslate('testRun.viewAttachment', { name: attachmentName }, `點擊查看附件: ${attachmentName}`);
+                            const attachmentArguments = [attachmentName, attachmentToken, attachmentUrl]
+                                .map(value => escapeHtml(JSON.stringify(String(value))))
+                                .join(', ');
                             return '<span class="d-inline-flex align-items-center me-3 mb-2 attachment-item" '
                                 + 'style="cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 0.25rem; transition: background-color 0.15s;" '
-                                + 'onclick="handleAttachmentClick(\'' + escapeHtml(attachmentName) + '\', \'' + attachmentToken + '\', \'' + attachmentUrl + '\')" '
+                                + 'onclick="handleAttachmentClick(' + attachmentArguments + ')" '
                                 + 'onmouseover="this.style.backgroundColor=\'var(--tr-bg-light)\'" '
                                 + 'onmouseout="this.style.backgroundColor=\'transparent\'" '
-                                + 'title="點擊查看附件: ' + escapeHtml(attachmentName) + '">'
+                                + 'title="' + escapeHtml(attachmentTitle) + '">'
                                 + '<i class="' + iconClass + ' ' + iconColor + ' me-1"></i>'
                                 + '<small style="text-decoration: underline; color: var(--tr-primary);">' + escapeHtml(attachmentName) + '</small>'
                                 + '</span>';
@@ -1755,7 +1763,7 @@ function renderModalHeaderResult(testCase) {
     const hasExecutionHistory = item && item.executed_at !== null && item.executed_at !== undefined;
 
     if (canEdit && item) {
-        container.innerHTML = `
+        const resultSelectHtml = `
             <select class="form-select form-select-sm result-selector-lg ${getResultClass(currentResult)}"
                     onchange="updateSelectClass(this); updateTestResult(${item.id}, this.value)">
                 ${!hasExecutionHistory ? `<option value="">${escapeHtml(treTranslate('testRun.notExecuted', 'Not Executed'))}</option>` : ''}
@@ -1768,6 +1776,7 @@ function renderModalHeaderResult(testCase) {
                 <option value="Skip" ${currentResult === 'Skip' ? 'selected' : ''}>${escapeHtml(treTranslate('testRun.skip', 'Skip'))}</option>
             </select>
         `;
+        container.innerHTML = resultSelectHtml;
         const select = container.querySelector('select');
         if (select) updateSelectClass(select);
     } else {
@@ -1819,8 +1828,8 @@ async function renderResultHistoryTimeline(testCase) {
             const time = r.changed_at ? AppUtils.formatDate(r.changed_at, 'datetime') : '';
             const from = r.prev_result ? getResultText(r.prev_result) : treTranslate('testRun.notExecuted', 'Not Executed');
             const to = r.new_result ? getResultText(r.new_result) : treTranslate('testRun.notExecuted', 'Not Executed');
-            const badgeFrom = `<span class="badge ${getResultClass(r.prev_result)}">${from}</span>`;
-            const badgeTo = `<span class="badge ${getResultClass(r.new_result)}">${to}</span>`;
+            const badgeFrom = `<span class="badge ${getResultClass(r.prev_result)}">${escapeHtml(from)}</span>`;
+            const badgeTo = `<span class="badge ${getResultClass(r.new_result)}">${escapeHtml(to)}</span>`;
             const who = r.changed_by_name || '';
             const reason = r.change_reason ? `<div class="text-muted small">${escapeHtml(r.change_reason)}</div>` : '';
             return `

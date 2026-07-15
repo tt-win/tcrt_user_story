@@ -154,7 +154,7 @@ class BaseAuthManager {
         console.log('[BaseAuthManager] 更新用戶資訊顯示:', userInfo);
         
         // 優先使用 Lark 名稱，否則使用 full_name 或 username
-        const displayName = userInfo.lark_name || userInfo.full_name || userInfo.name || userInfo.username || '使用者';
+        const displayName = userInfo.lark_name || userInfo.full_name || userInfo.name || userInfo.username || this.getI18nText('roles.user', '使用者');
         const role = userInfo.role || 'user';
         const teams = Array.isArray(userInfo.accessible_teams) ? userInfo.accessible_teams :
                      Array.isArray(userInfo.teams) ? userInfo.teams : [];
@@ -200,7 +200,7 @@ class BaseAuthManager {
             if (this.userInfoName.hasAttribute('data-i18n')) {
                 this.userInfoName.removeAttribute('data-i18n');
             }
-            const dropdownName = userInfo.full_name || userInfo.name || userInfo.username || '使用者';
+            const dropdownName = userInfo.full_name || userInfo.name || userInfo.username || this.getI18nText('roles.user', '使用者');
             this.userInfoName.textContent = dropdownName;
         }
         
@@ -208,7 +208,7 @@ class BaseAuthManager {
             if (this.userInfoEmail.hasAttribute('data-i18n')) {
                 this.userInfoEmail.removeAttribute('data-i18n');
             }
-            this.userInfoEmail.textContent = userInfo.email || '未設定';
+            this.userInfoEmail.textContent = userInfo.email || this.getI18nText('common.notSet', '未設定');
         }
         
         if (this.userInfoRole) {
@@ -225,7 +225,7 @@ class BaseAuthManager {
             if (teams.length > 0) {
                 this.userInfoTeams.textContent = teams.join(', ');
             } else {
-                this.userInfoTeams.textContent = '無';
+                this.userInfoTeams.textContent = this.getI18nText('common.none', '無');
             }
         }
 

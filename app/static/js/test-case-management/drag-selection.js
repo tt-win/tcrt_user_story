@@ -85,14 +85,15 @@ function handleSelectDragEnd(event) {
 
 async function saveBulkEditChanges() {
     if (bulkEditChanges.size === 0) {
-        AppUtils.showError('沒有要儲存的變更');
+        AppUtils.showError(window.i18n ? window.i18n.t('testCase.bulkEdit.noChanges', {}, '沒有要儲存的變更') : '沒有要儲存的變更');
         return;
     }
 
     const saveBtn = document.getElementById('saveBulkEditBtn');
     const originalText = saveBtn.innerHTML;
     saveBtn.disabled = true;
-    saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>儲存中...';
+    const savingText = window.i18n ? window.i18n.t('messages.saving', {}, '儲存中...') : '儲存中...';
+    saveBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>${savingText}`;
 
     try {
         let successCount = 0;
@@ -109,7 +110,9 @@ async function saveBulkEditChanges() {
                 // 找到原始測試案例
                 const originalTestCase = testCases.find(tc => tc.record_id === recordId);
                 if (!originalTestCase) {
-                    const errMsg = `找不到 record_id: ${recordId}`;
+                    const errMsg = window.i18n ?
+                        window.i18n.t('testCase.bulkEdit.recordNotFound', { recordId }, `找不到 record_id: ${recordId}`) :
+                        `找不到 record_id: ${recordId}`;
                     console.error(errMsg);
                     errors.push(errMsg);
                     errorCount++;
@@ -153,7 +156,7 @@ async function saveBulkEditChanges() {
                 // 呼叫 API 更新
                 const currentTeam = AppUtils.getCurrentTeam();
                 if (!currentTeam) {
-                    throw new Error('請先選擇團隊');
+                    throw new Error(window.i18n ? window.i18n.t('errors.pleaseSelectTeam', {}, '請先選擇團隊') : '請先選擇團隊');
                 }
 
                 console.log('Request body:', JSON.stringify(updateData, null, 2));
@@ -215,7 +218,9 @@ async function saveBulkEditChanges() {
                 successCount++;
 
             } catch (error) {
-                const errMsg = `更新 ${recordId} 失敗: ${error.message}`;
+                const errMsg = window.i18n ?
+                    window.i18n.t('testCase.bulkEdit.updateFailed', { recordId, reason: error.message }, `更新 ${recordId} 失敗: ${error.message}`) :
+                    `更新 ${recordId} 失敗: ${error.message}`;
                 console.error(errMsg, error);
                 errors.push(errMsg);
                 errorCount++;
@@ -228,9 +233,13 @@ async function saveBulkEditChanges() {
 
         // 顯示結果
         if (successCount > 0) {
-            let message = `儲存成功 ${successCount} 筆`;
+            let message = window.i18n ?
+                window.i18n.t('testCase.bulkEdit.saved', { count: successCount }, `儲存成功 ${successCount} 筆`) :
+                `儲存成功 ${successCount} 筆`;
             if (errorCount > 0) {
-                message += `，失敗 ${errorCount} 筆`;
+                message = window.i18n ?
+                    window.i18n.t('testCase.bulkEdit.savedWithFailures', { success: successCount, failed: errorCount }, `儲存成功 ${successCount} 筆，失敗 ${errorCount} 筆`) :
+                    `儲存成功 ${successCount} 筆，失敗 ${errorCount} 筆`;
                 console.warn('失敗詳情:', errors);
             }
             AppUtils.showSuccess(message);
@@ -253,14 +262,20 @@ async function saveBulkEditChanges() {
 
             // 不關閉 modal，讓用戶繼續編輯
         } else {
-            const errorMsg = '儲存失敗：' + (errors.length > 0 ? '\n' + errors.join('\n') : '所有資料都更新失敗');
+            const details = errors.length > 0 ? errors.join('\n') :
+                (window.i18n ? window.i18n.t('testCase.bulkEdit.allUpdatesFailed', {}, '所有資料都更新失敗') : '所有資料都更新失敗');
+            const errorMsg = window.i18n ?
+                window.i18n.t('testCase.bulkEdit.saveFailedDetails', { details }, `儲存失敗：\n${details}`) :
+                `儲存失敗：\n${details}`;
             console.error(errorMsg);
             AppUtils.showError(errorMsg);
         }
 
     } catch (error) {
         console.error('saveBulkEditChanges error:', error);
-        AppUtils.showError('儲存失敗: ' + error.message);
+        AppUtils.showError(window.i18n ?
+            window.i18n.t('testCase.bulkEdit.saveFailedWithReason', { reason: error.message }, `儲存失敗: ${error.message}`) :
+            `儲存失敗: ${error.message}`);
     } finally {
         saveBtn.disabled = false;
         saveBtn.innerHTML = originalText;

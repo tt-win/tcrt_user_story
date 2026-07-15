@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}團隊管理 - Test Case Repository Web Tool{% endblock %}
+{% set page_title_i18n_key = "team.management" %}
 
 {% block head %}
 <link rel="stylesheet" href="/static/css/team-management.css">
@@ -19,19 +19,6 @@
     <button type="button" class="btn btn-primary btn-sm" id="createTeamBtn">
         <i class="fas fa-plus me-1"></i><span data-i18n="team.createTeam">新增團隊</span>
     </button>
-    <!-- 匯入工具下拉選單 -->
-    <div class="btn-group" role="group" id="importMenuGroup">
-        <button type="button" class="btn btn-info btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-            <i class="fas fa-file-import me-1"></i><span>匯入工具</span>
-        </button>
-        <ul class="dropdown-menu">
-            <li>
-                <a class="dropdown-item" href="#" id="importUSMBtn">
-                    <i class="fas fa-project-diagram me-2"></i><span>匯入 USM</span>
-                </a>
-            </li>
-        </ul>
-    </div>
     <!-- 數據與記錄下拉選單 -->
     <div class="btn-group" role="group" id="dataMenuGroup">
         <button type="button" class="btn btn-info btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
@@ -173,7 +160,7 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="關閉"></button>
             </div>
             <div class="modal-body">
-                <p id="deleteTeamConfirmMessage" class="mb-0">確定要刪除團隊嗎？此操作無法復原。</p>
+                <p id="deleteTeamConfirmMessage" class="mb-0"></p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
@@ -402,7 +389,7 @@
 
                         <!-- 組織同步按鈕：分頁底部 -->
                         <div class="d-flex justify-content-end mt-3 pt-2 border-top">
-                            <div class="btn-group no-stretch" role="group" aria-label="Sync Actions">
+                            <div class="btn-group no-stretch" role="group" data-i18n-aria-label="common.actions" aria-label="Actions">
                                 <button type="button" class="btn btn-primary" id="startDeptSyncBtn">
                                     <i class="fas fa-sitemap me-2"></i><span data-i18n="orgSync.departmentsSync">部門同步</span>
                                 </button>
@@ -657,7 +644,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="orgInfraProviderModalTitle"><span data-i18n="orgAutomationInfra.addProvider">新增 Provider</span></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <form id="orgInfraProviderForm" class="provider-form">
@@ -727,7 +714,7 @@
                     <i class="fas fa-vial me-2"></i>
                     <span data-i18n="automationHub.providers.healthModalTitle">Connection test result</span>
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div id="orgInfraProviderHealthLoading" class="text-center py-4 d-none">
@@ -862,7 +849,7 @@
                     <p class="fw-bold mb-1" data-i18n="appToken.rawTokenWarning">Copy this token now. It will not be shown again.</p>
                     <div class="d-flex gap-2 align-items-center">
                         <code id="appTokenRawToken" class="text-break small flex-grow-1"></code>
-                        <button class="btn btn-sm btn-outline-primary" onclick="copyAppTokenRawToken()">
+                        <button class="btn btn-sm btn-outline-primary" onclick="copyAppTokenRawToken()" data-i18n-title="common.copy" title="複製">
                             <i class="fas fa-copy"></i>
                         </button>
                     </div>
@@ -1033,106 +1020,5 @@
     <span data-i18n="personnel.searchPlaceholder">搜尋使用者（名稱/Email）</span>
 </div>
 
-<!-- USM 匯入模態框 -->
-<div class="modal fade" id="usmImportModal" tabindex="-1" aria-labelledby="usmImportModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="usmImportModalLabel">
-                    <i class="fas fa-file-import me-2"></i>匯入 User Story Map
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <form id="usmImportForm">
-                    <!-- Lark URL 輸入 -->
-                    <div class="mb-3">
-                        <label for="larkUrlInput" class="form-label">
-                            <i class="fas fa-link me-2"></i>Lark 多維表格 URL
-                            <span class="text-danger">*</span>
-                        </label>
-                        <input 
-                            type="url" 
-                            class="form-control" 
-                            id="larkUrlInput" 
-                            placeholder="https://igxy0zaeo1r.sg.larksuite.com/wiki/..." 
-                            required
-                        >
-                        <small class="form-text text-muted">
-                            輸入要匯入的 Lark 多維表格分享連結
-                        </small>
-                    </div>
-
-                    <!-- 預覽按鈕 -->
-                    <div class="mb-3">
-                        <button type="button" class="btn btn-info btn-sm" id="preprocessLarkTableBtn">
-                            <i class="fas fa-cog me-1"></i>預處理
-                        </button>
-                        <span id="larkRecordCount" class="ms-2 text-muted small" style="display: none;"></span>
-                    </div>
-
-                    <!-- 根節點名稱 -->
-                    <div class="mb-3">
-                        <label for="rootNodeNameInput" class="form-label">
-                            <i class="fas fa-star me-2"></i>根節點名稱
-                            <span class="text-danger">*</span>
-                        </label>
-                        <input 
-                            type="text" 
-                            class="form-control" 
-                            id="rootNodeNameInput" 
-                            placeholder="輸入根節點的名稱"
-                            required
-                        >
-                        <small class="form-text text-muted">
-                            這將成為 User Story Map 的頂層節點名稱
-                        </small>
-                    </div>
-
-                    <!-- 團隊選擇 -->
-                    <div class="mb-3">
-                        <label for="targetTeamSelect" class="form-label">
-                            <i class="fas fa-users me-2"></i>目標團隊
-                            <span class="text-danger">*</span>
-                        </label>
-                        <select class="form-select" id="targetTeamSelect" required>
-                            <option value="">-- 請選擇團隊 --</option>
-                        </select>
-                        <small class="form-text text-muted">
-                            選擇要匯入到的團隊
-                        </small>
-                    </div>
-
-                    <!-- 映射說明 -->
-                    <div class="alert alert-info" role="alert">
-                        <h6 class="alert-heading">
-                            <i class="fas fa-info-circle me-2"></i>欄位映射
-                        </h6>
-                        <ul class="mb-0 small">
-                            <li><strong>Features</strong> → 節點標題</li>
-                            <li><strong>Criteria</strong> → 描述</li>
-                            <li><strong>As a</strong> → 使用者角色</li>
-                            <li><strong>I want</strong> → 需求描述</li>
-                            <li><strong>TCG</strong> → JIRA Tickets</li>
-                            <li><strong>Parent Tickets</strong> → 父節點關聯</li>
-                            <li><strong>最底層節點</strong> → User Story 類型</li>
-                            <li><strong>其他節點</strong> → Features 類型</li>
-                        </ul>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                    <i class="fas fa-times me-1"></i>取消
-                </button>
-                <button type="button" class="btn btn-primary" id="confirmUSMImportBtn">
-                    <i class="fas fa-file-import me-1"></i>開始匯入
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <script src="/static/js/personnel_management.js"></script>
-<script src="/static/js/usm_import.js"></script>
 {% endblock %}

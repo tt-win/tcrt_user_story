@@ -63,7 +63,7 @@ async function startModalTCGSearch() {
     const editorHtml = `
         <div class="tcg-inline-editor" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 1000; display: flex; align-items: center; padding: 4px 8px;" onclick="event.stopPropagation()">
             <input type="text" class="form-control form-control-sm tcg-search-input"
-                   placeholder="輸入 TCG 單號，以逗號分隔 (例: TCG-123, TCG-456)"
+                   placeholder="${escapeHtml(window.i18n ? window.i18n.t('testCase.tcgBatchInputPlaceholder') : '輸入 TCG 單號，以逗號分隔 (例: TCG-123, TCG-456)')}"
                    autocomplete="off"
                    onkeydown="handleModalTCGSearchKeydown(event)"
                    style="height: 28px; width: 100%; font-size: 0.75rem; padding: 0.25rem 0.375rem; margin: 0; border: 1px solid #dee2e6; box-sizing: border-box;">
@@ -151,11 +151,12 @@ function renderModalTCGDisplay() {
 
     if (!Array.isArray(modalTCGSelected) || modalTCGSelected.length === 0) {
         // 清除後留白，但保留點擊事件
-        container.innerHTML = '<span class="text-muted" style="font-size: 0.875rem;">點擊填寫 TCG 單號</span>';
+        const placeholder = window.i18n ? window.i18n.t('testCase.tcgBatchPlaceholder') : '點擊填寫 TCG 單號';
+        container.innerHTML = `<span class="text-muted" style="font-size: 0.875rem;">${escapeHtml(placeholder)}</span>`;
     } else {
         // 顯示 TCG 標籤，保留點擊事件
         const tcgHtml = modalTCGSelected.map(tcg =>
-            `<span class="tcg-tag">${tcg}</span>`
+            `<span class="tcg-tag">${escapeHtml(tcg)}</span>`
         ).join('');
         container.innerHTML = tcgHtml;
     }

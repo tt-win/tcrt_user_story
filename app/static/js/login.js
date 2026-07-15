@@ -24,6 +24,7 @@ class LoginManager {
     }
 
     async init() {
+        this.translateDynamicContent();
         const needsSetup = await this.checkSystemInitialization();
         if (needsSetup) {
             return;
@@ -105,7 +106,7 @@ class LoginManager {
         this.clearErrors();
 
         if (!username) {
-            this.showFieldError(this.usernameInput, 'Please enter username or email');
+            this.showFieldError(this.usernameInput, this.t('login.usernameRequired', 'Please enter username or email'));
             return;
         }
 
@@ -120,16 +121,16 @@ class LoginManager {
             const data = await response.json();
 
             if (!response.ok) {
-                throw new Error(data.detail || 'Unable to verify account status');
+                throw new Error(this.apiMessage(data, this.t('login.accountCheckFailed', 'Unable to verify account status')));
             }
 
             if (!data.user_exists) {
-                this.showFieldError(this.usernameInput, data.message || 'Corresponding account not found');
+                this.showFieldError(this.usernameInput, this.apiMessage(data, this.t('login.accountNotFound', 'Corresponding account not found')));
                 return;
             }
 
             if (!data.is_active) {
-                this.showAlert(data.message || 'Account has been deactivated, please contact administrator', 'danger');
+                this.showAlert(this.apiMessage(data, this.t('login.accountDeactivated', 'Account has been deactivated, please contact administrator')), 'danger');
                 return;
             }
 
@@ -153,7 +154,7 @@ class LoginManager {
 
         } catch (error) {
             console.error('登入前檢查失敗:', error);
-            this.showAlert(error.message || 'Pre-login check failed, please try later', 'danger');
+            this.showAlert(error.message || this.t('login.preLoginFailed', 'Pre-login check failed, please try later'), 'danger');
         } finally {
             this.setLoading(false);
         }
@@ -168,13 +169,13 @@ class LoginManager {
         this.clearErrors();
 
         if (!username) {
-            this.showAlert('Please enter username first', 'danger');
+            this.showAlert(this.t('login.usernameFirst', 'Please enter username first'), 'danger');
             this.switchToStep(1, { focus: true });
             return;
         }
 
         if (!password) {
-            this.showFieldError(this.passwordInput, 'Please enter password');
+            this.showFieldError(this.passwordInput, this.t('login.passwordRequired', 'Please enter password'));
             return;
         }
 
@@ -201,7 +202,7 @@ class LoginManager {
                 });
 
                 if (!challengeResponse.ok) {
-                    throw new Error('Failed to get challenge');
+                    throw new Error(this.t('login.challengeFailed', 'Failed to get challenge'));
                 }
 
                 const challengeData = await challengeResponse.json();
@@ -260,7 +261,7 @@ class LoginManager {
                     localStorage.setItem('user_role', data.user.role);
                 }
 
-                this.showAlert('Login successful! Redirecting...', 'success');
+                this.showAlert(this.t('login.successRedirecting', 'Login successful! Redirecting...'), 'success');
                 setTimeout(() => {
                     const urlParams = new URLSearchParams(window.location.search);
                     const redirectTo = urlParams.get('redirect') || '/';
@@ -273,7 +274,7 @@ class LoginManager {
 
         } catch (error) {
             console.error('登入請求失敗:', error);
-            this.showAlert('Network error, check connection and retry', 'danger');
+            this.showAlert(this.t('login.networkError', 'Network error, check connection and retry'), 'danger');
         } finally {
             this.setLoading(false);
         }
@@ -282,20 +283,20 @@ class LoginManager {
     handleLoginError(status, data) {
         switch (status) {
             case 401:
-                this.showAlert('Username or password incorrect', 'danger');
+                this.showAlert(this.t('login.invalidCredentials', 'Username or password incorrect'), 'danger');
                 this.passwordInput.focus();
                 break;
             case 403:
-                this.showAlert('Account deactivated, contact administrator', 'warning');
+                this.showAlert(this.t('login.accountDeactivatedShort', 'Account deactivated, contact administrator'), 'warning');
                 break;
             case 429:
-                this.showAlert('Too many login attempts, try later', 'warning');
+                this.showAlert(this.t('login.tooManyAttempts', 'Too many login attempts, try later'), 'warning');
                 break;
             case 500:
-                this.showAlert('Server error, contact administrator', 'danger');
+                this.showAlert(this.t('login.serverError', 'Server error, contact administrator'), 'danger');
                 break;
             default:
-                this.showAlert(data?.detail || 'Login failed, please retry', 'danger');
+                this.showAlert(data?.detail || this.t('login.failed', 'Login failed, please retry'), 'danger');
         }
     }
 
@@ -340,10 +341,11 @@ class LoginManager {
         if (!this.alertContainer) return;
         const alert = document.createElement('div');
         alert.className = `alert alert-${type} alert-floating alert-dismissible fade show`;
+        const closeLabel = this.escapeHtml(this.t('common.close', 'Close'));
         alert.innerHTML = `
             <i class="fas fa-${this.getAlertIcon(type)} me-2"></i>
             ${this.escapeHtml(message)}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="${closeLabel}"></button>
         `;
         this.alertContainer.appendChild(alert);
         setTimeout(() => {
@@ -368,7 +370,7 @@ class LoginManager {
             const response = await fetch('/api/system/initialization-check');
             const data = await response.json();
             if (data.needs_setup) {
-                this.showAlert('System needs initialization, redirecting to setup...', 'info');
+                this.showAlert(this.t('login.setupRequired', 'System needs initialization, redirecting to setup...'), 'info');
                 setTimeout(() => {
                     window.location.href = '/setup';
                 }, 1200);
@@ -390,18 +392,9 @@ class LoginManager {
             this.togglePasswordBtn.classList.toggle('d-none', !isStep2);
         }
 
-        if (this.stepIndicator) {
-            if (isStep2) {
-                const displayName = this.selectedAccount?.full_name || this.selectedAccount?.username || '';
-                const suffix = displayName ? `(${this.escapeHtml(displayName)})` : '';
-                this.stepIndicator.innerHTML = `<i class="fas fa-circle me-2"></i>Step 2: Enter Password ${suffix}`;
-            } else {
-                this.stepIndicator.innerHTML = '<i class="fas fa-circle me-2"></i>Step 1: Enter Account';
-            }
-        }
+        this.renderStepText();
 
         if (isStep2) {
-            this.buttonText.innerHTML = '<i class="fas fa-sign-in-alt me-2"></i>登入';
             if (options.focus) {
                 setTimeout(() => this.passwordInput?.focus(), 60);
             }
@@ -412,10 +405,26 @@ class LoginManager {
                 this.selectedAccount = null;
             }
             this.passwordInput.value = '';
-            this.buttonText.innerHTML = '<i class="fas fa-arrow-right me-2"></i>下一步';
             if (options.focus !== false) {
                 setTimeout(() => this.usernameInput?.focus(), 60);
             }
+        }
+    }
+
+    renderStepText() {
+        const isStep2 = this.currentStep === 2;
+        if (this.stepIndicator) {
+            const displayName = this.selectedAccount?.full_name || this.selectedAccount?.username || '';
+            const suffix = isStep2 && displayName ? ` (${this.escapeHtml(displayName)})` : '';
+            const key = isStep2 ? 'login.stepPassword' : 'login.stepAccount';
+            const fallback = isStep2 ? 'Step 2: Enter Password' : 'Step 1: Enter Account';
+            this.stepIndicator.innerHTML = `<i class="fas fa-circle me-2"></i>${this.escapeHtml(this.t(key, fallback))}${suffix}`;
+        }
+        if (this.buttonText) {
+            const icon = isStep2 ? 'fa-sign-in-alt' : 'fa-arrow-right';
+            const key = isStep2 ? 'login.submit' : 'login.next';
+            const fallback = isStep2 ? 'Log In' : 'Next';
+            this.buttonText.innerHTML = `<i class="fas ${icon} me-2"></i>${this.escapeHtml(this.t(key, fallback))}`;
         }
     }
 
@@ -428,9 +437,27 @@ class LoginManager {
             "'": '&#039;'
         }[m]));
     }
+
+    t(key, fallback, params = {}) {
+        return window.i18n?.t(key, params, fallback) || fallback;
+    }
+
+    apiMessage(payload, fallback = '') {
+        return window.AppUtils?.getApiMessage
+            ? window.AppUtils.getApiMessage(payload, fallback)
+            : (payload?.message || payload?.detail?.message || payload?.detail || fallback);
+    }
+
+    translateDynamicContent() {
+        document.title = this.t('login.pageTitle', 'Login - Test Case Repository Web Tool');
+        this.renderStepText();
+    }
 }
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-    new LoginManager();
+    window.loginManager = new LoginManager();
 });
+
+document.addEventListener('i18nReady', () => window.loginManager?.translateDynamicContent());
+document.addEventListener('languageChanged', () => window.loginManager?.translateDynamicContent());

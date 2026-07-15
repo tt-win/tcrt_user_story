@@ -179,7 +179,8 @@
     const iconMap = { success: 'fa-circle-check', danger: 'fa-circle-xmark', warning: 'fa-triangle-exclamation', info: 'fa-circle-info' };
     const toast = document.createElement('div');
     toast.className = `qa-helper-toast qa-helper-toast-${level}`;
-    toast.innerHTML = `<i class="fas ${iconMap[level] || iconMap.info} me-2"></i><span>${escapeHtml(message)}</span><button type="button" class="btn-close btn-close-sm ms-auto" aria-label="Close"></button>`;
+    const closeLabel = escapeHtml(t('common.close', {}, 'Close'));
+    toast.innerHTML = `<i class="fas ${iconMap[level] || iconMap.info} me-2"></i><span>${escapeHtml(message)}</span><button type="button" class="btn-close btn-close-sm ms-auto" aria-label="${closeLabel}"></button>`;
     toast.querySelector('.btn-close').addEventListener('click', () => dismissToast(toast));
     container.appendChild(toast);
     requestAnimationFrame(() => toast.classList.add('is-visible'));

@@ -14,19 +14,20 @@ class FirstLoginSetupManager {
     }
 
     async init() {
+        this.translateDynamicContent();
         if (await this.checkSystemInitialization()) {
             return;
         }
 
         this.username = new URLSearchParams(window.location.search).get('username') || '';
         if (!this.username) {
-            this.showAlert('danger', 'Missing user information, please start from login page');
+            this.showAlert('danger', this.t('firstLogin.missingUser', 'Missing user information, please start from login page'));
             this.disableForm();
             return;
         }
 
         this.usernameInput.value = this.username;
-        this.infoBox.innerHTML = `<strong>Account:</strong> ${this.escapeHtml(this.username)}<br>Please set the new password for the account.`;
+        this.updateAccountInfo();
 
         this.attachEvents();
     }
@@ -124,7 +125,7 @@ class FirstLoginSetupManager {
         const confirmPassword = this.confirmPasswordInput.value.trim();
 
         if (!newPassword || newPassword.length < 8) {
-            this.showAlert('danger', 'New password must be at least 8 characters long');
+            this.showAlert('danger', this.t('firstLogin.passwordTooShort', 'New password must be at least 8 characters long'));
             this.newPasswordInput.focus();
             return;
         }
@@ -134,12 +135,12 @@ class FirstLoginSetupManager {
         const hasLower = /[a-z]/.test(newPassword);
         const hasDigit = /\d/.test(newPassword);
         if (!hasUpper || !hasLower || !hasDigit) {
-            this.showAlert('warning', 'Recommended to use a mix of uppercase, lowercase, and numbers for better security');
+            this.showAlert('warning', this.t('firstLogin.complexityWarning', 'Recommended to use a mix of uppercase, lowercase, and numbers for better security'));
             // 不強制，但可以選擇是否繼續
         }
 
         if (newPassword !== confirmPassword) {
-            this.showAlert('danger', 'The two password entries do not match');
+            this.showAlert('danger', this.t('firstLogin.passwordMismatch', 'The two password entries do not match'));
             this.confirmPasswordInput.focus();
             return;
         }
@@ -160,10 +161,14 @@ class FirstLoginSetupManager {
             const data = await response.json();
 
             if (!response.ok) {
-                throw new Error(data.detail || 'Setup failed, please check input data');
+                const fallback = this.t('firstLogin.setupFailedInput', 'Setup failed, please check input data');
+                const message = window.AppUtils?.getApiMessage
+                    ? window.AppUtils.getApiMessage(data, fallback)
+                    : (data.detail?.message || data.detail || fallback);
+                throw new Error(message);
             }
 
-            this.showAlert('success', 'Password set successfully! Logging you in...', 2000);
+            this.showAlert('success', this.t('firstLogin.successLoggingIn', 'Password set successfully! Logging you in...'), 2000);
 
             if (window.AuthClient && data.access_token) {
                 window.AuthClient.setToken(data.access_token, data.expires_in);
@@ -174,7 +179,7 @@ class FirstLoginSetupManager {
             }, 800);
         } catch (error) {
             console.error('首次登入設定失敗', error);
-            this.showAlert('danger', error.message || 'Setup failed, please try later');
+            this.showAlert('danger', error.message || this.t('firstLogin.setupFailed', 'Setup failed, please try later'));
         } finally {
             this.setLoading(false);
         }
@@ -198,9 +203,10 @@ class FirstLoginSetupManager {
         if (!this.alertContainer) return;
         const wrapper = document.createElement('div');
         wrapper.className = `alert alert-${level} alert-dismissible fade show alert-floating`;
+        const closeLabel = this.escapeHtml(this.t('common.close', 'Close'));
         wrapper.innerHTML = `
             <div>${this.escapeHtml(message)}</div>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="${closeLabel}"></button>
         `;
         this.alertContainer.appendChild(wrapper);
         if (timeout > 0) {
@@ -216,8 +222,27 @@ class FirstLoginSetupManager {
             '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
         }[m]));
     }
+
+    t(key, fallback, params = {}) {
+        return window.i18n?.t(key, params, fallback) || fallback;
+    }
+
+    updateAccountInfo() {
+        if (!this.username) return;
+        const accountLabel = this.escapeHtml(this.t('firstLogin.accountLabel', 'Account:'));
+        const instruction = this.escapeHtml(this.t('firstLogin.accountInstruction', 'Please set the new password for the account.'));
+        this.infoBox.innerHTML = `<strong>${accountLabel}</strong> ${this.escapeHtml(this.username)}<br>${instruction}`;
+    }
+
+    translateDynamicContent() {
+        document.title = this.t('firstLogin.pageTitle', 'First Login Setup - Test Case Repository');
+        this.updateAccountInfo();
+    }
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-    new FirstLoginSetupManager();
+    window.firstLoginSetupManager = new FirstLoginSetupManager();
 });
+
+document.addEventListener('i18nReady', () => window.firstLoginSetupManager?.translateDynamicContent());
+document.addEventListener('languageChanged', () => window.firstLoginSetupManager?.translateDynamicContent());

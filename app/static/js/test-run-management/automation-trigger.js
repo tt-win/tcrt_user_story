@@ -46,6 +46,16 @@
     }
   }
 
+  function translate(key, fallback, params = {}) {
+    try {
+      if (window.i18n && typeof window.i18n.t === 'function') {
+        const value = window.i18n.t(key, params);
+        if (value && value !== key) return value;
+      }
+    } catch (_) {}
+    return fallback;
+  }
+
   function getSuiteSummary(suiteId) {
     const normalizedId = Number(suiteId);
     return (_currentSuiteSummaries || []).find((suite) => Number(suite.id) === normalizedId) || null;
@@ -53,8 +63,10 @@
 
   function describeSuite(suiteId) {
     const suite = getSuiteSummary(suiteId);
-    if (!suite) return `Suite #${suiteId}`;
-    const scriptCount = typeof suite.script_count === 'number' ? ` (${suite.script_count} scripts)` : '';
+    if (!suite) return translate('testRun.sets.detail.automationSuiteFallback', 'Suite #{id}', { id: suiteId });
+    const scriptCount = typeof suite.script_count === 'number'
+      ? ` (${translate('testRun.sets.common.scriptsCount', '{count} scripts', { count: suite.script_count })})`
+      : '';
     return `${suite.name}${scriptCount}`;
   }
 
@@ -76,7 +88,7 @@
   async function runAutomationSuite(suiteId, button) {
     const normalizedId = Number(suiteId);
     if (!normalizedId || !_currentSuiteIds.includes(normalizedId)) {
-      showToast('error', 'Automation suite 不在目前 Set 中');
+      showToast('error', translate('testRun.sets.detail.automationSuiteNotInSet', 'Automation suite 不在目前 Set 中'));
       return;
     }
     await runAutomation([normalizedId], { single: true, button });
@@ -84,11 +96,11 @@
 
   async function runAutomation(suiteIds, options = {}) {
     if (!_currentSetId) {
-      showToast('error', 'Set 尚未載入，請重整頁面');
+      showToast('error', translate('testRun.sets.detail.setNotLoaded', 'Set 尚未載入，請重整頁面'));
       return;
     }
     if (!Array.isArray(suiteIds) || suiteIds.length === 0) {
-      showToast('error', 'Set 沒有關聯的 automation suite');
+      showToast('error', translate('testRun.sets.detail.automationSuitesEmpty', 'Set 沒有關聯的 automation suite'));
       return;
     }
 
@@ -100,12 +112,18 @@
     const singleSuiteName = single ? describeSuite(suiteIds[0]) : '';
     const confirmed = window.confirm(single
       ? (
-          window.i18n?.t('testRun.sets.detail.runAutomationSuiteConfirm', { name: singleSuiteName })
-          || `即將觸發「${singleSuiteName}」automation suite。\n確認後將送 CIProvider.trigger_run。`
+          translate(
+            'testRun.sets.detail.runAutomationSuiteConfirm',
+            `即將觸發「${singleSuiteName}」automation suite。\n確認後將送 CIProvider.trigger_run。`,
+            { name: singleSuiteName }
+          )
         )
       : (
-          `即將觸發 ${suiteIds.length} 個 automation suite。\n${suiteLines}\n` +
-          '確認後將對每個 suite 送 CIProvider.trigger_run。'
+          translate(
+            'testRun.sets.detail.runAutomationConfirm',
+            `即將觸發 ${suiteIds.length} 個 automation suite。\n${suiteLines}\n確認後將對每個 suite 送 CIProvider.trigger_run。`,
+            { count: suiteIds.length, suites: suiteLines }
+          )
         )
     );
     if (!confirmed) return;
@@ -133,17 +151,24 @@
         const payload = await response.json().catch(() => ({ detail: null }));
         // Surface the two structured environment errors with clear guidance.
         if (handleEnvironmentError(response.status, payload)) return;
-        throw new Error(errorMessageFromPayload(payload, 'Trigger 失敗'));
+        throw new Error(errorMessageFromPayload(payload, translate('testRun.sets.detail.runAutomationFailed', 'Trigger 失敗')));
       }
       const result = await response.json();
       const triggeredSuiteIds = result && result.triggered_suite_ids ? result.triggered_suite_ids : [];
       const runIds = result && result.run_ids ? result.run_ids : [];
       const successMessage = single
         ? (
-            window.i18n?.t('testRun.sets.detail.runAutomationSuiteSuccess', { name: singleSuiteName })
-            || `已觸發 ${singleSuiteName} automation suite run`
+            translate(
+              'testRun.sets.detail.runAutomationSuiteSuccess',
+              `已觸發 ${singleSuiteName} automation suite run`,
+              { name: singleSuiteName }
+            )
           )
-        : `已觸發 ${triggeredSuiteIds.length} 個 automation suite run（run_ids: ${runIds.join(', ')}）`;
+        : translate(
+            'testRun.sets.detail.runAutomationSuccess',
+            `已觸發 ${triggeredSuiteIds.length} 個 automation suite run（run_ids: ${runIds.join(', ')}）`,
+            { count: triggeredSuiteIds.length, runIds: runIds.join(', ') }
+          );
       showToast('success', successMessage);
       // Tell set-modal.js to refresh the recent-runs area
       document.dispatchEvent(new CustomEvent('automation:run-triggered', {
@@ -154,7 +179,7 @@
       }
     } catch (error) {
       const code = (error && error.detail && error.detail.code) || '';
-      const msg = (error && error.message) || 'Trigger 失敗';
+      const msg = (error && error.message) || translate('testRun.sets.detail.runAutomationFailed', 'Trigger 失敗');
       showToast('error', `${code ? `[${code}] ` : ''}${msg}`);
     } finally {
       updateButtonState();
@@ -173,9 +198,10 @@
     const code = detail.code;
 
     if (code === 'ENVIRONMENT_REQUIRED') {
-      const msg = (window.i18n && window.i18n.t)
-        ? window.i18n.t('testRun.sets.detail.runAutomationEnvRequired')
-        : 'Select an environment before running automation.';
+      const msg = translate(
+        'testRun.sets.detail.runAutomationEnvRequired',
+        'Select an environment before running automation.'
+      );
       showToast('error', detail.message ? `${msg} (${detail.message})` : msg);
       const selector = document.getElementById('setDetailEnvironmentSelector');
       if (selector && typeof selector.focus === 'function') selector.focus();
@@ -183,15 +209,18 @@
     }
 
     if (code === 'ENVIRONMENT_INCOMPLETE') {
-      const intro = (window.i18n && window.i18n.t)
-        ? window.i18n.t('testRun.sets.detail.runAutomationEnvIncomplete')
-        : 'The selected environment is missing required variables for some scripts. Open the Script view to configure them.';
+      const intro = translate(
+        'testRun.sets.detail.runAutomationEnvIncomplete',
+        'The selected environment is missing required variables for some scripts. Open the Script view to configure them.'
+      );
       const missing = (detail.missing && typeof detail.missing === 'object') ? detail.missing : {};
       const lines = Object.keys(missing).map((refPath) => {
         const keys = Array.isArray(missing[refPath]) ? missing[refPath].join(', ') : String(missing[refPath]);
-        const tmpl = (window.i18n && window.i18n.t)
-          ? window.i18n.t('testRun.sets.detail.runAutomationEnvIncompleteScript', { ref: refPath, keys })
-          : `${refPath}: missing ${keys}`;
+        const tmpl = translate(
+          'testRun.sets.detail.runAutomationEnvIncompleteScript',
+          `${refPath}: missing ${keys}`,
+          { ref: refPath, keys }
+        );
         // i18n template may not interpolate (depends on helper); fall back to manual.
         return (tmpl && tmpl.indexOf('{ref}') === -1) ? tmpl : `${refPath}: ${keys}`;
       });
@@ -222,7 +251,7 @@
     if (typeof window.currentTeamId !== 'undefined' && window.currentTeamId) {
       return window.currentTeamId;
     }
-    showToast('error', '找不到當前 team');
+    showToast('error', translate('messages.pleaseSelectTeam', '找不到當前 team'));
     return null;
   }
 

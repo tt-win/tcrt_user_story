@@ -191,7 +191,7 @@ function renderTestCaseSetOptions(scopeIdsOverride = null) {
     configSelect.innerHTML = sets
       .map(set => {
         const selected = selectedScopeIds.includes(Number(set.id)) ? 'selected' : '';
-        return `<option value="${escapeHtml(String(set.id))}" ${selected}>${escapeHtml(set.name || `Set #${set.id}`)}</option>`;
+        return `<option value="${escapeHtml(String(set.id))}" ${selected}>${escapeHtml(set.name || trmTranslate('testRun.sets.setNumber', `Set #${set.id}`, { id: set.id }))}</option>`;
       })
       .join('');
     configSelect.multiple = true;
@@ -211,7 +211,7 @@ function renderTestCaseSetOptions(scopeIdsOverride = null) {
       const selected = currentSetIdForCaseSelection && String(currentSetIdForCaseSelection) === String(set.id)
         ? 'selected'
         : '';
-      options.push(`<option value="${escapeHtml(String(set.id))}" ${selected}>${escapeHtml(set.name || `Set #${set.id}`)}</option>`);
+      options.push(`<option value="${escapeHtml(String(set.id))}" ${selected}>${escapeHtml(set.name || trmTranslate('testRun.sets.setNumber', `Set #${set.id}`, { id: set.id }))}</option>`);
     });
     modalSelect.innerHTML = options.join('');
     if (currentSetIdForCaseSelection && !scopeSet.has(String(currentSetIdForCaseSelection))) {
@@ -734,7 +734,7 @@ function renderCaseSelectList() {
   };
   let sectionsToRender = sortCaseSectionsForDisplay(filterSectionsByData(caseSelectData.sections || []));
   if (hasUnassigned) {
-    sectionsToRender = [...sectionsToRender, { id: 'unassigned', name: 'Unassigned', children: [] }];
+    sectionsToRender = [...sectionsToRender, { id: 'unassigned', name: trmTranslate('testRun.unassigned.label', 'Unassigned'), children: [] }];
   }
 
   function collectSubtreeCases(sec) {
@@ -747,13 +747,14 @@ function renderCaseSelectList() {
   }
 
   function sectionContentId(id) {
-    return `case-section-content-${id}`;
+    return `case-section-content-${String(id).replace(/[^A-Za-z0-9_-]/g, '-')}`;
   }
 
   function renderSectionTree(sections, level = 0) {
     if (!sections || sections.length === 0) return '';
     return sections.map(section => {
       const sid = section.id;
+      const safeSectionId = escapeHtml(String(sid));
       const isUnassigned = sid === 'unassigned';
       const sectionKey = `case-section-${sid}`;
       const isExpanded = sessionStorage.getItem(sectionKey) !== 'collapsed';
@@ -769,17 +770,17 @@ function renderCaseSelectList() {
           <div class="section-header d-flex align-items-center py-2 px-2 border-bottom" style="background-color: #e8eef5;">
             <input type="checkbox"
                    class="section-checkbox me-2"
-                   data-section-id="${sid}"
+                   data-section-id="${safeSectionId}"
                    ${allSelected ? 'checked' : ''}
                    ${someSelected && !allSelected ? 'data-indeterminate="true"' : ''}>
             <button class="btn btn-link btn-sm p-0 me-2 toggle-section-btn"
-                    data-section-id="${sid}"
+                     data-section-id="${safeSectionId}"
                     style="width: 24px; height: 24px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; text-decoration: none;"
                     onmouseover="this.style.textDecoration='none'"
                     onmouseout="this.style.textDecoration='none'">
               <i class="fas fa-chevron-${isExpanded ? 'down' : 'right'}"></i>
             </button>
-            <span class="fw-500 flex-grow-1">${escapeHtml(section.name || (isUnassigned ? 'Unassigned' : `Section #${sid}`))}</span>
+            <span class="fw-500 flex-grow-1">${escapeHtml(section.name || (isUnassigned ? trmTranslate('testRun.unassigned.label', 'Unassigned') : trmTranslate('testRun.sectionNumber', `Section #${sid}`, { id: sid })))}</span>
             <small class="text-muted">(${subtreeCases.length})</small>
           </div>
           <div class="section-content ${isExpanded ? '' : 'd-none'}" id="${sectionContentId(sid)}">
@@ -814,7 +815,7 @@ function renderCaseSelectList() {
     const noMsg = window.i18n && window.i18n.isReady()
       ? window.i18n.t('testCase.noTestCases', {}, '沒有符合的測試案例')
       : '沒有符合的測試案例';
-    html += `<div class="alert alert-info">${noMsg}</div>`;
+    html += `<div class="alert alert-info">${escapeHtml(noMsg)}</div>`;
   } else {
     html += renderSectionTree(sectionsToRender);
   }
@@ -954,12 +955,20 @@ function updateCaseSelectionSummary() {
   if (summaryEl) summaryEl.textContent = summaryText;
   if (infoEl) {
     if (searchVal) {
-      infoEl.textContent = `搜尋 "${searchVal}" ，共 ${filtered} 筆${setFilterLabel ? `（${setFilterLabel}）` : ''}`;
+      infoEl.textContent = trmTranslate(
+        setFilterLabel ? 'testRun.caseSelect.searchResultsInSet' : 'testRun.caseSelect.searchResults',
+        `搜尋 "${searchVal}"，共 ${filtered} 筆${setFilterLabel ? `（${setFilterLabel}）` : ''}`,
+        { search: searchVal, count: filtered, set: setFilterLabel }
+      );
     } else {
       if (setFilterLabel) {
-        infoEl.textContent = `共 ${filtered} 筆（目前篩選：${setFilterLabel}，全部 ${total} 筆）`;
+        infoEl.textContent = trmTranslate(
+          'testRun.caseSelect.filteredResults',
+          `共 ${filtered} 筆（目前篩選：${setFilterLabel}，全部 ${total} 筆）`,
+          { count: filtered, set: setFilterLabel, total }
+        );
       } else {
-        infoEl.textContent = `共 ${filtered} 筆`;
+        infoEl.textContent = trmTranslate('testRun.caseSelect.resultsCount', `共 ${filtered} 筆`, { count: filtered });
       }
     }
   }

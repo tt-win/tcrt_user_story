@@ -295,7 +295,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                               </div>
                           </div>
                           <div class="modal-footer">
-                              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${escapeHtml(tt('common.cancel', 'Cancel'))}</button>
                               <button type="button" class="btn" id="execConfirmBtn"></button>
                           </div>
                       </div>
@@ -400,7 +400,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         throw new Error(tt("adhoc.loadFailed", "Failed to load run"));
       currentRun = await resp.json();
 
-      const runName = currentRun.name || `Ad-hoc Run ${runId}`;
+      const runName = currentRun.name || tt(
+        "adhoc.execution.defaultRunName",
+        "Ad-hoc Run {id}",
+      ).replace("{id}", String(runId));
       if (dom.runName) {
         dom.runName.textContent = runName;
         dom.runName.removeAttribute("data-i18n");
@@ -416,7 +419,10 @@ document.addEventListener("DOMContentLoaded", async () => {
           }
       }
 
-      document.title = `${runName} - Ad-hoc Test Run`;
+      document.title = tt(
+        "adhoc.execution.documentTitle",
+        "{name} - Ad-hoc Test Run",
+      ).replace("{name}", runName);
       if (currentRun.team_id && dom.backBtn) {
         dom.backBtn.href = `/test-run-management?team_id=${currentRun.team_id}`;
       }
@@ -427,8 +433,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (hot) {
           hot.destroy();
           hot = null;
-          dom.gridHost.innerHTML =
-            '<div class="text-center mt-5 text-muted">No sheets. Click "+" to add one.</div>';
+          dom.gridHost.innerHTML = `<div class="text-center mt-5 text-muted">${tt(
+            "adhoc.execution.noSheetsHint",
+            'No sheets. Click "+" to add one.',
+          )}</div>`;
         }
         dom.sheetTabs.innerHTML = "";
         return;
@@ -451,7 +459,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch (e) {
       console.error(e);
       if (dom.runName) {
-        dom.runName.textContent = "Load failed";
+        dom.runName.textContent = tt("errors.loadFailed", "Load failed");
         dom.runName.removeAttribute("data-i18n");
       }
     }
@@ -479,7 +487,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const rename = document.createElement("button");
       rename.className = "btn btn-link btn-sm p-0 text-secondary";
       rename.innerHTML = '<i class="fas fa-edit"></i>';
-      rename.title = "Rename sheet";
+      rename.title = tt("adhoc.execution.renameSheet", "Rename sheet");
       rename.style.fontSize = "0.85rem";
       rename.style.lineHeight = "1";
       if (isRunReadOnly) {
@@ -490,7 +498,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const delBtn = document.createElement("button");
       delBtn.className = "btn btn-link btn-sm p-0 ms-2 text-danger";
       delBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
-      delBtn.title = "Delete sheet";
+      delBtn.title = tt("adhoc.execution.deleteSheet", "Delete sheet");
       delBtn.style.fontSize = "0.85rem";
       delBtn.style.lineHeight = "1";
       if (isRunReadOnly) {
@@ -632,11 +640,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         await loadRun();
       } else {
-        alert("Delete failed");
+        alert(tt("messages.deleteFailed", "Delete failed"));
       }
     } catch (e) {
       console.error(e);
-      alert("Delete error");
+      alert(tt("messages.deleteFailed", "Delete error"));
     }
   }
 
@@ -655,11 +663,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         await loadRun();
         switchToSheet(id);
       } else {
-        alert("Rename failed");
+        alert(tt("adhoc.execution.messages.renameFailed", "Rename failed"));
       }
     } catch (e) {
       console.error(e);
-      alert("Rename error");
+      alert(tt("adhoc.execution.messages.renameFailed", "Rename error"));
     }
   }
 
@@ -1483,7 +1491,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const msg = document.getElementById('searchMsg');
         if (searchResults.length === 0) {
-            msg.textContent = 'No matches found.';
+            msg.textContent = tt("testCase.bulkEdit.noSearchResults", "No matches found.");
             hot.render();
             return;
         }
@@ -1565,7 +1573,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     const result = plugin.query(query);
 
     if (!result || result.length === 0) {
-      document.getElementById("searchMsg").textContent = "0 matches replaced.";
+      document.getElementById("searchMsg").textContent = tt(
+        "adhoc.searchReplace.noneReplaced",
+        "0 matches replaced.",
+      );
       return;
     }
 
@@ -1581,7 +1592,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
 
         hot.setDataAtCell(changes);
-        document.getElementById('searchMsg').textContent = `Replaced ${changes.length} instances.`;
+        document.getElementById('searchMsg').textContent = tt(
+          "adhoc.searchReplace.replaced",
+          "Replaced {count} instances.",
+        ).replace("{count}", String(changes.length));
         searchResults = [];
         hot.render();
     }
@@ -1596,8 +1610,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
     const name = prompt(
-      "Sheet name",
-      `Sheet${(currentRun?.sheets?.length || 0) + 1}`,
+      tt("adhoc.execution.sheetNamePrompt", "Sheet name"),
+      tt("adhoc.execution.defaultSheetName", "Sheet{number}").replace(
+        "{number}",
+        String((currentRun?.sheets?.length || 0) + 1),
+      ),
     );
     if (!name) return;
     try {
@@ -1618,7 +1635,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       switchToSheet(newSheet.id);
     } catch (e) {
       console.error(e);
-      alert("Create sheet failed");
+      alert(tt("adhoc.execution.messages.createSheetFailed", "Create sheet failed"));
     }
   }
 
@@ -2011,8 +2028,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
 
       if (sheetRows.length === 0) {
-        contentEl.innerHTML =
-          '<div class=\"text-muted\">No sheets or data</div>';
+        contentEl.innerHTML = `<div class="text-muted">${escapeHtml(tt('adhoc.execution.reports.noData', 'No data'))}</div>`;
       } else {
         renderReportsContent(contentEl, sheetRows, total, statuses);
       }
@@ -2034,22 +2050,26 @@ document.addEventListener("DOMContentLoaded", async () => {
           <div class="modal-dialog modal-lg modal-dialog-centered">
             <div class="modal-content">
               <div class="modal-header">
-                <h5 class="modal-title" id="adhocReportsModalLabel"><i class="fas fa-chart-pie me-2"></i><span data-i18n="testRun.chartsReports">Charts & Reports</span></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title" id="adhocReportsModalLabel"><i class="fas fa-chart-pie me-2"></i><span data-i18n="adhoc.execution.reports.title">Charts & Reports</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" data-i18n-aria-label="common.close"></button>
               </div>
               <div class="modal-body">
                 <div id="adhocReportsContent" class="table-responsive"></div>
               </div>
               <div class="modal-footer">
                 <button type="button" class="btn btn-primary" id="adhocOpenHtmlBtn">
-                  <i class="fas fa-file-alt me-1"></i> Open HTML Report
+                  <i class="fas fa-file-alt me-1"></i> <span data-i18n="adhoc.execution.reports.openHtml">Open HTML Report</span>
                 </button>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">Close</button>
               </div>
             </div>
           </div>
         </div>`;
-    document.body.appendChild(wrapper.firstElementChild);
+    const modalEl = wrapper.firstElementChild;
+    document.body.appendChild(modalEl);
+    if (window.i18n && typeof window.i18n.retranslate === 'function') {
+      window.i18n.retranslate(modalEl);
+    }
 
     const openBtn = document.getElementById("adhocOpenHtmlBtn");
     if (openBtn && !openBtn.dataset.bound) {
@@ -2072,19 +2092,31 @@ document.addEventListener("DOMContentLoaded", async () => {
       const tds = statuses
         .map((s) => `<td class=\"text-center\">${counts[s] || 0}</td>`)
         .join("");
-      return `<tr><th scope=\"row\">${label}</th>${tds}</tr>`;
+      return `<tr><th scope=\"row\">${escapeHtml(label)}</th>${tds}</tr>`;
     };
+    const statusLabels = Object.fromEntries(statuses.map((status) => [
+      status,
+      tt({
+        Passed: 'testRun.passed',
+        Failed: 'testRun.failed',
+        Retest: 'testRun.retest',
+        'Not Available': 'testRun.notAvailable',
+        Pending: 'testRun.pending',
+        'Not Required': 'testRun.notRequired',
+      }[status], status),
+    ]));
+    const totalLabel = tt('common.total', 'Total');
 
     const table = `
             <table class=\"table table-sm align-middle mb-3\">
                 <thead>
                     <tr>
-                        <th scope=\"col\">Sheet</th>
-                        ${statuses.map((s) => `<th scope=\"col\" class=\"text-center\">${s}</th>`).join("")}
+                        <th scope=\"col\">${escapeHtml(tt('adhoc.sheetsLabel', 'Sheets'))}</th>
+                        ${statuses.map((s) => `<th scope=\"col\" class=\"text-center\">${escapeHtml(statusLabels[s])}</th>`).join("")}
                     </tr>
                 </thead>
                 <tbody>
-                    ${renderRow("Total", total.counts)}
+                    ${renderRow(totalLabel, total.counts)}
                     ${sheetRows.map((r) => renderRow(r.name, r.counts)).join("")}
                 </tbody>
             </table>
@@ -2094,7 +2126,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const totalData = labels.map((l) => total.counts[l] || 0);
     const datasets = [
       {
-        label: "Total",
+        label: totalLabel,
         data: totalData,
         backgroundColor: labels.map((l) => colors[l] || "#9ca3af"),
       },
@@ -2102,7 +2134,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // per-sheet stacked
     const perSheetDatasets = labels.map((label, idx) => ({
-      label,
+      label: statusLabels[label],
       data: sheetRows.map((r) => r.counts[label] || 0),
       backgroundColor: colors[label] || "#9ca3af",
     }));
@@ -2112,7 +2144,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 <div class=\"col-md-6\">
                     <div class=\"card h-100\">
                         <div class=\"card-body\">
-                            <h6 class=\"card-title\">Summary (All Sheets)</h6>
+                            <h6 class=\"card-title\">${escapeHtml(tt('adhoc.execution.reports.summary', 'Summary (All Sheets)'))}</h6>
                             <canvas id=\"adhocPie\"></canvas>
                         </div>
                     </div>
@@ -2120,7 +2152,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 <div class=\"col-md-6\">
                     <div class=\"card h-100\">
                         <div class=\"card-body\">
-                            <h6 class=\"card-title\">Per Sheet (Stacked)</h6>
+                            <h6 class=\"card-title\">${escapeHtml(tt('adhoc.execution.reports.perSheet', 'Per Sheet Stats (Stacked)'))}</h6>
                             <canvas id=\"adhocBar\"></canvas>
                         </div>
                     </div>
@@ -2136,7 +2168,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     new Chart(pieCtx, {
       type: "pie",
       data: {
-        labels,
+        labels: labels.map((label) => statusLabels[label]),
         datasets: [
           {
             data: totalData,

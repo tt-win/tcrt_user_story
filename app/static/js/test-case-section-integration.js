@@ -50,9 +50,9 @@ class TestCaseSectionIntegration {
     // 建立 Section 選擇器
     const sectionSelectorHtml = `
       <div class="form-group mb-3" id="sectionSelectGroup">
-        <label for="sectionSelect">區段</label>
+        <label for="sectionSelect">${this.escapeHtml(window.i18n.t('testCase.section'))}</label>
         <select id="sectionSelect" class="form-control" required>
-          <option value="">選擇區段...</option>
+          <option value="">${this.escapeHtml(window.i18n.t('testCase.selectSection'))}</option>
           ${this.getSectionOptions()}
         </select>
       </div>
@@ -195,7 +195,7 @@ class TestCaseSectionIntegration {
    */
   getSectionName(sectionId) {
     const section = this.findSectionById(sectionId);
-    return section ? section.name : 'Unassigned';
+    return section ? section.name : window.i18n.t('section.unassigned');
   }
 
   /**
@@ -223,25 +223,25 @@ class TestCaseSectionIntegration {
         <div class="modal-dialog modal-dialog-centered">
           <div class="modal-content">
             <div class="modal-header">
-              <h5 class="modal-title">複製到其他區段</h5>
+              <h5 class="modal-title">${this.escapeHtml(window.i18n.t('section.crossSection.copyTitle'))}</h5>
               <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
               <form id="crossSectionCopyForm">
                 <div class="form-group mb-3">
-                  <label for="crossSectionSelect">目標區段</label>
+                  <label for="crossSectionSelect">${this.escapeHtml(window.i18n.t('section.crossSection.targetSection'))}</label>
                   <select id="crossSectionSelect" class="form-control" required>
-                    <option value="">選擇區段...</option>
+                    <option value="">${this.escapeHtml(window.i18n.t('testCase.selectSection'))}</option>
                     ${this.getSectionOptions()}
                   </select>
                 </div>
               </form>
             </div>
             <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${this.escapeHtml(window.i18n.t('common.cancel'))}</button>
               <button type="button" class="btn btn-primary"
                       onclick="testCaseSectionIntegration.confirmCopyToSection(${testCaseId})">
-                複製
+                ${this.escapeHtml(window.i18n.t('common.copy'))}
               </button>
             </div>
           </div>
@@ -266,7 +266,7 @@ class TestCaseSectionIntegration {
     const targetSectionId = document.getElementById('crossSectionSelect').value;
 
     if (!targetSectionId) {
-      alert('請選擇目標區段');
+      alert(window.i18n.t('section.crossSection.selectTargetSection'));
       return;
     }
 
@@ -274,12 +274,12 @@ class TestCaseSectionIntegration {
       // 這裡需要呼叫相應的 API 來複製 Test Case
       // 由於 Test Case API 還沒有完全更新，這個功能將在後續完成
 
-      alert('複製功能將在後續版本支援');
+      alert(window.i18n.t('section.crossSection.copyComingSoon'));
       bootstrap.Modal.getInstance(document.getElementById('crossSectionCopyModal')).hide();
 
     } catch (error) {
       console.error('Error copying test case:', error);
-      alert('複製失敗: ' + error.message);
+      alert(window.i18n.t('section.crossSection.copyFailed', { reason: error.message }));
     }
   }
 

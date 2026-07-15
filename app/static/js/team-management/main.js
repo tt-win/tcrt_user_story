@@ -122,11 +122,6 @@ function initTeamManagement() {
     // 審計記錄和團隊統計現在使用下拉選單中的 <a> 標籤，不需要額外的事件監聽器
     document.getElementById('syncOrgBtn').addEventListener('click', openSyncModal);
     
-    // USM 匯入功能事件監聽器
-    document.getElementById('importUSMBtn').addEventListener('click', openUSMImportModal);
-    document.getElementById('preprocessLarkTableBtn').addEventListener('click', preprocessLarkTable);
-    document.getElementById('confirmUSMImportBtn').addEventListener('click', confirmUSMImport);
-    
     // 同步功能框事件監聽器
     document.getElementById('startSyncBtn').addEventListener('click', () => startSyncFromModal('full'));
     document.getElementById('startDeptSyncBtn').addEventListener('click', () => startSyncFromModal('departments'));
@@ -337,7 +332,8 @@ async function createMcpMachineToken(event) {
 
     const originalHtml = submitBtn.innerHTML;
     submitBtn.disabled = true;
-    submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i><span>${getI18n('mcpToken.createInProgress', '產生中...')}</span>`;
+    const progressLabel = escapeHtml(getI18n('mcpToken.createInProgress', '產生中...'));
+    submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i><span>${progressLabel}</span>`;
 
     try {
         const response = await window.AuthClient.fetch('/api/organization/mcp/machine-tokens', {
@@ -444,7 +440,8 @@ async function loadMcpTokens() {
         if (loadingEl) loadingEl.classList.add('d-none');
         if (tableWrap) tableWrap.classList.add('d-none');
         if (emptyEl) emptyEl.classList.add('d-none');
-        AppUtils.showError(`${getI18n('mcpToken.listLoadFailed', '載入 token 列表失敗')}：${error.message}`);
+        const loadFailedLabel = getI18n('mcpToken.listLoadFailed', '載入 token 列表失敗');
+        AppUtils.showError(`${loadFailedLabel}：${error.message}`);
     }
 }
 

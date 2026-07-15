@@ -59,6 +59,8 @@ class PreLoginResponse(BaseModel):
     username: Optional[str] = None
     full_name: Optional[str] = None
     message: Optional[str] = None
+    code: Optional[str] = None
+    params: Dict[str, Any] = Field(default_factory=dict)
 
 
 class FirstLoginSetupRequest(BaseModel):
@@ -150,19 +152,19 @@ async def _complete_first_login_setup(
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="帳號不存在",
+                detail={"code": "login.accountNotFound", "message": "帳號不存在", "params": {}},
             )
 
         if not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="帳號已被停用，請聯繫系統管理員",
+                detail={"code": "login.accountDeactivated", "message": "帳號已被停用，請聯繫系統管理員", "params": {}},
             )
 
         if user.last_login_at is not None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="此帳號已完成初始化，請直接登入",
+                detail={"code": "errors.auth.alreadyInitialized", "message": "此帳號已完成初始化，請直接登入", "params": {}},
             )
 
         user.hashed_password = PasswordService.hash_password(new_password)
@@ -247,7 +249,8 @@ async def pre_login(
     if not identifier:
         return PreLoginResponse(
             user_exists=False,
-            message="請輸入使用者名稱或電子信箱"
+            message="請輸入使用者名稱或電子信箱",
+            code="login.usernameRequired",
         )
 
     try:
@@ -256,7 +259,8 @@ async def pre_login(
         if not user:
             return PreLoginResponse(
                 user_exists=False,
-                message="找不到對應的帳號"
+                message="找不到對應的帳號",
+                code="login.accountNotFound",
             )
 
         is_active = bool(user.is_active)
@@ -270,7 +274,8 @@ async def pre_login(
                 is_active=False,
                 username=username,
                 full_name=full_name,
-                message="帳號已被停用，請聯繫系統管理員"
+                message="帳號已被停用，請聯繫系統管理員",
+                code="login.accountDeactivated",
             )
 
         return PreLoginResponse(
@@ -285,7 +290,7 @@ async def pre_login(
         logger.error("pre-login 檢查失敗: %s", exc, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="查詢帳號狀態時發生錯誤，請稍後再試"
+            detail={"code": "login.preLoginFailed", "message": "查詢帳號狀態時發生錯誤，請稍後再試", "params": {}}
         )
 
 
@@ -311,7 +316,7 @@ async def login(request: LoginRequest, http_request: Request):
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="使用者名稱、電子信箱或密碼不正確"
+                detail={"code": "login.invalidCredentials", "message": "使用者名稱、電子信箱或密碼不正確", "params": {}}
             )
 
         # 取得客戶端資訊
@@ -382,7 +387,7 @@ async def login(request: LoginRequest, http_request: Request):
         logger.error(f"登入失敗: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="登入過程發生錯誤"
+            detail={"code": "login.failed", "message": "登入過程發生錯誤", "params": {}}
         )
 
 

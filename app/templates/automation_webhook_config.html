@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Automation Webhooks - Test Case Repository Web Tool{% endblock %}
+{% block title %}{{ i18n.t('automationHub.webhooks.title') if i18n else 'Automation Webhooks' }} - Test Case Repository Web Tool{% endblock %}
 
 {% block head %}
 <link rel="stylesheet" href="{{ asset_url('css/automation-hub.css') }}">
@@ -91,11 +91,11 @@
         <h5 class="modal-title">
           <i class="fas fa-play-circle text-secondary me-2"></i><span data-i18n="automationHub.webhooks.runsTitle">Trigger history</span>
         </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <div id="webhookRunsLoading" class="text-center py-4 d-none">
-          <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+          <div class="spinner-border text-primary" role="status"><span class="visually-hidden" data-i18n="common.loading">Loading...</span></div>
         </div>
         <div class="table-responsive">
           <table class="table table-hover table-sm align-middle mb-0">
@@ -125,7 +125,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="webhookModalTitle" data-i18n="automationHub.webhooks.createTitle">Add Webhook</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <form id="webhookForm">
@@ -166,7 +166,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" data-i18n="automationHub.webhooks.revealTitle">Webhook credentials</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <div class="alert alert-warning" data-i18n="automationHub.webhooks.revealWarning">

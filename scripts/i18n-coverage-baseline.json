@@ -1,9 +1,9 @@
 {
   "missingKeys": {
-    "zh-TW": 1,
-    "en-US": 78,
-    "zh-CN": 125
+    "zh-TW": 0,
+    "en-US": 0,
+    "zh-CN": 0
   },
-  "cjkTemplateLines": 221,
-  "cjkJsCalls": 128
+  "cjkTemplateLines": 0,
+  "cjkJsCalls": 0
 }

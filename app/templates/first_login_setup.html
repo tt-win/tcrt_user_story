@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}First Login Setup - Test Case Repository{% endblock %}
+{% block title %}{{ i18n.t('firstLogin.title') if i18n else 'First Login Setup' }} - Test Case Repository{% endblock %}
 
 {% block page_title %}{% endblock %}
 {% block page_actions %}{% endblock %}
@@ -16,55 +16,63 @@
     <div class="first-login-card">
         <div class="first-login-header">
             <i class="fas fa-user-shield fa-2x mb-3"></i>
-            <h4>First Login Setup</h4>
-            <p id="firstLoginSubtitle">For security, please set a new password for your account</p>
+            <h4 data-i18n="firstLogin.title">First Login Setup</h4>
+            <p id="firstLoginSubtitle" data-i18n="firstLogin.subtitle">For security, please set a new password for your account</p>
         </div>
         <div class="p-4">
             <div id="firstLoginInfo" class="mb-3 text-muted"></div>
             <div class="tips mb-4">
                 <i class="fas fa-info-circle me-2"></i>
-                Please set a new secure password for your account. After completion, you can log in directly.
+                <span data-i18n="firstLogin.tip">Please set a new secure password for your account. After completion, you can log in directly.</span>
             </div>
             <form id="firstLoginForm" autocomplete="off">
                 <input type="hidden" id="username" name="username">
                 <div class="mb-3">
                     <label class="form-label" for="newPassword">
-                        <i class="fas fa-lock me-2"></i>New Password
+                        <i class="fas fa-lock me-2"></i><span data-i18n="firstLogin.newPassword">New Password</span>
                     </label>
                     <div class="input-group">
-                        <input type="password" class="form-control" id="newPassword" placeholder="請設定新密碼 (至少 8 碼)" required>
-                        <button class="btn btn-secondary" type="button" data-toggle="password" data-target="newPassword">
+                        <input type="password" class="form-control" id="newPassword"
+                               data-i18n-placeholder="firstLogin.newPasswordPlaceholder"
+                               placeholder="Please set a new password (at least 8 characters)" required>
+                        <button class="btn btn-secondary" type="button" data-toggle="password" data-target="newPassword"
+                                data-i18n-title="firstLogin.togglePassword" title="Show or hide password"
+                                data-i18n-aria-label="firstLogin.togglePassword" aria-label="Show or hide password">
                             <i class="fas fa-eye"></i>
                         </button>
                     </div>
                     <ul class="password-requirements">
-                        <li id="req-length"><i class="fas fa-times-circle"></i>At least 8 characters</li>
-                        <li id="req-complexity"><i class="fas fa-times-circle"></i>Recommended to mix uppercase, lowercase, and numbers</li>
+                        <li id="req-length"><i class="fas fa-times-circle"></i><span data-i18n="firstLogin.lengthRequirement">At least 8 characters</span></li>
+                        <li id="req-complexity"><i class="fas fa-times-circle"></i><span data-i18n="firstLogin.complexityRequirement">Recommended to mix uppercase, lowercase, and numbers</span></li>
                     </ul>
                 </div>
                 <div class="mb-4">
                     <label class="form-label" for="confirmPassword">
-                        <i class="fas fa-lock me-2"></i>Confirm New Password
+                        <i class="fas fa-lock me-2"></i><span data-i18n="firstLogin.confirmPassword">Confirm New Password</span>
                     </label>
                     <div class="input-group">
-                        <input type="password" class="form-control" id="confirmPassword" placeholder="請再次輸入新密碼" required>
-                        <button class="btn btn-secondary" type="button" data-toggle="password" data-target="confirmPassword">
+                        <input type="password" class="form-control" id="confirmPassword"
+                               data-i18n-placeholder="firstLogin.confirmPasswordPlaceholder"
+                               placeholder="Please enter the new password again" required>
+                        <button class="btn btn-secondary" type="button" data-toggle="password" data-target="confirmPassword"
+                                data-i18n-title="firstLogin.togglePassword" title="Show or hide password"
+                                data-i18n-aria-label="firstLogin.togglePassword" aria-label="Show or hide password">
                             <i class="fas fa-eye"></i>
                         </button>
                     </div>
                 </div>
                 <div class="d-grid">
                     <button type="submit" class="btn btn-success" id="setupBtn">
-                        <span id="setupBtnText"><i class="fas fa-check me-2"></i>設定密碼</span>
+                        <span id="setupBtnText"><i class="fas fa-check me-2"></i><span data-i18n="firstLogin.submit">Set Password</span></span>
                         <span id="setupBtnLoading" class="d-none">
                             <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                            Processing...
+                            <span data-i18n="firstLogin.processing">Processing...</span>
                         </span>
                     </button>
                 </div>
                 <div class="text-center mt-4">
                     <a href="/login" class="text-muted" id="backToLoginLink">
-                        <i class="fas fa-arrow-left me-2"></i>Back to Login Page
+                        <i class="fas fa-arrow-left me-2"></i><span data-i18n="firstLogin.backToLogin">Back to Login Page</span>
                     </a>
                 </div>
             </form>
