@@ -22,7 +22,7 @@ from sqlalchemy import or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from datetime import datetime
 import uuid
 import json
@@ -43,6 +43,7 @@ from app.models.test_case import (
     TestCaseBatchOperation,
     TestCaseBatchResponse,
     normalize_test_data_items,
+    validate_test_case_number_path_safe,
 )
 from app.models.test_run_scope import ImpactPreviewResponse
 from app.models.database_models import (
@@ -1512,31 +1513,20 @@ async def _delete_attachment_common(
         import unicodedata
         from pathlib import Path
 
-        # 取得項目
-        q = sync_db.query(TestCaseLocalDB)
+        # 取得項目（一律以 team_id 限定，避免跨 team 存在性/歸屬洩漏）
+        q = sync_db.query(TestCaseLocalDB).filter(TestCaseLocalDB.team_id == team_id)
         if id_value is not None:
             item = q.filter(TestCaseLocalDB.id == id_value).first()
         elif lark_record_id is not None:
-            item = q.filter(
-                TestCaseLocalDB.team_id == team_id,
-                TestCaseLocalDB.lark_record_id == lark_record_id,
-            ).first()
+            item = q.filter(TestCaseLocalDB.lark_record_id == lark_record_id).first()
         elif test_case_number is not None:
-            item = q.filter(
-                TestCaseLocalDB.team_id == team_id,
-                TestCaseLocalDB.test_case_number == test_case_number,
-            ).first()
+            item = q.filter(TestCaseLocalDB.test_case_number == test_case_number).first()
         else:
             item = None
 
         if not item:
             key = id_value if id_value is not None else (lark_record_id or test_case_number or "")
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到測試案例 {key}")
-        if item.team_id != team_id:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"測試案例 id={item.id} 屬於 team={item.team_id}",
-            )
 
         # 解析現有附件
         files = []
@@ -2151,6 +2141,11 @@ class BulkCloneItem(BaseModel):
     source_record_id: str
     test_case_number: str
     title: Optional[str] = None
+
+    @field_validator("test_case_number")
+    @classmethod
+    def _validate_number_path_safe(cls, v):
+        return validate_test_case_number_path_safe(v)
 
 
 class BulkCloneRequest(BaseModel):

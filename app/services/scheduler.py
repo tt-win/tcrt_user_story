@@ -53,7 +53,15 @@ class TaskScheduler:
                 schedule_type=DEFAULT_SCHEDULE_TYPE,
                 default_run_at_time=DEFAULT_SERVICE_TIME,
                 runner=self._run_lark_org_sync,
-            )
+            ),
+            "audit_cleanup": SchedulableServiceDefinition(
+                service_key="audit_cleanup",
+                display_name="審計記錄清理",
+                description="依 AUDIT_CLEANUP_DAYS 保留天數刪除過期審計記錄。",
+                schedule_type=DEFAULT_SCHEDULE_TYPE,
+                default_run_at_time="03:00",
+                runner=self._run_audit_cleanup,
+            ),
         }
 
     async def initialize(self) -> None:
@@ -299,6 +307,17 @@ class TaskScheduler:
             "success": False,
             "message": result.get("message", "Lark 組織同步失敗"),
             "sync_result": result,
+        }
+
+    async def _run_audit_cleanup(self) -> dict[str, Any]:
+        """依保留天數清理過期審計記錄。"""
+        from app.audit import audit_service
+
+        deleted = await audit_service.cleanup_old_records()
+        return {
+            "success": True,
+            "message": f"審計記錄清理完成，刪除 {deleted} 筆",
+            "deleted_count": deleted,
         }
 
     async def _ensure_service_record(

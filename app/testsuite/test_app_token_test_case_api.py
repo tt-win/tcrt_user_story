@@ -22,6 +22,8 @@ from app.models.database_models import (
     Team,
     TeamAppToken,
     TeamAppTokenStatus,
+    TestCaseLocal,
+    TestCaseSection,
     TestCaseSet,
     User,
 )
@@ -637,3 +639,130 @@ class TestBatchOperationsAndBulkClone:
             assert dup.status_code == 200, dup.text
             assert dup.json()["success"] is False
             assert dup.json()["duplicates"] == ["TC-CLONE-001"]
+
+
+class TestSecurityHardening:
+    """Regression tests for harden-app-token-security."""
+
+    def test_create_rejects_path_traversal_number(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_data(session)
+        with TestClient(app) as client:
+            for bad in ["../../../../tmp/evil", "a/b", "a\\b", "x..y"]:
+                resp = client.post(
+                    f"/api/app/teams/{seeded['team_id']}/test-cases",
+                    json={"test_case_number": bad, "title": "Evil"},
+                    headers=_bearer(seeded["write_token"]),
+                )
+                assert resp.status_code == 422, f"{bad!r} -> {resp.status_code}"
+
+    def test_update_rejects_path_traversal_number(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_data(session)
+        with TestClient(app) as client:
+            create = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-cases",
+                json={"test_case_number": "TC-SAFE-001", "title": "Safe"},
+                headers=_bearer(seeded["write_token"]),
+            )
+            case_id = create.json()["id"]
+            resp = client.put(
+                f"/api/app/teams/{seeded['team_id']}/test-cases/{case_id}",
+                json={"test_case_number": "../escape"},
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert resp.status_code == 422
+
+    def test_create_accepts_normal_number(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_data(session)
+        with TestClient(app) as client:
+            resp = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-cases",
+                json={"test_case_number": "TCG-93178.010.010", "title": "Normal"},
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert resp.status_code == 201
+
+    def test_update_rejects_cross_team_set_assignment(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_data(session)
+            other_set = TestCaseSet(
+                name=f"Foreign-{seeded['other_team_id']}", team_id=seeded["other_team_id"]
+            )
+            session.add(other_set)
+            session.commit()
+            other_set_id = other_set.id
+        with TestClient(app) as client:
+            create = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-cases",
+                json={"test_case_number": "TC-XSET-001", "title": "Case"},
+                headers=_bearer(seeded["write_token"]),
+            )
+            case_id = create.json()["id"]
+            resp = client.put(
+                f"/api/app/teams/{seeded['team_id']}/test-cases/{case_id}",
+                json={"test_case_set_id": other_set_id},
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert resp.status_code == 400
+
+    def test_update_rejects_section_not_in_target_set(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_data(session)
+            foreign_set = TestCaseSet(
+                name=f"ForeignSet-{seeded['other_team_id']}", team_id=seeded["other_team_id"]
+            )
+            session.add(foreign_set)
+            session.commit()
+            foreign_section = TestCaseSection(
+                test_case_set_id=foreign_set.id, name="Foreign", level=1, sort_order=0
+            )
+            session.add(foreign_section)
+            session.commit()
+            foreign_section_id = foreign_section.id
+        with TestClient(app) as client:
+            create = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-cases",
+                json={"test_case_number": "TC-XSEC-001", "title": "Case"},
+                headers=_bearer(seeded["write_token"]),
+            )
+            case_id = create.json()["id"]
+            resp = client.put(
+                f"/api/app/teams/{seeded['team_id']}/test-cases/{case_id}",
+                json={"test_case_section_id": foreign_section_id},
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert resp.status_code == 400
+
+    def test_delete_attachment_on_foreign_case_returns_404(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_data(session)
+            foreign_set = TestCaseSet(
+                name=f"ForeignDel-{seeded['other_team_id']}", team_id=seeded["other_team_id"]
+            )
+            session.add(foreign_set)
+            session.commit()
+            foreign_section = TestCaseSection(
+                test_case_set_id=foreign_set.id, name="Unassigned", level=1, sort_order=0
+            )
+            session.add(foreign_section)
+            session.commit()
+            foreign_case = TestCaseLocal(
+                team_id=seeded["other_team_id"],
+                test_case_set_id=foreign_set.id,
+                test_case_section_id=foreign_section.id,
+                lark_record_id="local-foreign-1",
+                test_case_number="TC-FOREIGN-001",
+                title="Foreign case",
+            )
+            session.add(foreign_case)
+            session.commit()
+            foreign_case_id = foreign_case.id
+        with TestClient(app) as client:
+            resp = client.delete(
+                f"/api/app/teams/{seeded['team_id']}/test-cases/{foreign_case_id}/attachments/whatever",
+                headers=_bearer(seeded["write_token"]),
+            )
+            # Cross-team lookup returns 404 (no 409 ownership disclosure)
+            assert resp.status_code == 404

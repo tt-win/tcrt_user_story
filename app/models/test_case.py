@@ -154,6 +154,36 @@ def normalize_test_data_items(items: Optional[List["TestDataItem"]]) -> List["Te
     return normalized
 
 
+def validate_test_case_number_path_safe(value: str) -> str:
+    """Reject test case numbers that could steer a downstream file path outside its root.
+
+    Used by create/update/batch/bulk-clone request models. The number is later used to
+    build attachment storage paths, so path separators and traversal segments are rejected.
+    """
+    stripped = str(value).strip()
+    if any(ch in stripped for ch in ("/", "\\", "\x00")) or ".." in stripped:
+        raise ValueError("test_case_number 不可包含路徑分隔字元或 '..'")
+    return stripped
+
+
+def redact_credential_test_data(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Mask the value of any credential-category test_data entry.
+
+    Shared by read payloads and mutation-audit paths so credential values are never
+    emitted in plaintext to app/MCP read principals or written to audit logs.
+    """
+    result: List[Dict[str, Any]] = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            result.append(item)
+            continue
+        redacted = dict(item)
+        if str(item.get("category", "")).lower() == "credential":
+            redacted["value"] = "[REDACTED]"
+        result.append(redacted)
+    return result
+
+
 class TestCase(BaseModel):
     """測試案例資料模型"""
 
@@ -484,6 +514,11 @@ class TestCaseCreate(BaseModel):
     # 新增：Test Data 列表
     test_data: Optional[List[TestDataItem]] = Field(None, description="Test Data 列表")
 
+    @field_validator("test_case_number")
+    @classmethod
+    def _validate_number_path_safe(cls, v):
+        return validate_test_case_number_path_safe(v)
+
 
 class TestCaseUpdate(BaseModel):
     """更新測試案例請求模型"""
@@ -507,6 +542,13 @@ class TestCaseUpdate(BaseModel):
     test_case_section_id: Optional[int] = Field(None, description="所屬 Test Case Section ID")
     # 新增：Test Data 列表
     test_data: Optional[List[TestDataItem]] = Field(None, description="Test Data 列表")
+
+    @field_validator("test_case_number")
+    @classmethod
+    def _validate_number_path_safe(cls, v):
+        if v is None:
+            return v
+        return validate_test_case_number_path_safe(v)
 
 
 class TestCaseResponse(TestCase):
