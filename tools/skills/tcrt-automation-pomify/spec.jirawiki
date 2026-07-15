@@ -1,0 +1,268 @@
+h1. tcrt-automation-pomify Specification
+
+h2. Purpose
+
+定義 *tcrt-automation-pomify* 可攜式 AI Agent Skill 的行為契約。此 skill 是 TCRT Automation Hub 的 *brownfield bottom-up* 重構工具：接受既有（已寫完）的 Python 自動化腳本或 Postman collection JSON，將其重構為符合 Page Object Model（POM）結構且遵循 TCRT Automation Hub 掃描規則的標準化佈局。
+
+三種輸入模式：
+
+# *單一 .py 檔*：重構為 POM + TCRT 格式
+# *目錄（批次）*：掃描全部支援的 {code}*.py{/code} 與 Postman {code}*.json{/code} 逐一處理
+# *貼上的程式碼*：直接處理貼上的文字內容
+
+產出預設建置於輸入旁的獨立目錄 {code}tcrt-pomified-<slug>/{/code}，不修改原始檔案。
+
+此 skill 的互補品為 *tcrt-automation-init*（從手動 test case 產生填空式骨架）。
+
+h2. Requirements
+
+h3. Requirement: Non-destructive output isolation
+
+Skill SHALL 將所有產出寫入獨立的輸出目錄，**永不修改**原始輸入檔案。輸出目錄命名規則：
+
+| *輸入型態* | *輸出目錄位置* |
+|-----------|--------------|
+| 單一檔案 {code}<dir>/<file>.py{/code} | {code}<dir>/tcrt-pomified-<stem>/{/code} |
+| 目錄 {code}<parent>/<folder>/{/code} | {code}<parent>/tcrt-pomified-<folder>/{/code} |
+| 貼上的程式碼 | {code}<cwd>/tcrt-pomified-<stem>/{/code} |
+
+h4. Scenario: Single file output
+- *WHEN* 輸入為 {code}/repo/tests/test_login.py{/code}
+- *THEN* 輸出目錄 SHALL 為 {code}/repo/tests/tcrt-pomified-test_login/{/code}
+
+h4. Scenario: Batch folder output
+- *WHEN* 輸入為 {code}/repo/tests/{/code}
+- *THEN* 輸出目錄 SHALL 為 {code}/repo/tcrt-pomified-tests/{/code}
+
+h3. Requirement: Postman collection MUST be supported as input
+
+Skill SHALL 接受 Postman Collection v2.1 JSON 作為輸入，轉換為 TCRT 標準的 pytest API 測試。
+
+轉換規則：
+
+- 每個可執行的 request SHALL 產生一個 {code}def test_*{/code} 函式
+- URL、headers、body SHALL 內嵌為 httpx / requests 呼叫
+- 環境變數佔位符（{code}{{BASE_URL}}{/code}）SHALL 提取為 {code}TCRT_VARS{/code} 宣告
+- 不支援 Pre-request Script / Test Script 的完整轉換——以 TODO 標記保留原文供手動調整
+- 輸出 script_format SHALL 為 {code}PYTEST{/code}，置於 {code}tests/api/{/code}
+
+h4. Scenario: Postman request becomes pytest function
+- *WHEN* Postman collection 含一個 GET {code}{{BASE_URL}}/api/users{/code}
+- *THEN* 產出 {code}tests/api/test_<collection>.py{/code}，包含 {code}def test_get_users(){/code} 使用 httpx 發送 GET
+
+h4. Scenario: Postman env vars become TCRT_VARS
+- *WHEN* Postman collection 使用 {code}{{BASE_URL}}{/code} 和 {code}{{API_TOKEN}}{/code}
+- *THEN* {code}TCRT_VARS{/code} SHALL 包含 {code}"BASE_URL"{/code} 與 {code}"API_TOKEN"{/code}
+
+h3. Requirement: Framework detection MUST drive output format
+
+Skill SHALL 依 *references/framework-detection.md* 的規則，讀取輸入原始碼前 50 行，根據 import 語句自動分類框架：
+
+| *偵測結果* | *TCRT script_format* | *輸出路徑* |
+|-----------|---------------------|----------|
+| Playwright Python async | {code}PLAYWRIGHT_PY_ASYNC{/code} | {code}tests/e2e/flow_*.py{/code} |
+| Playwright sync + pytest | {code}PYTEST{/code} | {code}tests/ui/test_*.py{/code} |
+| pytest + Selenium | {code}PYTEST{/code} | {code}tests/ui/test_*.py{/code} |
+| 純 API pytest（無 UI import）| {code}PYTEST{/code} | {code}tests/api/test_*.py{/code} |
+| Postman collection JSON | {code}PYTEST{/code} | {code}tests/api/test_*.py{/code} |
+
+h4. Scenario: Playwright sync + pytest detected
+- *WHEN* 輸入含 {code}from playwright.sync_api import Page{/code}
+- *THEN* skill SHALL 分類為 {code}PYTEST{/code}，使用 {code}playwright_sync_pytest/{/code} 範本集
+
+h4. Scenario: No browser imports -> API-only
+- *WHEN* 輸入僅含 {code}import httpx{/code} 與 {code}def test_*{/code}
+- *THEN* skill SHALL 分類為 API-only，不產生 page objects、不匯入 browser library
+
+h3. Requirement: Page extraction and POM generation（browser only）
+
+對 browser 型態的輸入，skill SHALL 從原始碼中提取頁面互動元素，重構為 Page Object Model：
+
+- *Extract URL / route*：從 {code}page.goto(){/code}、{code}driver.get(){/code}、{code}navigate(){/code} 提取路由資訊
+- *Extract locators / selectors*：從 {code}getByLabel(){/code}、{code}locator(){/code}、{code}By.ID{/code}、CSS selector 等提取，移至 page object 的建構函式階段屬性
+- *Extract actions*：{code}fill(){/code}、{code}click(){/code}、{code}select(){/code}、{code}press(){/code} 等依頁面意圖分組，封裝為 page object 的 method
+- *Assertions stay in tests*：所有 {code}assert{/code}、{code}expect({/code}、{code}should_{/code} 保留在測試檔案中，**不放入 page object**
+
+h4. Scenario: Locators moved to page object constructor
+- *WHEN* 原始碼含 {code}page.get_by_label("Username").fill("admin"){/code}
+- *THEN* {code}username_input{/code} locator SHALL 移至 {code}LoginPage{/code} 建構函式，測試中改為 {code}login_page.username_input.fill("admin"){/code}
+
+h4. Scenario: Assertions remain in test
+- *WHEN* 原始碼含 {code}expect(page.locator(".welcome")).to_be_visible(){/code}
+- *THEN* 此行 SHALL 保留在測試函式中，不移入 page object
+
+h3. Requirement: TCRT naming conventions MUST be strictly enforced
+
+輸出檔名與目錄結構 SHALL 遵循 TCRT smart-scan 的 glob-based 探索規則：
+
+| *檔案類別* | *必要檔名模式* | *TCRT 偵測* |
+|-----------|-------------|-----------|
+| pytest 測試檔 | {code}test_*.py{/code} 或 {code}*_test.py{/code} | {code}PYTEST{/code} |
+| Playwright async 測試檔 | {code}flow_*.py{/code}（非 {code}test_*{/code}） | {code}PLAYWRIGHT_PY_ASYNC{/code} |
+| Page object | {code}pages/*.py{/code} | 排除（非 entry point）|
+| Fixture / setup | {code}conftest.py{/code} | 硬編碼排除 |
+| Package marker | {code}__init__.py{/code} | 硬編碼排除 |
+
+全域排除目錄：{code}pages/{/code}、{code}page_objects/{/code}、{code}pom/{/code}、{code}flows/{/code}、{code}fixtures/{/code}、{code}resources/{/code}、{code}config/{/code}、{code}utils/{/code}、{code}helpers/{/code}、{code}scripts/{/code}、{code}reports/{/code}
+
+全部測試函式名稱 SHALL 以 {code}test_{/code} 開頭，不論 script_format。
+
+h4. Scenario: Async test files named flow_*.py
+- *WHEN* 偵測為 Playwright async
+- *THEN* 輸出測試檔名 SHALL 為 {code}flow_<name>.py{/code}（非 {code}test_<name>.py{/code}），且 {code}tcrt-automation.yml{/code} 的 {code}scan.include{/code} SHALL 包含 {code}"flow_*.py"{/code}
+
+h4. Scenario: Conftest excluded from scan
+- *WHEN* 輸出包含 {code}conftest.py{/code}
+- *THEN* TCRT smart-scan SHALL 自動排除此檔，不將其視為測試 entry point
+
+h3. Requirement: TCRT_VARS declaration block MUST be present
+
+每個輸出測試 module 的模組層級 SHALL 強制包含 {code}TCRT_VARS{/code} 宣告（即使為空列表）。此宣告僅列變數名稱，不包含值。
+
+Skill SHALL 從原始碼中偵測既有特設設定（硬編碼 URL、{code}.env{/code} 讀取、{code}settings.py{/code} 引用），將其取代為固定的 {code}TCRT_VARS{/code} 名稱。值存於 TCRT（Settings → Environments 或 Script view → Configure variables），runtime 透過 {code}TCRT_ENV_BUNDLE{/code} → {code}tcrt-env.json{/code} → settings loader 注入。
+
+h4. Scenario: Hardcoded URL extracted to TCRT_VARS
+- *WHEN* 原始碼含 {code}BASE_URL = "https://sit.example.com"{/code}
+- *THEN* {code}TCRT_VARS{/code} SHALL 含 {code}"BASE_URL"{/code}，原始值不寫入輸出檔案
+
+h4. Scenario: .env reader replaced by settings loader
+- *WHEN* 原始碼含 {code}os.getenv("API_TOKEN"){/code}
+- *THEN* {code}TCRT_VARS{/code} SHALL 含 {code}{"name":"API_TOKEN", "secret":true}{/code}，且 settings loader 提供的 fixture/env helper 取代直接讀取 {code}os.environ{/code}
+
+h3. Requirement: Settings loader MUST be emitted
+
+Skill SHALL 根據框架選擇產出對應的設定載入器：
+
+- *pytest conftest*：{code}tcrt_env{/code} fixture（讀取 {code}tcrt-env.json{/code}，依目前測試檔 ref_path 取對應 namespace 的值）
+- *Playwright async*：可匯入的 {code}tcrt_env.py{/code}，提供 {code}load_tcrt_env(__file__){/code}
+- *兩種載入器皆附 fallback*：{code}tcrt-env.json{/code} 不存在時回退至 {code}os.environ{/code}
+- {code}conftest.py{/code} SHALL 包含 {code}pytest_report_header{/code} 環境橫幅（顯示 script_format、team、masked env vars）
+- {code}.gitignore{/code} SHALL 涵蓋 {code}tcrt-env.json{/code} 與 {code}config/*.yaml{/code}
+
+h4. Scenario: tcrt_env fixture in conftest
+- *WHEN* 輸出為 pytest 型態
+- *THEN* {code}conftest.py{/code} SHALL 提供 {code}tcrt_env{/code} fixture 自動解析環境變數 bundle
+
+h4. Scenario: Async env helper emitted
+- *WHEN* 輸出為 Playwright async
+- *THEN* {code}tcrt_env.py{/code} SHALL 產生於專案根目錄，提供 {code}load_tcrt_env(__file__){/code}
+
+h3. Requirement: TCRT marker MUST be applied
+
+Skill SHALL 在 MCP 伺服器可用時，透過 MCP 將測試函式對應到手動測試案例：
+
+- 優先從原始碼中保留既有 {code}@pytest.mark.tcrt{/code} 裝飾器（若有）
+- MCP 可用時，提示使用者關聯 TC number，寫入 {code}@pytest.mark.tcrt("TC-NUMBER", link_type="primary"){/code}
+- MCP 不可用且無既有 marker 時，發出 {code}# TODO: @pytest.mark.tcrt("TC-???", ...){/code}
+- {code}conftest.py{/code} SHALL 註冊 {code}pytest.mark.tcrt{/code} 以避免 {code}PytestUnknownMarkWarning{/code}
+- TC ID 規則：{code}^[A-Za-z0-9_-]+${/code}，點號 SHALL 改為破折號
+
+h4. Scenario: Existing markers preserved
+- *WHEN* 原始碼已有 {code}@pytest.mark.tcrt("TC-LOGIN-01"){/code}
+- *THEN* skill SHALL 保留此 marker，不修改、不取代
+
+h4. Scenario: Marker with dotted number dashed
+- *WHEN* 使用者指定 {code}TCG-100558.020.010{/code}
+- *THEN* marker SHALL 為 {code}@pytest.mark.tcrt("TCG-100558-020-010"){/code}
+
+h3. Requirement: tcrt-automation.yml manifest MUST be emitted
+
+若輸出目錄尚無 manifest，skill SHALL 從範本產生 {code}tcrt-automation.yml{/code}。關鍵內容：
+
+{code}
+name: <project-name>
+version: 1
+scan:
+  include:
+    - "test_*.py"
+    - "*_test.py"
+    - "flow_*.py"              # PLAYWRIGHT_PY_ASYNC 時必要
+  exclude: []
+{code}
+
+若輸出包含 Playwright async 測試，{code}scan.include{/code} SHALL 包含 {code}"flow_*.py"{/code}。若已有 manifest，skill SHALL 檢查必要的 include glob 是否存在，若缺則警示但不自動改寫。
+
+h4. Scenario: Manifest excludes pages/ correctly
+- *WHEN* 輸出包含 {code}pages/{/code} 目錄
+- *THEN* TCRT smart-scan 的內建排除規則 SHALL 涵蓋 {code}pages/{/code}，無需在 manifest 中重複宣告
+
+h3. Requirement: Output structure SHALL be standardized
+
+重構後的輸出目錄結構：
+
+{code}
+tcrt-pomified-<slug>/
+├── tests/
+│   ├── __init__.py
+│   ├── api/                          # PYTEST API：test_*.py
+│   ├── ui/                           # PYTEST UI：test_*.py
+│   └── e2e/                          # PLAYWRIGHT_PY_ASYNC：flow_*.py
+├── pages/                            # browser only
+│   ├── __init__.py
+│   ├── base_page.py
+│   └── <surface>_page.py
+├── flows/                            # 選擇性，跨頁面流程
+│   └── __init__.py
+├── fixtures/
+│   └── __init__.py
+├── conftest.py
+├── tcrt_env.py                       # async 專用
+├── tcrt-automation.yml
+├── config/
+│   └── <env>.yaml.example
+└── .gitignore
+{/code}
+
+h4. Scenario: BasePage provides common methods
+- *WHEN* 輸出包含 {code}pages/{/code}
+- *THEN* {code}pages/base_page.py{/code} SHALL 提供 {code}goto{/code} / {code}navigate{/code}、{code}wait_for_path{/code} / {code}open{/code}、{code}find{/code}、{code}click{/code}、{code}wait_for_*{/code}
+
+h3. Requirement: Docstring annotation on every test file
+
+每個產出的測試檔案頂端 SHALL 有 docstring 標記：
+
+{code}
+"""
+Source: <原始路徑或 "pasted">
+Generated: <UTC ISO-8601>
+TCRT script_format: <PYTEST | PLAYWRIGHT_PY_ASYNC>
+Framework: <playwright_sync | playwright_async | selenium | api>
+"""
+{/code}
+
+h4. Scenario: Docstring marks source and format
+- *WHEN* 從 {code}/repo/tests/old_test.py{/code} 重構
+- *THEN* docstring SHALL 含 {code}Source: /repo/tests/old_test.py{/code} 與正確的 {code}TCRT script_format{/code}
+
+h3. Requirement: Skill MUST self-validate output
+
+完成重構後，skill SHALL 遍歷所有輸出檔案執行自我驗證：
+
+- 全部測試檔名符合 {code}test_*.py{/code} / {code}*_test.py{/code} / manifest {code}scan.include{/code} glob
+- {code}pages/{/code} 中無 {code}assert{/code} 或 {code}expect({/code} 呼叫
+- {code}tests/__init__.py{/code}、{code}pages/__init__.py{/code} 存在
+- 每個測試函式以 {code}test_{/code} 開頭
+- TC ID 符合 {code}^[A-Za-z0-9_-]+${/code}
+- 每個測試 module 有 {code}TCRT_VARS{/code}（即使為空）
+- {code}conftest.py{/code} 有 {code}pytest_report_header{/code} 環境橫幅
+- 無明文 credential
+- 所有轉換過的檔案有一對一的來源→目標對應
+
+h4. Scenario: Validation flags page objects with assertions
+- *WHEN* 某個 {code}pages/*.py{/code} 包含 {code}assert{/code} 行
+- *THEN* 驗證 SHALL 回報該檔案路徑與行數，並提示應將 assertion 移至測試層
+
+h3. Requirement: Summary report
+
+Skill SHALL 在完成後列印結構化摘要，包含：
+
+- 輸入→輸出對應清單（每支原始檔案的目標路徑）
+- 偵測到的框架與 script_format
+- 產生的 page objects 清單
+- manifest 狀態（已產生 / 已存在 / 需要更新）
+- 注意事項：需安裝的 runtime 相依套件、需推送 git、需在 TCRT 重新掃描、需註冊環境值
+- 後續步驟指引
+
+h4. Scenario: Summary includes post-pomify steps
+- *WHEN* 重構完成
+- *THEN* 摘要 SHALL 包含「在 TCRT 重新掃描」、「在 TCRT 註冊環境值」、「推送至 git」等後續步驟

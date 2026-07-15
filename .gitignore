@@ -202,7 +202,12 @@ node_modules/
 principle.txt
 manual_sync_integration_test_report.json
 tests/
-tools/
+# Track tools/skills (skills source) but ignore sensitive/generated files within
+tools/**/.env
+tools/**/.DS_Store
+tools/**/__pycache__/
+tools/**/*.py[cod]
+tools/**/*$py.class
 .DS_Store
 未命名35.txt
 refactor/

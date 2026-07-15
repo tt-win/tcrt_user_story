@@ -1,0 +1,237 @@
+h1. tcrt-automation-init Specification
+
+h2. Purpose
+
+定義 *tcrt-automation-init* 可攜式 AI Agent Skill 的行為契約。此 skill 是 TCRT Automation Hub 的 *greenfield top-down* 腳本產生器：給定一筆 TCRT 手動測試案例，經 TCRT MCP 讀取其 precondition / steps / expected_result / test_data，自動產出一份填空式的自動化測試骨架（fill-in-the-blank skeleton）。產出支援 POM 瀏覽器腳本（Playwright sync / Playwright async / Selenium）與純 API pytest 腳本兩種型態，骨架已預填 `@pytest.mark.tcrt` 追蹤標記與 TCRT Automation Hub 版面配置。
+
+此 skill 的互補品為 *tcrt-automation-pomify*（將*既有*完整腳本重構為 POM + TCRT 格式）。
+
+h2. Requirements
+
+h3. Requirement: MCP-driven test case resolution
+
+Skill SHALL 在使用 TCRT MCP 伺服器可用時優先透過 MCP 解析測試案例。不應要求使用者手動輸入團隊 ID 或 case ID——skill SHALL 自動嘗試 `resolve_test_case_content`（接受 TC number 或 ticket）或 `get_test_case_detail`（已知 team_id + test_case_id）。
+
+h4. Scenario: Resolve test case by TC number
+- *WHEN* 使用者提供 TC number（如 {code}TCG-100558.020.010{code}）
+- *THEN* skill SHALL 呼叫 {code}resolve_test_case_content(test_case_number="TCG-100558.020.010"){code} 取得 precondition / steps / expected_result / test_data
+
+h4. Scenario: Resolve test case by ticket
+- *WHEN* 使用者提供 ticket 號碼（如 {code}ICR-12345{code}）
+- *THEN* skill SHALL 呼叫 {code}resolve_test_case_content(ticket="ICR-12345"){code} 進行跨團隊查詢
+
+h4. Scenario: Fallback to user paste when MCP unavailable
+- *WHEN* TCRT MCP 伺服器無法連接
+- *THEN* skill SHALL 提示使用者手動貼上 precondition / steps / expected_result / test_data，並以相同流程處理，在摘要中標記來源為手動貼上
+
+h4. Scenario: TCG Admin route resolution
+- *WHEN* 測試案例涉及 TCG Admin 頁面（menuId 樣式）
+- *THEN* skill SHALL 透過 {code}resolve_admin_menu_entry{code} 解析 menuId → route_path，自動填入 page object 的 {code}path{code}
+
+h3. Requirement: Pre-flight classification before code generation
+
+Skill SHALL 在寫入任何檔案之前先向使用者確認四項分類決策，缺一不可：
+
+# *目標類型*：API-only 或 Browser
+# *框架選擇*：
+## API-only：pytest + httpx（預設）、requests、aiohttp
+## Browser：Playwright sync + pytest（預設）、Playwright async、Selenium + pytest
+# *註解語言*：繁體中文（zh-TW）、English、或「跟隨測試案例語言」
+# *批次佈局*（超過 1 個 TC 時）：每 TC 一支 script 或整合為一支 script
+
+h4. Scenario: Pre-flight questions asked before any write
+- *WHEN* skill 完成 MCP 查詢後
+- *THEN* skill SHALL 一次性（非逐步）提出上述四項問題，收集使用者的選擇後才開始產生骨架
+
+h3. Requirement: Test case parsing into arrange / act / assert skeleton
+
+Skill SHALL 依循 *references/testcase-to-skeleton.md* 的規則，將測試案例結構化解析為三段式骨架：
+
+- *precondition* → *arrange* 區塊（進入頁面的 page object + fixture 設定）
+- *steps* → *act* 區塊：拆分為離散步驟，每步驟一組 {code}# STEP N: <原文>{/code} 註解 + {code}# TODO{/code} 動作行
+- *expected_result* → *assert* 區塊：拆分為多個預期結果，每項一組 {code}# EXPECTED: <原文>{/code} 註解 + {code}# TODO{/code} 驗證行
+- *test_data[]* → {code}fixtures/test_data.py{/code}：DATA 常數直接寫入；credentials 改為 {code}os.environ["TC_<NAME>"]{/code}
+
+h4. Scenario: Steps rendered verbatim in comments
+- *WHEN* 步驟內容為「點擊登入按鈕」
+- *THEN* 骨架中 SHALL 出現 {code}# STEP 1: 點擊登入按鈕{/code} 保留原文，不翻譯、不改寫
+
+h4. Scenario: Test data separation
+- *WHEN* test case 包含 {code}{"username": "admin", "password": "P@ssw0rd"}{/code}
+- *THEN* {code}username{/code} 作為 DATA 常數寫入 {code}fixtures/test_data.py{/code}；{code}password{/code} 作為 secret 改為 {code}os.environ["TC_PASSWORD"]{/code}；骨架中永不包含明文 credential
+
+h3. Requirement: Page object stubs derived from page surfaces（browser only）
+
+Browser 型態的骨架 SHALL 從步驟中推斷頁面互動範圍（page surfaces），每組表面產出一支對應的 page object stub：
+
+- 命名慣例：{code}pages/<surface>_page.py{/code}，class {code}<PascalCase>Page{/code}
+- locator 預填 TODO 註解（從步驟中推斷行為意圖，不發明 selector）
+- action method 預填 TODO 註解
+- BasePage 提供 {code}goto{/code} / {code}navigate{/code}、{code}wait_for_path{/code} / {code}open{/code}、{code}find{/code}、{code}click{/code}、{code}wait_for_*{/code}
+- API-only 型態跳過此步驟（不產生 page objects、不引用 browser driver）
+
+h4. Scenario: Page surface inferred from steps
+- *WHEN* 步驟提及「登入頁」、「輸入帳號密碼」、「點擊確定」
+- *THEN* skill SHALL 產生 {code}pages/login_page.py{/code}，{code}class LoginPage{/code}，含 pre-seeded TODO locator 與 action method 註解
+
+h4. Scenario: API-only skips page objects
+- *WHEN* 使用者選擇 API-only 類型
+- *THEN* 不產生 {code}pages/{/code} 目錄，不匯入 browser library，測試檔案直接發送 HTTP 請求
+
+h3. Requirement: Template-driven file emission with placeholder substitution
+
+Skill SHALL 從對應的範本目錄複製範本，依框架型態替換佔位符後寫入目標路徑。範本檔名以雙底線 {code}__{/code} 編碼目標路徑：
+
+| *範本檔名* | *輸出路徑* | *適用框架* |
+|-----------|-----------|----------|
+| {code}pages__base_page.py{/code} | {code}pages/base_page.py{/code} | 全部 browser |
+| {code}pages__example_page.py{/code} | {code}pages/<surface>_page.py{/code} | 全部 browser |
+| {code}tests__api__test_example.py{/code} | {code}tests/api/test_<title>.py{/code} | API-only |
+| {code}tests__ui__test_example.py{/code} | {code}tests/ui/test_<title>.py{/code} | Playwright sync / Selenium |
+| {code}tests__e2e__flow_example.py{/code} | {code}tests/e2e/flow_<title>.py{/code} | Playwright async |
+| {code}fixtures__test_data.py{/code} | {code}fixtures/test_data.py{/code} | 全部型態 |
+| {code}conftest_tcrt_marker.py{/code} | 合併入 {code}conftest.py{/code} | 全部型態 |
+| {code}settings_loader_conftest.py{/code} | 合併入 {code}conftest.py{/code} | 全部型態 |
+| {code}tcrt_vars_declaration.py{/code} | 嵌入測試 module 頂端 | 全部型態 |
+| {code}tcrt_env_helper.py{/code} | {code}tcrt_env.py{/code} | Playwright async |
+| {code}tcrt-automation.yml{/code} | repo root manifest | 全部型態 |
+| {code}env.yaml.example{/code} | {code}config/<env>.yaml.example{/code} | 選擇性 |
+
+佔位符對照表：
+
+| *佔位符* | *取代值* |
+|---------|---------|
+| {code}{{TC_NUMBER}}{/code} | Dashed TC number（點→破折號，如 {code}TCG-100558-020-010{/code}）|
+| {code}{{TC_NUMBER_CANONICAL}}{/code} | Dotted canonical（如 {code}TCG-100558.020.010{/code}），僅 docstring |
+| {code}{{TC_TITLE}}{/code} | Test case 標題 |
+| {code}{{TEAM}}{/code} | Team 名稱或 ID |
+| {code}{{TIMESTAMP_UTC}}{/code} | 產生時的 UTC ISO-8601 |
+| {code}{{TEST_NAME}}{/code} | snake_case 標題主體 |
+| {code}{{PAGE_CLASS}}{/code} / {code}{{PAGE_MODULE}}{/code} / {code}{{PAGE_VAR}}{/code} | {code}LoginPage{/code} / {code}login_page{/code} / {code}login{/code} |
+| {code}{{LINK_TYPE}}{/code} | {code}primary{/code}（1:1 骨架）或 {code}covers{/code}（批次）|
+| {code}{{PRECONDITION}}{/code} | precondition 原文 |
+| {code}{{STEPS_BLOCK}}{/code} | 逐步驟註解 + TODO 動作行 |
+| {code}{{EXPECTED_BLOCK}}{/code} | 逐預期結果註解 + TODO 驗證行 |
+
+h4. Scenario: Template chosen by framework
+- *WHEN* 使用者選定 Playwright async
+- *THEN* skill SHALL 使用 {code}templates/python/playwright_async/{/code} 範本集，輸出 {code}tests/e2e/flow_<title>.py{/code} 而非 {code}tests/ui/test_<title>.py{/code}
+
+h3. Requirement: TCRT marker MUST be pre-filled from MCP data
+
+每個測試函式 SHALL 帶有 {code}@pytest.mark.tcrt{/code} 裝飾器，其 ID 來自 MCP 解析結果，非 TODO。
+
+- Dotted TC number（如 {code}TCG-100558.020.010{/code}）SHALL 轉為 dashed（{code}TCG-100558-020-010{/code}）
+- {code}link_type{/code}：1:1 骨架為 {code}"primary"{/code}；批次合併為 {code}"covers"{/code}
+- {code}conftest.py{/code} SHALL 註冊 {code}pytest.mark.tcrt{/code} 以避免 {code}PytestUnknownMarkWarning{/code}
+- {code}pytest_report_header{/code} SHALL 顯示環境橫幅（script_format、team、TC number）
+
+h4. Scenario: Marker uses dashed TC number
+- *WHEN* MCP 回傳 {code}TCG-100558.020.010{/code}
+- *THEN* marker SHALL 為 {code}@pytest.mark.tcrt("TCG-100558-020-010"){/code}
+
+h3. Requirement: Environment config system MUST be wired from the start
+
+每個產生的測試 module SHALL 強制包含 {code}TCRT_VARS{/code} 宣告區塊（即使為空列表）。此區塊僅宣告變數名稱，不包含值。值由 TCRT 環境設定系統在 runtime 注入。
+
+設定載入方式依框架：
+- pytest conftest：{code}tcrt_env{/code} fixture 讀取 {code}tcrt-env.json{/code}（由 CI provider 物化）
+- async flow：可匯入的 {code}tcrt_env.py{/code}，提供 {code}load_tcrt_env(__file__){/code}
+
+專案根目錄 SHALL 產生 {code}.gitignore{/code}，涵蓋 {code}tcrt-env.json{/code} 與 {code}config/*.yaml{/code}。選擇性地產生 {code}config/<env>.yaml.example{/code}（僅佔位符）。
+
+h4. Scenario: TCRT_VARS block emitted even when empty
+- *WHEN* 測試案例不需要任何環境變數
+- *THEN* 測試 module 頂端仍 SHALL 有 {code}TCRT_VARS = []{/code}
+
+h4. Scenario: Settings loader registered in conftest
+- *WHEN* 產生 pytest 型態的骨架
+- *THEN* {code}conftest.py{/code} SHALL 包含 {code}tcrt_env{/code} fixture + {code}pytest_report_header{/code} + tcrt marker 註冊
+
+h3. Requirement: Output structure SHALL follow TCRT Automation Hub conventions
+
+骨架的目錄結構 SHALL 符合 TCRT smart-scan 的探索規則：
+
+{code}
+<project-root>/
+├── tests/
+│   ├── __init__.py
+│   ├── api/                          # API-only：test_<title>.py
+│   └── ui/  (或 e2e/)                # browser：test_<title>.py / flow_<title>.py
+├── pages/                            # browser only
+│   ├── __init__.py
+│   ├── base_page.py
+│   └── <surface>_page.py
+├── fixtures/
+│   ├── __init__.py
+│   └── test_data.py
+├── conftest.py
+├── tcrt-automation.yml
+├── config/
+│   └── <env>.yaml.example            # 選擇性
+└── .gitignore
+{/code}
+
+- {code}tests/{/code} 下的 entry point 檔名：PYTEST 用 {code}test_*.py{/code}、Playwright async 用 {code}flow_*.py{/code}
+- {code}pages/{/code} 目錄 SHALL 被 smart-scan 排除（不視為測試 entry point）
+- {code}conftest.py{/code}、{code}__init__.py{/code} 硬編碼排除
+- 全部產生的測試函式以 {code}test_{/code} 開頭
+
+h4. Scenario: Async flow placed in e2e/ not ui/
+- *WHEN* 使用者選擇 Playwright async
+- *THEN* 測試檔 SHALL 置於 {code}tests/e2e/{/code}，檔名為 {code}flow_<title>.py{/code}，且 {code}tcrt-automation.yml{/code} 的 {code}scan.include{/code} SHALL 包含 {code}"flow_*.py"{/code}
+
+h3. Requirement: Skill MUST self-validate output before summary
+
+完成骨架產生後 skill SHALL 執行自我驗證檢查，涵蓋：
+
+- 所有預期檔案已寫入（無遺漏）
+- 檔名符合命名規則（{code}test_*.py{/code} / {code}flow_*.py{/code} / {code}pages/*.py{/code}）
+- {code}@pytest.mark.tcrt{/code} 格式正確（ID 無點號、link_type 有效）
+- {code}pages/{/code} 不含 {code}assert{/code} 或 {code}expect({/code}
+- 全部測試函式以 {code}test_{/code} 開頭
+- {code}__init__.py{/code} 存在於 {code}tests/{/code}、{code}pages/{/code}、{code}fixtures/{/code}
+- 無明文 credential（所有 secret 經過 {code}os.environ{/code}）
+- {code}TCRT_VARS{/code} 區塊存在於每個測試 module
+- {code}.gitignore{/code} 涵蓋 {code}tcrt-env.json{/code} 與 {code}config/*.yaml{/code}
+- import 語法無明顯斷裂（不會因缺少 page object 而 import error）
+
+h4. Scenario: Self-validation catches missing init files
+- *WHEN* 任一套件的 {code}__init__.py{/code} 未產生
+- *THEN* 自我驗證 SHALL 在摘要中標記為 {code}MISSING{/code}
+
+h4. Scenario: Self-validation catches assertion in page object
+- *WHEN* page object stub 意外含有 {code}assert{/code} 行
+- *THEN* skill SHALL 在摘要中警報並修正
+
+h3. Requirement: Safety constraints
+
+Skill SHALL 遵守以下安全約束：
+
+- *Never overwrite* 既有檔案：寫入前先檢查目標路徑是否存在；若存在則跳過並在摘要中標記 {code}SKIPPED (exists){/code}
+- *Never invent* selectors、URLs、assertion values、或 TC numbers：所有具體值來自 test case 原文或使用者輸入
+- *Never inline* credential：secret 一律透過 {code}os.environ{/code}，非 secret DATA 寫入 {code}fixtures/test_data.py{/code}
+- *Never hard-code* admin host：主機 URL 保持 env-backed
+- *Skeleton MUST be runnable*：import 不中斷、{code}@pytest.mark.skip{/code} 守門讓 skeleton 以 skipped 狀態收集
+
+h4. Scenario: Existing file protection
+- *WHEN* 目標 {code}tests/api/test_login.py{/code} 已存在
+- *THEN* skill SHALL 跳過該檔案，不覆寫，並在摘要中報告
+
+h4. Scenario: Skeleton guarded by skip marker
+- *WHEN* 使用者執行 {code}pytest{/code} 收集骨架
+- *THEN* 全部測試函式 SHALL 顯示為 skipped（因 {code}@pytest.mark.skip{/code}），非 errored
+
+h3. Requirement: Summary report and hand-off
+
+Skill SHALL 在完成後列印結構化摘要，包含：
+
+- 產出目錄路徑
+- 全部產出檔案清單（含跳過/新建標記）
+- TODO 總數統計
+- fill-in checklist（依步驟順序列出需手動填入的項目）
+- 指向 {code}tcrt-automation-pomify{/code} 的 hand-off 指引（完成填空後可執行 pomify 整理為正式 POM）
+
+h4. Scenario: Summary includes TODO count
+- *WHEN* 骨架產生完成
+- *THEN* 摘要 SHALL 包含「共 N 個 TODO 待填入」的統計
