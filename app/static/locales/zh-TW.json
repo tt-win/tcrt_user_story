@@ -134,7 +134,7 @@
       "userActivity": "使用者行為",
       "auditAnalysis": "審計分析",
       "departmentStats": "部門統計",
-      "helperAi": "QA AI Agent - 測試案例助手"
+      "qaAiHelper": "QA AI Agent - 測試案例助手"
     },
     "overview": {
       "teamCount": "團隊總數",

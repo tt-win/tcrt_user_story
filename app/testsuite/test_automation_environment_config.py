@@ -15,9 +15,9 @@ import pytest
 from sqlalchemy import select, text
 
 from app.config import get_settings
+from app.db_access.main import create_main_access_boundary_for_session
 from app.models.automation_environment import EnvParamInput
 from app.models.database_models import (
-    AutomationEnvironment,
     AutomationProviderSlot,
     AutomationScript,
     AutomationScriptFormat,
@@ -113,10 +113,10 @@ async def test_create_environment_masks_secret_in_response(env_db):
 async def test_single_default_per_team(env_db):
     async with env_db["async_sessionmaker"]() as session:
         svc = EnvironmentService(session)
-        a = await svc.create_environment(team_id=env_db["team_id"], name="dev",
-                                         is_default=True, params=[], actor="9")
-        b = await svc.create_environment(team_id=env_db["team_id"], name="prod",
-                                         is_default=True, params=[], actor="9")
+        await svc.create_environment(team_id=env_db["team_id"], name="dev",
+                                     is_default=True, params=[], actor="9")
+        await svc.create_environment(team_id=env_db["team_id"], name="prod",
+                                     is_default=True, params=[], actor="9")
         await session.commit()
         envs = {e.name: e.is_default for e in await svc.list_environments(env_db["team_id"])}
         assert envs == {"dev": False, "prod": True}
@@ -156,10 +156,51 @@ async def test_rename_to_existing_name_conflicts(env_db):
         await session.commit()
 
         from fastapi import HTTPException
+        boundary = create_main_access_boundary_for_session(session)
+
+        async def _rename(session):
+            return await EnvironmentService(session).update_environment(
+                team_id=env_db["team_id"], env_id=prod.id,
+                name="sit", is_default=None, actor="9",
+            )
+
         with pytest.raises(HTTPException) as ei:
-            await svc.update_environment(
-                team_id=env_db["team_id"], env_id=prod.id, name="sit", is_default=None, actor="9")
+            await boundary.run_write(_rename)
         assert ei.value.status_code == 409
+
+        remaining = await boundary.run_read(
+            lambda managed_session: EnvironmentService(managed_session).list_environments(
+                env_db["team_id"]
+            )
+        )
+        assert {environment.name for environment in remaining} == {"sit", "prod"}
+
+
+@pytest.mark.asyncio
+async def test_create_duplicate_environment_conflict_rolls_back_at_boundary(env_db):
+    async with env_db["async_sessionmaker"]() as session:
+        boundary = create_main_access_boundary_for_session(session)
+
+        async def _create(session):
+            return await EnvironmentService(session).create_environment(
+                team_id=env_db["team_id"], name="sit",
+                is_default=False, params=[], actor="9",
+            )
+
+        await boundary.run_write(_create)
+
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as exc_info:
+            await boundary.run_write(_create)
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.detail["code"] == "DUPLICATE_ENVIRONMENT"
+
+        remaining = await boundary.run_read(
+            lambda managed_session: EnvironmentService(managed_session).list_environments(
+                env_db["team_id"]
+            )
+        )
+        assert [environment.name for environment in remaining] == ["sit"]
 
 
 @pytest.mark.asyncio
@@ -192,7 +233,7 @@ async def test_per_script_override_resolution_and_coverage(env_db):
 async def test_resolve_env_bundle_paths(env_db):
     async with env_db["async_sessionmaker"]() as session:
         env_svc = EnvironmentService(session)
-        sit = await env_svc.create_environment(
+        await env_svc.create_environment(
             team_id=env_db["team_id"], name="sit", is_default=True,
             params=[
                 EnvParamInput(key="BASE_URL", value="https://sit", is_secret=False),
@@ -235,7 +276,7 @@ async def test_resolve_env_bundle_incomplete_and_required(env_db):
     async with env_db["async_sessionmaker"]() as session:
         env_svc = EnvironmentService(session)
         # Environment with NO values → required vars unmet.
-        sit = await env_svc.create_environment(
+        await env_svc.create_environment(
             team_id=env_db["team_id"], name="sit",
             is_default=False, params=[], actor="9")
         await session.commit()

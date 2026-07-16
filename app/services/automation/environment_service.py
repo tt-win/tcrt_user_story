@@ -196,7 +196,6 @@ class EnvironmentService:
         try:
             await self.session.flush()
         except IntegrityError as exc:
-            await self.session.rollback()
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={"code": "DUPLICATE_ENVIRONMENT", "message": f"Environment '{name}' already exists"},
@@ -225,7 +224,6 @@ class EnvironmentService:
             try:
                 await self.session.flush()
             except IntegrityError as exc:
-                await self.session.rollback()
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={"code": "DUPLICATE_ENVIRONMENT", "message": f"Environment '{name}' already exists"},

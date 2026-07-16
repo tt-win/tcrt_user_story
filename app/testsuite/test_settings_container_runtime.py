@@ -5,9 +5,15 @@ container runtime 的 localhost 警告與 SQLite 儲存風險 fail-fast、Jira e
 （change: remove-qdrant-support）後搬到此檔。
 """
 
+import logging
+
 import pytest
 
 from app.config import Settings
+from app.testsuite.db_test_helpers import (
+    create_managed_test_database,
+    dispose_managed_test_database,
+)
 
 
 def test_settings_prefers_public_base_url_env_over_legacy_app_base_url(tmp_path, monkeypatch):
@@ -37,6 +43,17 @@ def test_settings_falls_back_to_configured_public_base_url(tmp_path, monkeypatch
 
     loaded = Settings.from_env_and_file(str(config_path))
     assert loaded.app.get_base_url() == "https://config.example.com"
+
+
+def test_alembic_upgrade_preserves_existing_application_loggers(tmp_path, monkeypatch):
+    app_config_logger = logging.getLogger("app.config")
+    monkeypatch.setattr(app_config_logger, "disabled", False)
+
+    bundle = create_managed_test_database(tmp_path / "logging_regression.db")
+    try:
+        assert app_config_logger.disabled is False
+    finally:
+        dispose_managed_test_database(bundle)
 
 
 def test_settings_warns_when_container_runtime_uses_localhost_services(tmp_path, monkeypatch, caplog):

@@ -22,6 +22,9 @@ allowed_exceptions:
     - database_init.py
     - alembic/
     - migrations/
+  offline_maintenance:
+    - scripts/cleanup_manual_automation_links.py
+    - scripts/migrate_attachment_metadata_paths.py
   test_support:
     - app/testsuite/
 

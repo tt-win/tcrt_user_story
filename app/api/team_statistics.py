@@ -33,7 +33,7 @@ from app.models.database_models import (
 from app.models.lark_types import TestResultStatus
 from app.models.team import TeamStatus
 from app.audit.database import AuditLogTable
-from app.audit.models import ActionType, ResourceType, AuditSeverity
+from app.audit.models import ResourceType, AuditSeverity
 
 logger = logging.getLogger(__name__)
 
@@ -222,6 +222,21 @@ def _build_date_labels(start_date_obj: date, end_date_obj: date) -> List[str]:
     return labels
 
 
+@router.get("/helper_ai_analytics", include_in_schema=False)
+async def retired_helper_ai_analytics(
+    current_user: User = Depends(require_admin()),
+):
+    """Return an explicit tombstone for the retired legacy analytics API."""
+    del current_user
+    raise HTTPException(
+        status_code=410,
+        detail={
+            "error": "legacy_helper_statistics_retired",
+            "message": "Legacy helper statistics were retired during the V3 rollout.",
+        },
+    )
+
+
 def _get_action_weight(resource_type: Any, details_raw: Any) -> int:
     """
     取得行為的權重（受影響筆數）。
@@ -296,7 +311,7 @@ async def get_overview(
             )
             team_count = team_count_result.scalar() or 0
 
-            user_count_result = await session.execute(select(func.count(User.id)).where(User.is_active == True))
+            user_count_result = await session.execute(select(func.count(User.id)).where(User.is_active.is_(True)))
             user_count = user_count_result.scalar() or 0
 
             test_case_count_result = await session.execute(select(func.count(TestCaseLocal.id)))
@@ -1049,7 +1064,7 @@ async def get_department_stats(
                     User.role,
                     func.count(User.id).label("cnt"),
                 )
-                .where(User.is_active == True)
+                .where(User.is_active.is_(True))
                 .group_by(User.role)
             )
             user_distribution = {
@@ -1062,8 +1077,8 @@ async def get_department_stats(
                     LarkUser.primary_department_id,
                     LarkUser.department_ids_json,
                 ).where(
-                    LarkUser.is_activated == True,
-                    LarkUser.is_exited == False,
+                    LarkUser.is_activated.is_(True),
+                    LarkUser.is_exited.is_(False),
                 )
             )
 
@@ -1149,6 +1164,3 @@ async def get_department_stats(
     except Exception as e:
         logger.error(f"獲取部門統計失敗: {e}")
         raise HTTPException(status_code=500, detail={"error": "無法載入部門統計"})
-
-
-

@@ -1,3 +1,5 @@
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -222,6 +224,16 @@ def test_settings_loader_expands_qa_ai_helper_model_placeholders(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    for env_key in (
+        "QA_AI_HELPER_MODEL_SEED",
+        "QA_AI_HELPER_MODEL_SEED_TEMPERATURE",
+        "QA_AI_HELPER_MODEL_SEED_REFINE",
+        "QA_AI_HELPER_MODEL_SEED_REFINE_TEMPERATURE",
+        "QA_AI_HELPER_MODEL_TESTCASE",
+        "QA_AI_HELPER_MODEL_TESTCASE_TEMPERATURE",
+    ):
+        monkeypatch.delenv(env_key, raising=False)
+
     config_path = tmp_path / "config.yaml"
     _write_config(
         config_path,
