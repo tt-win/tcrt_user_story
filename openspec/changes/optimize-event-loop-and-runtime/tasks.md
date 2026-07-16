@@ -33,8 +33,9 @@
 
 ## 6. 收尾驗證
 
-- [ ] 6.1 全套測試：`uv run pytest app/testsuite -q` 全綠。 → verify: 該指令
+- [x] 6.1 全套測試：`uv run pytest app/testsuite -q` 全綠。 → verify: 該指令
 
-  2026-07-16 實測：本 change 相關測試全綠；全套為 780 passed / 8 failed / 30 skipped。8 項失敗中 leader-lock 因既有 port 9999 server 持鎖，1 項設定測試單獨執行通過（suite state leakage），其餘 6 項在未修改區域單獨執行仍失敗，屬目前 baseline，未於本 change 擴充修正。
+  2026-07-16 實測（實作當下）：本 change 相關測試全綠；全套為 780 passed / 8 failed / 30 skipped，8 項失敗屬既有 baseline（leader-lock 埠占用、suite state leakage 等），由配套 change `stabilize-full-test-suite` 處理。
+  2026-07-16 複測（stabilize-full-test-suite 落地後、merge 前守門）：全套 **790 passed / 0 failed / 30 skipped**，完全綠。
 - [x] 6.2 Lint：`uv run ruff check <本 change 全部變更檔>` 乾淨（repo 既有未觸碰的 lint 錯誤不在範圍）。 → verify: 該指令
 - [x] 6.3 `openspec validate optimize-event-loop-and-runtime --strict` 通過；tasks 勾選狀態與實作一致。 → verify: 該指令
