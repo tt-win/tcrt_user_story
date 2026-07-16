@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from sqlalchemy.engine import make_url
 from sqlalchemy.sql import sqltypes
 
@@ -54,20 +55,46 @@ class _FakeConnection:
 
 
 class _FakeEngine:
-    def __init__(self, *, dialect_name: str, connection: _FakeConnection):
+    def __init__(self, *, dialect_name: str, connection: _FakeConnection, connect_error=None):
         quote_char = '"' if dialect_name == "postgresql" else "`"
         self.dialect = SimpleNamespace(
             name=dialect_name,
             identifier_preparer=SimpleNamespace(quote=lambda value: f"{quote_char}{value}{quote_char}"),
         )
         self._connection = connection
+        self._connect_error = connect_error
         self.disposed = False
 
     def connect(self):
+        if self._connect_error:
+            raise self._connect_error
         return self._connection
 
     def dispose(self):
         self.disposed = True
+
+
+def test_create_database_if_missing_uses_existing_mysql_target_without_admin_access(monkeypatch) -> None:
+    captured: list[tuple[object, dict[str, object]]] = []
+    target_connection = _FakeConnection(exists_value=None)
+    target_engine = _FakeEngine(dialect_name="mysql", connection=target_connection)
+
+    def fake_create_engine(url, **kwargs):
+        captured.append((url, kwargs))
+        return target_engine
+
+    monkeypatch.setattr(db_migrations, "create_engine", fake_create_engine)
+
+    created = db_migrations.create_database_if_missing(
+        "mysql+asyncmy://tcrt:tcrt@127.0.0.1:3306/tcrt_main"
+    )
+
+    assert created is False
+    assert len(captured) == 1
+    assert captured[0][0].render_as_string(hide_password=False) == (
+        "mysql+pymysql://tcrt:tcrt@127.0.0.1:3306/tcrt_main"
+    )
+    assert target_engine.disposed is True
 
 
 def test_create_database_if_missing_for_postgres(monkeypatch) -> None:
@@ -75,6 +102,12 @@ def test_create_database_if_missing_for_postgres(monkeypatch) -> None:
     connection = _FakeConnection(exists_value=None)
 
     def fake_create_engine(url, **kwargs):
+        if url.database == "tcrt_main":
+            return _FakeEngine(
+                dialect_name="postgresql",
+                connection=connection,
+                connect_error=RuntimeError('database "tcrt_main" does not exist'),
+            )
         captured["url"] = url
         captured["kwargs"] = kwargs
         return _FakeEngine(dialect_name="postgresql", connection=connection)
@@ -106,6 +139,12 @@ def test_create_database_if_missing_for_mysql(monkeypatch) -> None:
     connection = _FakeConnection(exists_value=None)
 
     def fake_create_engine(url, **kwargs):
+        if url.database == "tcrt_main":
+            return _FakeEngine(
+                dialect_name="mysql",
+                connection=connection,
+                connect_error=RuntimeError("Unknown database 'tcrt_main'"),
+            )
         captured["url"] = url
         captured["kwargs"] = kwargs
         return _FakeEngine(dialect_name="mysql", connection=connection)
@@ -123,6 +162,22 @@ def test_create_database_if_missing_for_mysql(monkeypatch) -> None:
         ),
         ("CREATE DATABASE `tcrt_main`", None),
     ]
+
+
+def test_create_database_if_missing_does_not_fallback_on_auth_error(monkeypatch) -> None:
+    target_engine = _FakeEngine(
+        dialect_name="mysql",
+        connection=_FakeConnection(exists_value=None),
+        connect_error=RuntimeError("Access denied for user"),
+    )
+    monkeypatch.setattr(db_migrations, "create_engine", lambda *_args, **_kwargs: target_engine)
+
+    with pytest.raises(RuntimeError, match="Access denied"):
+        db_migrations.create_database_if_missing(
+            "mysql+asyncmy://tcrt:tcrt@127.0.0.1:3306/tcrt_main"
+        )
+
+    assert target_engine.disposed is True
 
 
 def test_collect_target_preflight_marks_missing_database_as_ready(monkeypatch) -> None:

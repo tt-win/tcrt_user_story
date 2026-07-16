@@ -128,6 +128,38 @@ def test_redact_environment_hides_passwords_and_secret() -> None:
     assert redacted["JWT_SECRET_KEY"] == "<redacted>"
 
 
+def test_run_command_redacts_database_urls_from_result_and_log(monkeypatch, tmp_path: Path) -> None:
+    source_url = "postgresql+psycopg://reader:source-secret@source-db:5432/tcrt_main"
+    target_url = "mysql+asyncmy://tcrt:target-secret@db:3306/tcrt_main"
+    derived_sync_url = "mysql+pymysql://tcrt:target-secret@db:3306/tcrt_main"
+    command = ["migrate", "--source-url", source_url]
+    environment = {"DATABASE_URL": target_url, "JWT_SECRET_KEY": "jwt-secret"}
+
+    monkeypatch.setattr(
+        db_cutover_workflow_module.subprocess,
+        "run",
+        lambda *_args, **_kwargs: db_cutover_workflow_module.subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=f"source={source_url} target={derived_sync_url} jwt=jwt-secret",
+            stderr=f"failed target={target_url}",
+        ),
+    )
+
+    log_path = tmp_path / "migrate.log"
+    result = db_cutover_workflow_module._run_command(
+        command=command,
+        environment=environment,
+        log_path=log_path,
+    )
+    persisted = json.dumps(result.as_json()) + log_path.read_text(encoding="utf-8")
+
+    assert "target-secret" not in persisted
+    assert "source-secret" not in persisted
+    assert "jwt-secret" not in persisted
+    assert "mysql+pymysql://tcrt:***@db:3306/tcrt_main" in persisted
+
+
 def test_render_markdown_summary_includes_comparison_and_health() -> None:
     summary = {
         "target": "mysql",

@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 
 import httpx
 import pytest
+from sqlalchemy import select
+from sqlalchemy.dialects import mysql
 
 from app.models.database_models import (
     AutomationProviderSlot,
@@ -23,8 +25,19 @@ from app.services.automation.run_service import (
     AutomationRunExternalIdMissingError,
     AutomationRunNotFoundError,
     AutomationRunService,
+    _pending_run_order_clauses,
 )
 from app.testsuite.db_test_helpers import create_managed_test_database, dispose_managed_test_database
+
+
+def test_pending_run_order_clauses_compile_for_mysql_without_nulls_first() -> None:
+    statement = select(AutomationRun.id).order_by(*_pending_run_order_clauses())
+
+    compiled = str(statement.compile(dialect=mysql.dialect())).upper()
+
+    assert "NULLS FIRST" not in compiled
+    assert "CASE WHEN" in compiled
+    assert "LAST_SYNCED_AT IS NULL" in compiled
 
 
 class FakeCIProvider:
@@ -377,7 +390,6 @@ async def test_maybe_fill_report_url_uses_result_provider_when_terminal(automati
 async def test_maybe_fill_report_url_pulls_from_jenkins_and_proxies_to_allure(
     automation_run_db, monkeypatch
 ):
-    from app.services.automation import run_service as run_service_module
     from app.services.automation.run_service import maybe_fill_report_url
 
     ids = automation_run_db["ids"]

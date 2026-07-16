@@ -4,11 +4,13 @@ import importlib.util
 import json
 import os
 import sys
+import warnings
 from pathlib import Path
 
 import pytest
 from sqlalchemy import Column, Integer, JSON, MetaData, Table, Text, create_engine, select, text
 from sqlalchemy.dialects import mysql
+from sqlalchemy.exc import SAWarning
 
 POSTGRES_URL_ENV = "TCRT_TEST_POSTGRES_URL"
 
@@ -25,6 +27,17 @@ def _load_script_module():
 
 def _sqlite_url(path: Path) -> str:
     return f"sqlite:///{path}"
+
+
+def test_redact_database_url_hides_password() -> None:
+    module = _load_script_module()
+
+    redacted = module.redact_database_url(
+        "mysql+pymysql://migration-user:super-secret@db.example:3306/tcrt_main"
+    )
+
+    assert redacted == "mysql+pymysql://migration-user:***@db.example:3306/tcrt_main"
+    assert "super-secret" not in redacted
 
 
 def test_run_job_copies_rows_between_sqlite_databases(tmp_path: Path) -> None:
@@ -81,8 +94,24 @@ def test_run_job_copies_rows_between_sqlite_databases(tmp_path: Path) -> None:
         assert [item["table"] for item in summary["tables"]] == ["parent", "child"]
         assert summary["row_counts_match"] is True
         assert {item["table"]: item for item in summary["row_count_verification"]} == {
-            "parent": {"table": "parent", "source_rows": 2, "target_rows": 2, "matches": True},
-            "child": {"table": "child", "source_rows": 2, "target_rows": 2, "matches": True},
+            "parent": {
+                "table": "parent",
+                "source_rows": 2,
+                "filtered_rows": 0,
+                "expected_target_rows": 2,
+                "target_rows": 2,
+                "repair_counts": {},
+                "matches": True,
+            },
+            "child": {
+                "table": "child",
+                "source_rows": 2,
+                "filtered_rows": 0,
+                "expected_target_rows": 2,
+                "target_rows": 2,
+                "repair_counts": {},
+                "matches": True,
+            },
         }
 
         with target_engine.connect() as connection:
@@ -179,7 +208,15 @@ def test_run_job_row_count_verification_detects_mismatch(tmp_path: Path, monkeyp
         assert summary["status"] == "completed"
         assert summary["row_counts_match"] is False
         widgets_check = next(item for item in summary["row_count_verification"] if item["table"] == "widgets")
-        assert widgets_check == {"table": "widgets", "source_rows": 3, "target_rows": 2, "matches": False}
+        assert widgets_check == {
+            "table": "widgets",
+            "source_rows": 3,
+            "filtered_rows": 0,
+            "expected_target_rows": 3,
+            "target_rows": 2,
+            "repair_counts": {},
+            "matches": False,
+        }
     finally:
         source_engine.dispose()
         target_engine.dispose()
@@ -651,6 +688,142 @@ def test_copy_table_data_skips_orphan_test_run_item_history(tmp_path: Path) -> N
     finally:
         source_engine.dispose()
         target_engine.dispose()
+
+
+def test_run_job_counts_filtered_orphan_history_as_expected_target_rows(tmp_path: Path) -> None:
+    module = _load_script_module()
+    source_path = tmp_path / "source-history-job.db"
+    target_path = tmp_path / "target-history-job.db"
+    source_engine = create_engine(_sqlite_url(source_path), future=True)
+    target_engine = create_engine(_sqlite_url(target_path), future=True)
+
+    try:
+        with source_engine.begin() as connection:
+            connection.execute(text("CREATE TABLE test_run_items (id INTEGER PRIMARY KEY)"))
+            connection.execute(
+                text(
+                    "CREATE TABLE test_run_item_result_history ("
+                    "id INTEGER PRIMARY KEY, item_id INTEGER NOT NULL, change_source TEXT)"
+                )
+            )
+            connection.execute(text("INSERT INTO test_run_items (id) VALUES (10)"))
+            connection.execute(
+                text(
+                    "INSERT INTO test_run_item_result_history (id, item_id, change_source) VALUES "
+                    "(1, 10, 'valid'), (2, 99, 'orphan')"
+                )
+            )
+
+        with target_engine.begin() as connection:
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+            connection.execute(text("CREATE TABLE test_run_items (id INTEGER PRIMARY KEY)"))
+            connection.execute(
+                text(
+                    "CREATE TABLE test_run_item_result_history ("
+                    "id INTEGER PRIMARY KEY, item_id INTEGER NOT NULL, change_source TEXT, "
+                    "FOREIGN KEY(item_id) REFERENCES test_run_items(id))"
+                )
+            )
+
+        summary = module.run_job(
+            module.TransferJob(
+                name="history-filter",
+                source_url=_sqlite_url(source_path),
+                target_url=_sqlite_url(target_path),
+                include_tables=["test_run_items", "test_run_item_result_history"],
+                chunk_size=10,
+            ),
+            module.Logger(quiet=True),
+        )
+
+        history_check = next(
+            item
+            for item in summary["row_count_verification"]
+            if item["table"] == "test_run_item_result_history"
+        )
+        assert history_check == {
+            "table": "test_run_item_result_history",
+            "source_rows": 2,
+            "filtered_rows": 1,
+            "expected_target_rows": 1,
+            "target_rows": 1,
+            "repair_counts": {"skipped_orphan_item_refs": 1},
+            "matches": True,
+        }
+        assert summary["row_counts_match"] is True
+    finally:
+        source_engine.dispose()
+        target_engine.dispose()
+
+
+def test_known_legacy_test_case_columns_are_classified_without_schema_warning() -> None:
+    module = _load_script_module()
+    source_metadata = MetaData()
+    target_metadata = MetaData()
+    Table(
+        "test_cases",
+        source_metadata,
+        Column("id", Integer, primary_key=True),
+        Column("attachment_count", Integer),
+        Column("has_attachments", Integer),
+        Column("unexpected_legacy", Text),
+    )
+    Table("test_cases", target_metadata, Column("id", Integer, primary_key=True))
+
+    warnings_found = module.validate_target_tables(
+        source_metadata,
+        target_metadata,
+        ["test_cases"],
+    )
+    ignored = module.collect_known_ignored_source_columns(
+        source_metadata,
+        target_metadata,
+        ["test_cases"],
+    )
+
+    assert ignored == {"test_cases": ["attachment_count", "has_attachments"]}
+    assert warnings_found == [
+        "table test_cases 的來源欄位 ['unexpected_legacy'] 不存在於目標，搬移時會忽略。"
+    ]
+
+
+def test_reflection_suppresses_only_expression_index_warning(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = _load_script_module()
+    database_path = tmp_path / "expression-index.db"
+    engine = create_engine(_sqlite_url(database_path), future=True)
+    original_reflect = MetaData.reflect
+
+    def _reflect_with_unrelated_warning(metadata, *args, **kwargs):
+        warnings.warn("unrelated reflection warning", SAWarning, stacklevel=2)
+        return original_reflect(metadata, *args, **kwargs)
+
+    monkeypatch.setattr(MetaData, "reflect", _reflect_with_unrelated_warning)
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT)"))
+            connection.execute(text("CREATE UNIQUE INDEX uq_users_username_lower ON users (lower(username))"))
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", SAWarning)
+            module.reflect_selected_metadata(
+                engine,
+                include_tables=["users"],
+                exclude_tables=[],
+            )
+
+        assert not [
+            warning
+            for warning in caught
+            if "Skipped unsupported reflection of expression-based index" in str(warning.message)
+        ]
+        assert [str(warning.message) for warning in caught] == [
+            "unrelated reflection warning"
+        ]
+    finally:
+        engine.dispose()
 
 
 def test_run_job_copies_qa_ai_helper_tables_with_reflection_compatible_types(tmp_path: Path) -> None:

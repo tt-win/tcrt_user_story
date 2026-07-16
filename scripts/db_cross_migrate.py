@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import warnings
 from collections import deque
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
@@ -24,7 +25,8 @@ from typing import Any, Iterator
 import yaml
 from sqlalchemy import MetaData, create_engine, func, inspect, select
 from sqlalchemy.dialects import mysql
-from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.engine import Connection, Engine, make_url
+from sqlalchemy.exc import SAWarning
 from sqlalchemy.sql.sqltypes import JSON as SQLAlchemyJSON
 from sqlalchemy.sql.sqltypes import Integer, String, Text
 
@@ -60,6 +62,10 @@ HELPER_RUNTIME_PURGE_ORDER = [
     "ai_tc_helper_sessions",
 ]
 HELPER_V3_BASELINE = "first_v3_session_after_purge"
+KNOWN_IGNORED_SOURCE_COLUMNS = {
+    "test_cases": {"attachment_count", "has_attachments"},
+}
+FILTERED_ROW_REPAIR_KEYS = {"skipped_orphan_item_refs"}
 
 
 @dataclass
@@ -242,6 +248,13 @@ def build_engine(database_url: str) -> Engine:
     return create_engine(database_url, **engine_kwargs)
 
 
+def redact_database_url(database_url: str) -> str:
+    parsed = make_url(database_url)
+    if parsed.password is None:
+        return str(parsed)
+    return str(parsed.set(password="***"))
+
+
 def quote_ident(engine: Engine, name: str) -> str:
     return engine.dialect.identifier_preparer.quote(name)
 
@@ -264,8 +277,30 @@ def reflect_selected_metadata(
         and (not included or table_name.lower() in included)
     ]
     metadata = MetaData()
-    metadata.reflect(bind=engine, only=selected)
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"Skipped unsupported reflection of expression-based index.*",
+            category=SAWarning,
+        )
+        metadata.reflect(bind=engine, only=selected)
     return metadata, selected
+
+
+def collect_known_ignored_source_columns(
+    source_metadata: MetaData,
+    target_metadata: MetaData,
+    selected_tables: list[str],
+) -> dict[str, list[str]]:
+    ignored: dict[str, list[str]] = {}
+    for table_name in selected_tables:
+        known_columns = KNOWN_IGNORED_SOURCE_COLUMNS.get(table_name, set())
+        source_columns = set(source_metadata.tables[table_name].c.keys())
+        target_columns = set(target_metadata.tables[table_name].c.keys())
+        matched = sorted((source_columns - target_columns) & known_columns)
+        if matched:
+            ignored[table_name] = matched
+    return ignored
 
 
 def apply_mysql_mediumtext_defaults(metadata: MetaData) -> None:
@@ -361,7 +396,10 @@ def validate_target_tables(
                 f"目標 table {table_name} 有來源缺少且必填的欄位: {missing_required_columns}"
             )
 
-        extra_source_columns = sorted(source_columns - target_columns)
+        known_ignored_columns = KNOWN_IGNORED_SOURCE_COLUMNS.get(table_name, set())
+        extra_source_columns = sorted(
+            (source_columns - target_columns) - known_ignored_columns
+        )
         if extra_source_columns:
             warnings.append(
                 f"table {table_name} 的來源欄位 {extra_source_columns} 不存在於目標，搬移時會忽略。"
@@ -670,6 +708,9 @@ def copy_table_data(
     repair_totals: dict[str, int] = {}
     context_cache: dict[str, Any] = shared_context if shared_context is not None else {}
 
+    def _record_repair_totals() -> None:
+        context_cache[("repair_counts", target_table.name)] = dict(repair_totals)
+
     def _apply_repairs(payload: list[dict[str, Any]]) -> list[dict[str, Any]]:
         repaired_payload, repair_counts = repair_payload_for_target(
             target_table.name,
@@ -715,6 +756,7 @@ def copy_table_data(
                 f"table {target_table.name} 自動修補資料："
                 + ", ".join(f"{key}={value}" for key, value in sorted(repair_totals.items()) if value)
             )
+        _record_repair_totals()
         return copied_rows
 
     result = source_connection.execution_options(stream_results=True).execute(_ordered_select(source_table))
@@ -733,6 +775,7 @@ def copy_table_data(
             f"table {target_table.name} 自動修補資料："
             + ", ".join(f"{key}={value}" for key, value in sorted(repair_totals.items()) if value)
         )
+    _record_repair_totals()
     return copied_rows
 
 
@@ -804,7 +847,7 @@ def purge_legacy_helper_runtime(
         existing_tables = set(inspector.get_table_names())
         purge_tables = [table for table in HELPER_RUNTIME_PURGE_ORDER if table in existing_tables]
         summary: dict[str, Any] = {
-            "target_url": target_url,
+            "target_url": redact_database_url(target_url),
             "snapshot_path": created_snapshot,
             "purged_tables": [],
             "no_backfill": True,
@@ -859,7 +902,7 @@ def verify_legacy_helper_purge(target_url: str) -> dict[str, Any]:
 
         remaining_rows = sum(item["row_count"] for item in remaining_tables)
         return {
-            "target_url": target_url,
+            "target_url": redact_database_url(target_url),
             "checked_tables": checked_tables,
             "remaining_tables": remaining_tables,
             "remaining_helper_rows": remaining_rows,
@@ -944,6 +987,11 @@ def run_job(job: TransferJob, logger: Logger) -> dict[str, Any]:
             exclude_tables=[],
         )
         warnings = validate_target_tables(source_metadata, target_metadata, selected_tables)
+        ignored_source_columns = collect_known_ignored_source_columns(
+            source_metadata,
+            target_metadata,
+            selected_tables,
+        )
         for message in warnings:
             logger.warn(message)
 
@@ -955,13 +1003,14 @@ def run_job(job: TransferJob, logger: Logger) -> dict[str, Any]:
         )
         summary = {
             "job": job.name,
-            "source_url": job.source_url,
-            "target_url": job.target_url,
+            "source_url": redact_database_url(job.source_url),
+            "target_url": redact_database_url(job.target_url),
             "tables": [],
             "reset_target": job.reset_target,
             "create_target_schema": job.create_target_schema,
             "disable_constraints": job.disable_constraints,
             "dry_run": job.dry_run,
+            "ignored_source_columns": ignored_source_columns,
         }
 
         if job.dry_run:
@@ -1003,11 +1052,15 @@ def run_job(job: TransferJob, logger: Logger) -> dict[str, Any]:
                         logger=logger,
                         shared_context=shared_context,
                     )
+                    repair_counts = dict(
+                        shared_context.get(("repair_counts", table_name), {})
+                    )
                     logger.info(f"job={job.name} 搬移 {table_name}: {copied_rows} rows")
                     summary["tables"].append(
                         {
                             "table": table_name,
                             "rows": copied_rows,
+                            "repair_counts": repair_counts,
                         }
                     )
 
@@ -1027,12 +1080,24 @@ def run_job(job: TransferJob, logger: Logger) -> dict[str, Any]:
                 target_table = target_metadata.tables[table_name]
                 source_rows = int(verify_source_conn.execute(select(func.count()).select_from(source_table)).scalar_one())
                 target_rows = int(verify_target_conn.execute(select(func.count()).select_from(target_table)).scalar_one())
+                repair_counts = dict(
+                    shared_context.get(("repair_counts", table_name), {})
+                )
+                filtered_rows = sum(
+                    count
+                    for key, count in repair_counts.items()
+                    if key in FILTERED_ROW_REPAIR_KEYS
+                )
+                expected_target_rows = source_rows - filtered_rows
                 row_count_verification.append(
                     {
                         "table": table_name,
                         "source_rows": source_rows,
+                        "filtered_rows": filtered_rows,
+                        "expected_target_rows": expected_target_rows,
                         "target_rows": target_rows,
-                        "matches": source_rows == target_rows,
+                        "repair_counts": repair_counts,
+                        "matches": expected_target_rows == target_rows,
                     }
                 )
         summary["row_count_verification"] = row_count_verification

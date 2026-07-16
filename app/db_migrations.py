@@ -326,6 +326,17 @@ def create_database_if_missing(database_url: str | URL) -> bool:
     if admin_target is None:
         return False
 
+    target_url = make_url(normalize_sync_database_url(_database_url_string(database_url)))
+    target_engine = create_engine(target_url, future=True, pool_pre_ping=True)
+    try:
+        with target_engine.connect():
+            return False
+    except Exception as exc:
+        if not is_missing_database_error(exc):
+            raise
+    finally:
+        target_engine.dispose()
+
     admin_url, target_database = admin_target
     admin_engine = create_engine(
         admin_url,

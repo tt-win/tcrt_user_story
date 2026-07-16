@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import subprocess
 import sys
@@ -37,6 +38,7 @@ MIGRATE_JOB_SPECS = (
 )
 NON_EMPTY_EXCLUDE_TABLES = ("alembic_version", "migration_history")
 MAX_NON_EMPTY_TABLES_REPORTED = 20
+DATABASE_URL_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s\"'`]+")
 
 
 @dataclass(frozen=True)
@@ -299,6 +301,50 @@ def redact_url(url: str) -> str:
     if parsed.password is None:
         return str(parsed)
     return str(parsed.set(password="***"))
+
+
+def _redaction_replacements(
+    command: Iterable[str],
+    environment: dict[str, str],
+) -> dict[str, str]:
+    replacements: dict[str, str] = {}
+    candidates = [value for value in command if "://" in value]
+    candidates.extend(environment.get(key, "") for key in MIGRATE_URL_KEYS)
+    for value in candidates:
+        if not value:
+            continue
+        try:
+            replacements[value] = redact_url(value)
+        except Exception:  # noqa: BLE001
+            continue
+    jwt_secret = environment.get("JWT_SECRET_KEY")
+    if jwt_secret:
+        replacements[jwt_secret] = "<redacted>"
+    return replacements
+
+
+def _redact_sensitive_text(
+    value: str,
+    *,
+    command: Iterable[str],
+    environment: dict[str, str],
+) -> str:
+    redacted = value
+    for sensitive_value, replacement in _redaction_replacements(command, environment).items():
+        redacted = redacted.replace(sensitive_value, replacement)
+
+    def redact_match(match: re.Match[str]) -> str:
+        try:
+            return redact_url(match.group(0))
+        except Exception:  # noqa: BLE001
+            return match.group(0)
+
+    return DATABASE_URL_PATTERN.sub(redact_match, redacted)
+
+
+def _redact_command(command: Iterable[str], environment: dict[str, str]) -> list[str]:
+    replacements = _redaction_replacements(command, environment)
+    return [replacements.get(value, value) for value in command]
 
 
 def extract_json_payload(output: str) -> dict[str, Any]:
@@ -957,17 +1003,33 @@ def _run_command(
         check=False,
     )
     duration = time.monotonic() - start_time
+    recorded_command = _redact_command(command, environment)
+    recorded_stdout = _redact_sensitive_text(
+        completed.stdout,
+        command=command,
+        environment=environment,
+    )
+    recorded_stderr = _redact_sensitive_text(
+        completed.stderr,
+        command=command,
+        environment=environment,
+    )
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.write_text(
-        _format_command_log(command, completed.stdout, completed.stderr, completed.returncode),
+        _format_command_log(
+            recorded_command,
+            recorded_stdout,
+            recorded_stderr,
+            completed.returncode,
+        ),
         encoding="utf-8",
     )
     return CommandResult(
-        command=command,
+        command=recorded_command,
         returncode=completed.returncode,
         duration_seconds=duration,
-        stdout=completed.stdout,
-        stderr=completed.stderr,
+        stdout=recorded_stdout,
+        stderr=recorded_stderr,
         log_path=str(log_path),
     )
 
@@ -1027,6 +1089,14 @@ def _run_start_script(environment: dict[str, str], log_path: Path) -> CommandRes
             text=True,
             check=False,
         )
+    log_path.write_text(
+        _redact_sensitive_text(
+            log_path.read_text(encoding="utf-8"),
+            command=command,
+            environment=environment,
+        ),
+        encoding="utf-8",
+    )
     duration = time.monotonic() - start_time
     return CommandResult(
         command=command,

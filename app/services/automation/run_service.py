@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -14,6 +14,7 @@ from app.models.database_models import (
     AutomationProviderSlot,
     AutomationRun,
     AutomationRunStatus,
+    AutomationRunTrigger,
     AutomationScript,
     SystemAutomationProvider,
 )
@@ -45,6 +46,16 @@ _STATUS_MAP: dict[str, AutomationRunStatus] = {
     "CANCELLED": AutomationRunStatus.CANCELLED,
     "UNKNOWN": AutomationRunStatus.UNKNOWN,
 }
+
+
+def _pending_run_order_clauses() -> tuple[Any, ...]:
+    """Return portable NULL-first ordering for pending-run synchronization."""
+
+    return (
+        case((AutomationRun.last_synced_at.is_(None), 0), else_=1).asc(),
+        AutomationRun.last_synced_at.asc(),
+        AutomationRun.id.asc(),
+    )
 
 
 class AutomationRunServiceError(ValueError):
@@ -245,7 +256,7 @@ class AutomationRunService:
         stmt = (
             select(AutomationRun)
             .where(and_(*conditions))
-            .order_by(AutomationRun.last_synced_at.asc().nullsfirst(), AutomationRun.id.asc())
+            .order_by(*_pending_run_order_clauses())
             .limit(max(1, min(limit, 200)))
         )
         rows = list((await self.session.execute(stmt)).scalars().all())

@@ -434,7 +434,7 @@ class TestCaseSet(Base):
     )
 
     id = Column(Integer, primary_key=True)
-    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
     name = Column(String(100), nullable=False)  # 全域唯一名稱
     description = Column(Text, nullable=True)
     is_default = Column(Boolean, default=False, nullable=False)  # 標記為預設 Set
@@ -1674,9 +1674,9 @@ class UserTeamPermission(Base):
     __tablename__ = "user_team_permissions"
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True)
-    permission = Column(Enum(PermissionType, values_callable=lambda values: [item.value for item in values], native_enum=False), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
+    permission = Column(Enum(PermissionType, values_callable=lambda values: [item.value for item in values], native_enum=False), nullable=False)
 
     # 時間欄位
     granted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -1715,7 +1715,7 @@ class ActiveSession(Base):
     # 狀態與時間
     is_revoked = Column(Boolean, default=False, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    expires_at = Column(DateTime, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
     last_used_at = Column(DateTime, nullable=True)
     revoked_at = Column(DateTime, nullable=True)
     revoked_reason = Column(String(100), nullable=True)  # logout, admin_revoke, expired, etc.
@@ -1763,7 +1763,7 @@ class PasswordResetToken(Base):
     # 狀態與時間
     is_used = Column(Boolean, default=False, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    expires_at = Column(DateTime, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
     used_at = Column(DateTime, nullable=True)
 
     # 安全資訊
