@@ -83,7 +83,7 @@ docker compose --env-file .env.docker -f docker-compose.app.yml down -v
 
 ## 6. 部署注意事項
 
-- `WEB_CONCURRENCY` 可視負載調大：背景服務已由 DB advisory-lock leader 選舉確保跨 worker/副本僅單一執行，`>1` 時 entrypoint 會啟用對應數量的 uvicorn worker；登入 challenge 與權限快取清除也都已改為跨 worker 共用（見 `app/auth/session_service.py`、`app/auth/permission_service.py`），殘留限制只剩權限變更跨 worker 最多 30 秒延遲可見
+- `WEB_CONCURRENCY` 可視負載調大，建議不超過 CPU 核數 × 2：背景服務依 `openspec/specs/background-service-scaling/spec.md` 的 DB advisory-lock leader election 確保跨 worker/副本僅單一執行，`>1` 時 entrypoint 會啟用對應數量的 uvicorn worker；登入 challenge 與權限快取清除也都已改為跨 worker 共用（見 `app/auth/session_service.py`、`app/auth/permission_service.py`），殘留限制包含權限變更跨 worker 最多 30 秒延遲可見，以及認證失敗的 per-IP rate limit 為每個 worker 各自計算，N 個 worker 的有效上限是 N × 30 次/分鐘（見 `openspec/changes/harden-app-token-security/design.md`）
 - 容器內使用 SQLite 時必須設定 `SQLITE_CONTAINER_STORAGE_ACK=1` 才能開機——容器沒有為
   SQLite 檔案掛 volume 時，重建/重新部署會靜默遺失所有資料；正式環境建議改用
   MySQL/PostgreSQL（見 `docs/database-cutover-readiness.md` 的 `--mode migrate`）

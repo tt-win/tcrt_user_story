@@ -4,15 +4,14 @@
 提供檔案上傳到 Lark Drive 並附加到測試案例或測試執行記錄的功能
 """
 
+import aiohttp
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from typing import Optional
-import io
 import json
-import requests
-import urllib.parse
 import logging
 
 from app.database import get_db
@@ -57,7 +56,7 @@ async def get_lark_client_for_team(
     # 建立 Lark Client
     lark_client = LarkClient(app_id=settings.lark.app_id, app_secret=settings.lark.app_secret)
 
-    if not lark_client.set_wiki_token(team.wiki_token):
+    if not await asyncio.to_thread(lark_client.set_wiki_token, team.wiki_token):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="無法連接到 Lark 服務")
 
     return lark_client, team
@@ -100,7 +99,8 @@ async def upload_testcase_attachment(
             )
 
         # 上傳檔案並附加到記錄
-        success = lark_client.upload_and_attach_file(
+        success = await asyncio.to_thread(
+            lark_client.upload_and_attach_file,
             table_id=team.test_case_table_id,
             record_id=record_id,
             field_name=field_name,
@@ -151,7 +151,6 @@ async def upload_testrun_attachment(
         append: 是否追加到現有附件（預設: True）
     """
     from app.models.database_models import TestRunItem as TestRunItemDB
-    import os
     import re
     import json
     from pathlib import Path
@@ -361,7 +360,8 @@ async def upload_file_get_token(team_id: int, file: UploadFile = File(...), db: 
             )
 
         # 只上傳檔案到 Lark Drive
-        file_token = lark_client.upload_file_to_drive(
+        file_token = await asyncio.to_thread(
+            lark_client.upload_file_to_drive,
             file_content=file_content, file_name=file.filename or "unknown_file"
         )
 
@@ -397,35 +397,38 @@ async def attach_file_token_to_testcase(
     lark_client, team = await get_lark_client_for_team(team_id, db=db)
 
     try:
-        # 取得現有附件（如果是追加模式）
-        existing_file_tokens = []
-        if append:
-            records = lark_client.get_all_records(team.test_case_table_id)
-            target_record = None
-            for record in records:
-                if record.get("record_id") == record_id:
-                    target_record = record
-                    break
+        def _attach_token() -> tuple[bool, list[str]]:
+            existing_file_tokens = []
+            if append:
+                records = lark_client.get_all_records(team.test_case_table_id)
+                target_record = next(
+                    (record for record in records if record.get("record_id") == record_id),
+                    None,
+                )
+                if target_record:
+                    existing_attachments = target_record.get("fields", {}).get(field_name, [])
+                    if isinstance(existing_attachments, list):
+                        existing_file_tokens = [
+                            att.get("file_token")
+                            for att in existing_attachments
+                            if att.get("file_token")
+                        ]
 
-            if target_record:
-                existing_attachments = target_record.get("fields", {}).get(field_name, [])
-                if isinstance(existing_attachments, list):
-                    existing_file_tokens = [
-                        att.get("file_token") for att in existing_attachments if att.get("file_token")
-                    ]
+            all_file_tokens = existing_file_tokens + [file_token]
+            success = lark_client.update_record_attachment(
+                table_id=team.test_case_table_id,
+                record_id=record_id,
+                field_name=field_name,
+                file_tokens=all_file_tokens,
+            )
+            return success, all_file_tokens
 
-        # 準備完整的附件列表
-        all_file_tokens = existing_file_tokens + [file_token]
-
-        # 更新記錄的附件欄位
-        success = lark_client.update_record_attachment(
-            table_id=team.test_case_table_id, record_id=record_id, field_name=field_name, file_tokens=all_file_tokens
-        )
+        success, all_file_tokens = await asyncio.to_thread(_attach_token)
 
         if success:
             return {
                 "success": True,
-                "message": f"file_token 附加成功",
+                "message": "file_token 附加成功",
                 "file_token": file_token,
                 "field_name": field_name,
                 "total_attachments": len(all_file_tokens),
@@ -457,13 +460,11 @@ async def remove_testcase_attachment(
     lark_client, team = await get_lark_client_for_team(team_id, db=db)
 
     try:
-        # 取得現有記錄
-        records = lark_client.get_all_records(team.test_case_table_id)
-        target_record = None
-        for record in records:
-            if record.get("record_id") == record_id:
-                target_record = record
-                break
+        records = await asyncio.to_thread(lark_client.get_all_records, team.test_case_table_id)
+        target_record = next(
+            (record for record in records if record.get("record_id") == record_id),
+            None,
+        )
 
         if not target_record:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到記錄 ID {record_id}")
@@ -489,7 +490,8 @@ async def remove_testcase_attachment(
             )
 
         # 更新記錄的附件欄位
-        success = lark_client.update_record_attachment(
+        success = await asyncio.to_thread(
+            lark_client.update_record_attachment,
             table_id=team.test_case_table_id,
             record_id=record_id,
             field_name=field_name,
@@ -534,9 +536,7 @@ async def download_attachment_proxy(
     3. 若只有 file_token，嘗試在本地 attachments 目錄中以檔名搜尋（較慢，向後相容）
     4. 其餘情況才代理 Lark 下載
     """
-    import os
     import mimetypes
-    from pathlib import Path
     import urllib.parse
 
     # 優先級 1：通過資料庫直接查詢文件路徑（無遞迴搜尋）- 最優化
@@ -643,6 +643,14 @@ async def download_attachment_proxy(
 
     # 優先級 4：代理 Lark 下載
     lark_client, team = await get_lark_client_for_team(team_id, db=db)
+    session = None
+    response = None
+
+    async def _close_upstream():
+        if response is not None:
+            response.release()
+        if session is not None and not session.closed:
+            await session.close()
 
     try:
         # 決定下載 URL
@@ -654,7 +662,7 @@ async def download_attachment_proxy(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="必須提供 file_url 或 file_token")
 
         # 取得 access token
-        token = lark_client.auth_manager.get_tenant_access_token()
+        token = await asyncio.to_thread(lark_client.auth_manager.get_tenant_access_token)
         if not token:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="無法取得 Lark access token")
 
@@ -663,7 +671,12 @@ async def download_attachment_proxy(
             "Authorization": f"Bearer {token}",
         }
 
-        response = requests.get(download_url, headers=headers, stream=True, timeout=30)
+        session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
+        try:
+            response = await session.get(download_url, headers=headers)
+        except Exception:
+            await _close_upstream()
+            raise
 
         if response.status_code == 401:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Lark API 認證失敗")
@@ -702,21 +715,25 @@ async def download_attachment_proxy(
             response_headers["Content-Length"] = content_length
 
         # 創建流式響應
-        def generate_file_stream():
+        async def generate_file_stream():
             try:
-                for chunk in response.iter_content(chunk_size=8192):
+                async for chunk in response.content.iter_chunked(8192):
                     if chunk:
                         yield chunk
             finally:
-                response.close()
+                await _close_upstream()
 
         return StreamingResponse(generate_file_stream(), headers=response_headers)
 
     except HTTPException:
+        await _close_upstream()
         raise
-    except requests.exceptions.Timeout:
+    except asyncio.TimeoutError:
+        await _close_upstream()
         raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="Lark 文件下載超時")
-    except requests.exceptions.RequestException as e:
+    except aiohttp.ClientError as e:
+        await _close_upstream()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Lark 文件下載失敗: {str(e)}")
     except Exception as e:
+        await _close_upstream()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"附件下載代理錯誤: {str(e)}")

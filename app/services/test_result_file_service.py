@@ -4,12 +4,12 @@
 提供測試執行結果檔案的命名轉換、上傳和關聯功能
 """
 
+import asyncio
 import time
 import re
 import logging
 from typing import Optional, List, Dict, Any, Tuple
 from fastapi import UploadFile
-from app.models.lark_types import LarkAttachment
 from app.services.lark_client import LarkClient
 from app.models.test_case import TestCase
 
@@ -188,10 +188,11 @@ class TestResultFileService:
             file_content = await file.read()
             
             # 上傳到 Lark Drive
-            file_token = self.lark_client.upload_file_to_drive(
-                file_content, 
-                generated_filename, 
-                wiki_token
+            file_token = await asyncio.to_thread(
+                self.lark_client.upload_file_to_drive,
+                file_content,
+                generated_filename,
+                wiki_token,
             )
             
             if not file_token:
@@ -259,34 +260,38 @@ class TestResultFileService:
             
             # 如果有成功上傳的檔案，更新 Test Case 記錄
             if file_tokens:
-                # 先獲取現有的測試結果檔案
-                records = self.lark_client.get_all_records(test_case_table_id, wiki_token)
-                existing_files = []
-                
-                # 找到對應的 Test Case 記錄
-                target_record = None
-                for record in records:
-                    if record.get('record_id') == test_case_record_id:
-                        target_record = record
-                        break
-                
-                if target_record and 'fields' in target_record:
-                    existing_attachments = target_record['fields'].get(TestCase.FIELD_IDS['test_results_files'], []) or []
-                    existing_files = [att.get('file_token') for att in existing_attachments if att and att.get('file_token')]
-                
-                # 合併現有檔案與新上傳的檔案
-                all_file_tokens = existing_files + file_tokens
-                
-                success = self.lark_client.update_record_attachment(
-                    test_case_table_id,
-                    test_case_record_id,
-                    TestCase.FIELD_IDS['test_results_files'],
-                    all_file_tokens,
-                    wiki_token
-                )
+                def _attach_files() -> tuple[bool, int]:
+                    records = self.lark_client.get_all_records(test_case_table_id, wiki_token)
+                    existing_files = []
+
+                    target_record = next(
+                        (record for record in records if record.get('record_id') == test_case_record_id),
+                        None,
+                    )
+                    if target_record and 'fields' in target_record:
+                        existing_attachments = target_record['fields'].get(
+                            TestCase.FIELD_IDS['test_results_files'], []
+                        ) or []
+                        existing_files = [
+                            att.get('file_token')
+                            for att in existing_attachments
+                            if att and att.get('file_token')
+                        ]
+
+                    all_file_tokens = existing_files + file_tokens
+                    success = self.lark_client.update_record_attachment(
+                        test_case_table_id,
+                        test_case_record_id,
+                        TestCase.FIELD_IDS['test_results_files'],
+                        all_file_tokens,
+                        wiki_token,
+                    )
+                    return success, len(all_file_tokens)
+
+                success, total_file_count = await asyncio.to_thread(_attach_files)
                 
                 if success:
-                    self.logger.info(f"Test Case {test_case_number} 結果檔案更新成功，新增 {len(file_tokens)} 個檔案，總計 {len(all_file_tokens)} 個檔案")
+                    self.logger.info(f"Test Case {test_case_number} 結果檔案更新成功，新增 {len(file_tokens)} 個檔案，總計 {total_file_count} 個檔案")
                 else:
                     error_messages.append(f"Test Case {test_case_number} 結果檔案欄位更新失敗")
                     return False, upload_results, error_messages

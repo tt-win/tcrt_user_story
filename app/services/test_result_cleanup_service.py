@@ -4,11 +4,11 @@
 提供 Test Run 刪除時的測試結果檔案清理功能
 """
 
+import asyncio
 import json
 import logging
-from typing import List, Optional, Any
+from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 from app.models.database_models import TestRunItem as TestRunItemDB, Team as TeamDB
 from app.services.lark_client import LarkClient
 from app.config import settings
@@ -193,6 +193,19 @@ class TestResultCleanupService:
         Returns:
             是否成功移除
         """
+        return await asyncio.to_thread(
+            self._remove_files_from_test_case_sync,
+            test_case_number,
+            file_tokens_to_remove,
+            team_config,
+        )
+
+    def _remove_files_from_test_case_sync(
+        self,
+        test_case_number: str,
+        file_tokens_to_remove: List[str],
+        team_config: TeamDB,
+    ) -> bool:
         try:
             # 使用 LarkClient 直接獲取當前 Test Case
             lark_client = LarkClient(settings.lark.app_id, settings.lark.app_secret)

@@ -4,6 +4,8 @@ Lark 群組查詢 API
 提供群組列表查詢的 REST API 端點
 """
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException, status, Query
 from typing import List, Dict, Optional
 import logging
@@ -36,7 +38,7 @@ async def get_lark_groups(
         lark_service = get_lark_group_service()
         
         # 查詢群組列表
-        groups = lark_service.list_groups(query=q)
+        groups = await asyncio.to_thread(lark_service.list_groups, query=q)
         
         return groups
         

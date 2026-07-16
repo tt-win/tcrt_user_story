@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, Optional
 import json
+import orjson
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, or_, select
@@ -123,7 +124,7 @@ def _parse_json_list(raw_json: Optional[str]) -> list[Dict[str, Any]]:
     if not raw_json:
         return []
     try:
-        parsed = json.loads(raw_json)
+        parsed = orjson.loads(raw_json)
     except (TypeError, ValueError):
         return []
 

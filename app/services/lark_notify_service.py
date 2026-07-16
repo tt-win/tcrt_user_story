@@ -4,6 +4,7 @@ Lark 通知發送服務
 負責發送 Test Run 狀態變更通知到指定的 Lark 群組
 """
 
+import asyncio
 import requests
 import logging
 import json
@@ -107,7 +108,7 @@ class LarkNotifyService:
         Returns:
             發送結果：{"ok": bool, "error": Optional[str]}
         """
-        url = f"https://open.larksuite.com/open-apis/im/v1/messages?receive_id_type=chat_id"
+        url = "https://open.larksuite.com/open-apis/im/v1/messages?receive_id_type=chat_id"
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json; charset=utf-8"
@@ -446,7 +447,7 @@ class LarkNotifyService:
         """
         async with self.main_boundary.session_scope() as session:
             try:
-                stats = await self.compute_end_stats(team_id, config_id, session)
+                await self.compute_end_stats(team_id, config_id, session)
 
                 def _load(sync_db: Session) -> Optional[Dict[str, Any]]:
                     # 查詢配置
@@ -492,7 +493,11 @@ class LarkNotifyService:
 
                 # 發送通知
                 logger.info(f"發送開始執行通知: {payload['config_name']} (config_id={config_id})")
-                results = self.send_message_to_chats(payload["chat_ids"], payload["message"])
+                results = await asyncio.to_thread(
+                    self.send_message_to_chats,
+                    payload["chat_ids"],
+                    payload["message"],
+                )
 
                 # 記錄結果
                 success_count = sum(1 for result in results.values() if result["ok"])
@@ -557,7 +562,11 @@ class LarkNotifyService:
 
                 # 發送通知
                 logger.info(f"發送結束執行通知: {payload['config_name']} (config_id={config_id})")
-                results = self.send_message_to_chats(payload["chat_ids"], payload["message"])
+                results = await asyncio.to_thread(
+                    self.send_message_to_chats,
+                    payload["chat_ids"],
+                    payload["message"],
+                )
 
                 # 記錄結果
                 success_count = sum(1 for result in results.values() if result["ok"])

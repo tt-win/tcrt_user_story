@@ -2,20 +2,20 @@
 團隊管理 API 路由
 """
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select, delete
-from typing import List
 from pydantic import BaseModel
 
 from app.db_access.main import MainAccessBoundary, get_main_access_boundary
 from app.auth.dependencies import (
     get_current_user,
     require_admin,
-    require_super_admin,
 )
 from app.auth.models import PermissionType
 from app.models.database_models import User
-from app.models.team import Team, TeamCreate, TeamUpdate, TeamResponse
+from app.models.team import TeamCreate, TeamUpdate
 from app.models.lark_types import Priority
 from app.models.database_models import (
     Team as TeamDB,
@@ -192,11 +192,12 @@ async def validate_lark_repo(
             app_id=settings.lark.app_id, app_secret=settings.lark.app_secret
         )
 
-        # 設定 wiki token
-        lark_client.set_wiki_token(team.lark_config.wiki_token)
+        def _validate_connection():
+            lark_client.set_wiki_token(team.lark_config.wiki_token)
+            return lark_client.get_table_fields(team.lark_config.test_case_table_id)
 
-        # 嘗試取得表格資訊來驗證連線
-        fields = lark_client.get_table_fields(team.lark_config.test_case_table_id)
+        # 設定 wiki token 並取得表格資訊來驗證連線
+        await asyncio.to_thread(_validate_connection)
 
         return {"valid": True, "message": "Lark Repo 連線驗證成功"}
     except Exception as e:
@@ -214,15 +215,18 @@ async def validate_table(
             app_id=settings.lark.app_id, app_secret=settings.lark.app_secret
         )
 
-        # 設定 wiki token
-        if not lark_client.set_wiki_token(request.wiki_token):
+        def _validate_connection():
+            if not lark_client.set_wiki_token(request.wiki_token):
+                return False, None
+            return True, lark_client.get_table_fields(request.table_id)
+
+        # 設定 wiki token 並取得表格資訊來驗證連線
+        token_valid, fields = await asyncio.to_thread(_validate_connection)
+        if not token_valid:
             return ValidationResponse(
                 valid=False,
                 message="Failed to set Wiki Token, please check if the token is correct",
             )
-
-        # 嘗試取得表格資訊來驗證連線
-        fields = lark_client.get_table_fields(request.table_id)
 
         if fields:
             return ValidationResponse(

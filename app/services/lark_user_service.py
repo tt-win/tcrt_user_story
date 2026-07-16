@@ -6,10 +6,11 @@ Lark 用戶收集服務
 基於實際 API 測試數據設計，支援增量同步和重複處理。
 """
 
+import asyncio
 import json
 import logging
 import requests
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -244,7 +245,7 @@ class LarkUserService:
         self.logger.info(f"開始收集部門 {department_id} 的用戶")
         
         try:
-            users_data = self.get_users_by_department(department_id)
+            users_data = await asyncio.to_thread(self.get_users_by_department, department_id)
             if users_data is None:
                 self.logger.warning(f"無法獲取部門 {department_id} 的用戶數據")
                 return False
@@ -354,8 +355,8 @@ class LarkUserService:
                     # 計算直屬用戶數
                     direct_count = sync_db.query(func.count(LarkUser.user_id)).filter(
                         LarkUser.primary_department_id == department.department_id,
-                        LarkUser.is_activated == True,
-                        LarkUser.is_exited == False
+                        LarkUser.is_activated.is_(True),
+                        LarkUser.is_exited.is_(False)
                     ).scalar()
 
                     department.direct_user_count = direct_count
@@ -375,8 +376,8 @@ class LarkUserService:
             try:
                 total_users = sync_db.query(LarkUser).count()
                 active_users = sync_db.query(LarkUser).filter(
-                    LarkUser.is_activated == True,
-                    LarkUser.is_exited == False
+                    LarkUser.is_activated.is_(True),
+                    LarkUser.is_exited.is_(False)
                 ).count()
 
                 # 員工類型分布
@@ -431,8 +432,8 @@ class LarkUserService:
                     (LarkUser.name.ilike(f'%{query_val}%')) |
                     (LarkUser.en_name.ilike(f'%{query_val}%')) |
                     (LarkUser.enterprise_email.ilike(f'%{query_val}%')),
-                    LarkUser.is_activated == True,
-                    LarkUser.is_exited == False
+                    LarkUser.is_activated.is_(True),
+                    LarkUser.is_exited.is_(False)
                 ).limit(limit).all()
 
                 result = []
@@ -465,8 +466,8 @@ class LarkUserService:
         def _get_top(sync_db: Session) -> List[Dict[str, Any]]:
             try:
                 users = sync_db.query(LarkUser).filter(
-                    LarkUser.is_activated == True,
-                    LarkUser.is_exited == False
+                    LarkUser.is_activated.is_(True),
+                    LarkUser.is_exited.is_(False)
                 ).order_by(LarkUser.name.asc()).limit(limit).all()
 
                 result: List[Dict[str, Any]] = []
@@ -498,7 +499,7 @@ class LarkUserService:
                 # 標記為非活躍而不是刪除
                 updated_count = sync_db.query(LarkUser).filter(
                     LarkUser.last_sync_at < threshold_date,
-                    LarkUser.is_activated == True
+                    LarkUser.is_activated.is_(True)
                 ).update({'is_activated': False})
 
                 sync_db.flush()

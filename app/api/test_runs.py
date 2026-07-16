@@ -5,12 +5,13 @@
 基於 test_run_configs 中配置的測試執行表格進行操作
 """
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-import io
 import logging
 
 from app.database import get_db
@@ -101,7 +102,7 @@ async def get_lark_client_for_test_run(
     # 建立 Lark Client
     lark_client = LarkClient(app_id=settings.lark.app_id, app_secret=settings.lark.app_secret)
 
-    if not lark_client.set_wiki_token(team.wiki_token):
+    if not await asyncio.to_thread(lark_client.set_wiki_token, team.wiki_token):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="無法連接到 Lark 服務",
@@ -221,11 +222,11 @@ async def get_test_runs(
                 detail="無權限存取此團隊的測試執行記錄",
             )
 
-    lark_client, team, config = await get_lark_client_for_test_run(team_id, config_id, main_boundary=main_boundary)
+    lark_client, team, config = await get_lark_client_for_test_run(team_id, config_id, db=db)
 
     try:
         # 從 Lark 取得所有記錄
-        records = lark_client.get_all_records(config.table_id)
+        records = await asyncio.to_thread(lark_client.get_all_records, config.table_id)
 
         # 過濾
         filters = {
@@ -330,7 +331,7 @@ async def get_test_runs_count(
 
     try:
         # 從 Lark 取得所有記錄
-        records = lark_client.get_all_records(config.table_id)
+        records = await asyncio.to_thread(lark_client.get_all_records, config.table_id)
 
         # 過濾
         filters = {
@@ -380,7 +381,7 @@ async def get_test_run(
 
     try:
         # 從 Lark 取得所有記錄，然後找到指定的記錄
-        records = lark_client.get_all_records(config.table_id)
+        records = await asyncio.to_thread(lark_client.get_all_records, config.table_id)
 
         target_record = None
         for record in records:
@@ -449,7 +450,7 @@ async def create_test_run(
 
         # 處理執行人員
         if test_run.assignee_email:
-            user_info = lark_client.get_user_by_email(test_run.assignee_email)
+            user_info = await asyncio.to_thread(lark_client.get_user_by_email, test_run.assignee_email)
             if user_info:
                 from app.models.lark_types import LarkUser
 
@@ -461,7 +462,7 @@ async def create_test_run(
         lark_fields = test_run_instance.to_lark_fields()
 
         # 建立 Lark 記錄
-        record_id = lark_client.create_record(config.table_id, lark_fields)
+        record_id = await asyncio.to_thread(lark_client.create_record, config.table_id, lark_fields)
 
         if not record_id:
             raise HTTPException(
@@ -470,7 +471,7 @@ async def create_test_run(
             )
 
         # 重新取得建立的記錄
-        records = lark_client.get_all_records(config.table_id)
+        records = await asyncio.to_thread(lark_client.get_all_records, config.table_id)
         created_record = None
         for record in records:
             if record.get("record_id") == record_id:
@@ -542,7 +543,7 @@ async def update_test_run(
 
     try:
         # 先取得現有記錄
-        records = lark_client.get_all_records(config.table_id)
+        records = await asyncio.to_thread(lark_client.get_all_records, config.table_id)
         existing_record = None
         for record in records:
             if record.get("record_id") == record_id:
@@ -581,7 +582,10 @@ async def update_test_run(
         # 處理執行人員更新
         if test_run_update.assignee_email is not None:
             if test_run_update.assignee_email:  # 非空值
-                user_info = lark_client.get_user_by_email(test_run_update.assignee_email)
+                user_info = await asyncio.to_thread(
+                    lark_client.get_user_by_email,
+                    test_run_update.assignee_email,
+                )
                 if user_info:
                     from app.models.lark_types import LarkUser
 
@@ -597,7 +601,12 @@ async def update_test_run(
         lark_fields = existing_run.to_lark_fields()
 
         # 更新 Lark 記錄
-        success = lark_client.update_record(config.table_id, record_id, lark_fields)
+        success = await asyncio.to_thread(
+            lark_client.update_record,
+            config.table_id,
+            record_id,
+            lark_fields,
+        )
 
         if not success:
             raise HTTPException(
@@ -606,7 +615,7 @@ async def update_test_run(
             )
 
         # 重新取得更新後的記錄
-        updated_records = lark_client.get_all_records(config.table_id)
+        updated_records = await asyncio.to_thread(lark_client.get_all_records, config.table_id)
         updated_record = None
         for record in updated_records:
             if record.get("record_id") == record_id:
@@ -678,7 +687,7 @@ async def delete_test_run(
 
     try:
         # 先驗證記錄是否存在
-        records = lark_client.get_all_records(config.table_id)
+        records = await asyncio.to_thread(lark_client.get_all_records, config.table_id)
         target_record = None
         for record in records:
             if record.get("record_id") == record_id:
@@ -725,7 +734,10 @@ async def delete_test_run(
 
                     if file_tokens_to_remove:
                         # 取得 Test Case 記錄，找出當前的測試結果檔案
-                        test_case_records = lark_client.get_all_records(team.test_case_table_id)
+                        test_case_records = await asyncio.to_thread(
+                            lark_client.get_all_records,
+                            team.test_case_table_id,
+                        )
                         target_tc = None
                         for r in test_case_records:
                             rf = r.get("fields", {})
@@ -743,7 +755,8 @@ async def delete_test_run(
                             remaining_tokens = [t for t in existing_tokens if t not in file_tokens_to_remove]
 
                             # 更新 Test Case 的測試結果檔案欄位（移除本次 Test Run 上傳的檔案）
-                            lark_client.update_record_attachment(
+                            await asyncio.to_thread(
+                                lark_client.update_record_attachment,
                                 team.test_case_table_id,
                                 target_tc.get("record_id"),
                                 TestCase.FIELD_IDS["test_results_files"],
@@ -775,7 +788,7 @@ async def delete_test_run(
             _logging.getLogger(__name__).warning(f"刪除 Test Run 前清理測試結果檔案失敗: {cleanup_err}")
 
         # 執行刪除
-        success = lark_client.delete_record(config.table_id, record_id)
+        success = await asyncio.to_thread(lark_client.delete_record, config.table_id, record_id)
 
         if not success:
             raise HTTPException(
@@ -818,7 +831,7 @@ async def get_test_run_statistics(team_id: int, config_id: int, db: AsyncSession
 
     try:
         # 從 Lark 取得所有記錄
-        records = lark_client.get_all_records(config.table_id)
+        records = await asyncio.to_thread(lark_client.get_all_records, config.table_id)
 
         # 統計計算
         total_runs = len(records)
@@ -895,7 +908,12 @@ async def batch_update_test_results(
             try:
                 # 更新 Lark 記錄
                 lark_fields = {"Test Result": test_result}
-                success = lark_client.update_record(config.table_id, record_id, lark_fields)
+                success = await asyncio.to_thread(
+                    lark_client.update_record,
+                    config.table_id,
+                    record_id,
+                    lark_fields,
+                )
 
                 if success:
                     success_count += 1

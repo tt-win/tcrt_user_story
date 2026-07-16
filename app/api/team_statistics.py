@@ -12,6 +12,7 @@ from typing import List, Dict, Any, Optional
 import logging
 import json
 import math
+import orjson
 from collections import Counter, defaultdict
 from sqlalchemy import case, func, select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -178,7 +179,7 @@ def _safe_json_loads(raw: Any) -> Optional[Dict[str, Any]]:
         return raw
     if isinstance(raw, str):
         try:
-            return json.loads(raw)
+            return orjson.loads(raw)
         except json.JSONDecodeError:
             return None
     return None

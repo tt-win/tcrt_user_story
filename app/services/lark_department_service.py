@@ -6,10 +6,11 @@ Lark 部門遍歷服務
 基於實際 API 測試數據設計，支援斷點續傳和增量同步。
 """
 
+import asyncio
 import json
 import logging
 import requests
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -197,7 +198,7 @@ class LarkDepartmentService:
         self.stats['departments_discovered'] += 1
         
         # 獲取子部門
-        children_data = self.get_department_children(department_id)
+        children_data = await asyncio.to_thread(self.get_department_children, department_id)
         if children_data is None:
             self.logger.warning(f"無法獲取部門 {department_id} 的子部門")
             return False
