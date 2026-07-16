@@ -3679,5 +3679,31 @@
     "setupFailed": "Setup failed. Please try again later.",
     "accountLabel": "Account:",
     "accountInstruction": "Please set a new password for this account."
+  },
+  "systemLogs": {
+    "pageTitle": "System Logs",
+    "pageSubtitle": "Super Admin real-time system log viewer",
+    "menuEntry": "System Logs",
+    "unauthorized": "You do not have permission to view system logs. Please sign in as a Super Admin.",
+    "pause": "Pause",
+    "resume": "Resume",
+    "clear": "Clear",
+    "download": "Download",
+    "gapNotice": "— {count} entries lost —",
+    "sourceSwitched": "— Log source switched —",
+    "perWorkerHint": "Shows logs from the current worker only; cleared on restart. Use docker logs for the full record.",
+    "filter": {
+      "allLevels": "All levels",
+      "loggerPlaceholder": "Logger prefix, e.g. app.",
+      "keywordPlaceholder": "Keyword (client-side filter only)",
+      "hideAccess": "Hide access logs"
+    },
+    "status": {
+      "connecting": "Connecting…",
+      "connected": "Connected",
+      "reconnecting": "Reconnecting…",
+      "ended": "Stream ended"
+    },
+    "workerLabel": "worker {pid} ({instance})"
   }
 }

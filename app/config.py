@@ -3,7 +3,7 @@ import os
 import logging
 import re
 from pathlib import Path
-from typing import Optional, Any, List
+from typing import Optional, Any, ClassVar, List
 from urllib.parse import urlparse
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -516,6 +516,67 @@ class ReportsConfig(BaseModel):
         return Path(self.root_dir) if self.root_dir else (base_root / "generated_report")
 
 
+class LogViewerConfig(BaseModel):
+    """Super Admin 系統 log viewer 設定（全部為 per-worker 容量）"""
+
+    buffer_size: int = 2000
+    max_streams: int = 3
+    max_message_chars: int = 4096
+    subscriber_queue_size: int = 1000
+    keepalive_seconds: int = 15
+    stream_max_lifetime_seconds: int = 900
+
+    # (env var, 欄位名, 預設, 下限, 上限)
+    FIELD_BOUNDS: ClassVar[tuple] = (
+        ("LOG_VIEWER_BUFFER_SIZE", "buffer_size", 2000, 1, 20000),
+        ("LOG_VIEWER_MAX_STREAMS", "max_streams", 3, 1, 10),
+        ("LOG_VIEWER_MAX_MESSAGE_CHARS", "max_message_chars", 4096, 1, 65536),
+        ("LOG_VIEWER_SUBSCRIBER_QUEUE_SIZE", "subscriber_queue_size", 1000, 1, 10000),
+        ("LOG_VIEWER_KEEPALIVE_SECONDS", "keepalive_seconds", 15, 5, 60),
+        ("LOG_VIEWER_STREAM_MAX_LIFETIME_SECONDS", "stream_max_lifetime_seconds", 900, 60, 3600),
+    )
+    # per-worker aggregate budget（字元數）：單欄位各自合法不代表組合合法
+    AGGREGATE_BUDGET_CHARS: ClassVar[int] = 2**25
+
+    @classmethod
+    def from_env(cls, fallback: "LogViewerConfig" = None) -> "LogViewerConfig":
+        values = {}
+        for env_name, field, default, low, high in cls.FIELD_BOUNDS:
+            base = getattr(fallback, field) if fallback else default
+            raw = os.getenv(env_name)
+            value = base
+            if raw is not None:
+                try:
+                    value = int(raw)
+                except ValueError:
+                    value = default
+            if not (low <= value <= high):
+                LOGGER.warning(
+                    "LogViewerConfig: %s=%r 超出合法範圍 [%d, %d]，改用預設值 %d",
+                    env_name, value, low, high, default,
+                )
+                value = default
+            values[field] = value
+
+        # 跨欄位 aggregate budget：buffer 與訂閱端（係數 2 計 generator 持有
+        # local batch 期間 pending 再度填滿的峰值）各不得超過預算，
+        # 超過即整組容量欄位回落預設值（規則單一、可預期）。
+        buffer_chars = values["buffer_size"] * values["max_message_chars"]
+        subscriber_chars = (
+            2 * values["max_streams"] * values["subscriber_queue_size"] * values["max_message_chars"]
+        )
+        if buffer_chars > cls.AGGREGATE_BUDGET_CHARS or subscriber_chars > cls.AGGREGATE_BUDGET_CHARS:
+            LOGGER.warning(
+                "LogViewerConfig: 容量組合超出 per-worker 預算（buffer=%d、subscriber=%d、budget=%d 字元），"
+                "容量欄位整組回落預設值",
+                buffer_chars, subscriber_chars, cls.AGGREGATE_BUDGET_CHARS,
+            )
+            for _env, field, default, _low, _high in cls.FIELD_BOUNDS:
+                if field not in ("keepalive_seconds", "stream_max_lifetime_seconds"):
+                    values[field] = default
+        return cls(**values)
+
+
 class Settings(BaseModel):
     app: AppConfig = AppConfig()
     lark: LarkConfig = LarkConfig()
@@ -528,6 +589,7 @@ class Settings(BaseModel):
     auth: AuthConfig = AuthConfig()
     audit: AuditConfig = AuditConfig()
     usm: UsmConfig = UsmConfig()
+    log_viewer: LogViewerConfig = LogViewerConfig()
 
     @classmethod
     def from_env_and_file(cls, config_path: str = "config.yaml") -> "Settings":
@@ -554,6 +616,7 @@ class Settings(BaseModel):
             auth=AuthConfig.from_env(base_settings.auth),
             audit=AuditConfig.from_env(base_settings.audit),
             usm=UsmConfig.from_env(base_settings.usm),
+            log_viewer=LogViewerConfig.from_env(base_settings.log_viewer),
         )
         _warn_container_runtime_configuration(loaded)
         _fail_fast_if_sqlite_without_volume_ack(loaded)

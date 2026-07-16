@@ -50,6 +50,16 @@ app.add_middleware(AuditMiddleware)
 # 配置日誌
 logging.basicConfig(level=logging.INFO)
 
+# Super Admin log viewer：旁路 ring buffer handler（stdout 輸出不受影響）
+from app.config import settings as _app_settings
+from app.utils.system_log_buffer import install_system_log_handler
+
+install_system_log_handler(
+    buffer_size=_app_settings.log_viewer.buffer_size,
+    max_message_chars=_app_settings.log_viewer.max_message_chars,
+    subscriber_queue_size=_app_settings.log_viewer.subscriber_queue_size,
+)
+
 # 初始化版本服務
 from app.services.version_service import get_version_service
 from app.audit import init_audit_database, cleanup_audit_database, audit_service
@@ -175,6 +185,11 @@ async def adhoc_run_execution(request: Request, run_id: int):
 @app.get("/audit-logs", response_class=HTMLResponse)
 async def audit_logs(request: Request):
     return templates.TemplateResponse("audit_logs.html", {"request": request})
+
+
+@app.get("/system-logs", response_class=HTMLResponse)
+async def system_logs(request: Request):
+    return templates.TemplateResponse("system_logs.html", {"request": request})
 
 
 @app.get("/test-case-sets", response_class=HTMLResponse)

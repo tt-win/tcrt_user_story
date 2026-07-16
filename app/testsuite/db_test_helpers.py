@@ -94,7 +94,11 @@ def install_audit_database_overrides(
             yield db
 
     monkeypatch.setattr(audit_database, "get_audit_session", override_get_audit_session)
-    monkeypatch.setattr(audit_service_module, "get_audit_session", override_get_audit_session)
+    # audit_service 已不再 import get_audit_session（c87785a 移除該 F401），
+    # raising=False 讓此 patch 在未來若重新引入時仍生效
+    monkeypatch.setattr(
+        audit_service_module, "get_audit_session", override_get_audit_session, raising=False
+    )
     monkeypatch.setattr(audit_db_access, "get_audit_session", override_get_audit_session)
     return override_get_audit_session
 

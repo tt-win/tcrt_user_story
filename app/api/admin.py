@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Query, HTTPException, Depends
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Query, HTTPException, Depends, Request
+from fastapi.responses import JSONResponse, StreamingResponse
 from datetime import datetime, timezone, timedelta
 from typing import Any
 import os
@@ -187,3 +187,193 @@ async def stats_test_cases_created_daily(
     except Exception as e:
         logger.error(f"統計 Test Case 每日建立數據失敗: {e}")
         raise HTTPException(status_code=500, detail={"error": "無法載入統計數據"})
+
+
+# ---------------------------------------------------------------------------
+# Super Admin 系統 log viewer（openspec: add-super-admin-log-viewer）
+# 實際路徑 /api/admin/system-logs*（admin router 經 api_router 掛於 /api 下）
+# ---------------------------------------------------------------------------
+
+_NO_STORE_HEADERS = {"Cache-Control": "no-store", "Pragma": "no-cache"}
+_SNAPSHOT_LIMIT_DEFAULT = 500
+_SNAPSHOT_LIMIT_MAX = 2000
+# per-worker 同時串流數（event loop 單執行緒，無 await 間隙的讀寫改動是安全的）
+_active_log_streams = 0
+
+
+def _redacted(entry: dict) -> dict:
+    from app.utils.system_log_buffer import redact_sensitive
+
+    return {**entry, "message": redact_sensitive(entry["message"])}
+
+
+@router.get("/system-logs", include_in_schema=False)
+async def get_system_logs_snapshot(
+    level: str | None = Query(None, description="最低 level 門檻（如 WARNING）"),
+    logger_prefix: str | None = Query(None, alias="logger", description="logger 名稱前綴"),
+    limit: int = Query(_SNAPSHOT_LIMIT_DEFAULT, description="tail 筆數上限（超出即收斂）"),
+    current_user: User = Depends(require_super_admin()),
+) -> JSONResponse:
+    """In-memory log buffer 快照（tail 語意：篩選後取最新 N 筆、依 seq 遞增回傳）。"""
+    from app.utils.system_log_buffer import get_system_log_handler
+
+    handler = get_system_log_handler()
+    if handler is None:
+        raise HTTPException(status_code=503, detail="log viewer 尚未初始化")
+    limit = max(1, min(limit, _SNAPSHOT_LIMIT_MAX))
+    entries, oldest_seq, latest_seq = handler.snapshot(
+        level=level, logger_prefix=logger_prefix, limit=limit
+    )
+    return JSONResponse(
+        content={
+            "worker_instance_id": handler.worker_instance_id,
+            "pid": os.getpid(),
+            "oldest_seq": oldest_seq,
+            "latest_seq": latest_seq,
+            "entries": [_redacted(e) for e in entries],
+        },
+        headers=_NO_STORE_HEADERS,
+    )
+
+
+def _sse_frame(event: str, data: dict, seq: int | None = None) -> str:
+    import json
+
+    lines = []
+    if seq is not None:
+        lines.append(f"id: {seq}")
+    lines.append(f"event: {event}")
+    lines.append(f"data: {json.dumps(data, ensure_ascii=False)}")
+    return "\n".join(lines) + "\n\n"
+
+
+def _parse_since_seq(raw: str | None) -> int | None:
+    """raw string 解析：非整數或負數視為未提供（不得被 FastAPI 提前 422）。"""
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value >= 0 else None
+
+
+@router.get("/system-logs/stream", include_in_schema=False)
+async def stream_system_logs(
+    request: Request,
+    since_seq: str | None = Query(None),
+    instance_id: str | None = Query(None),
+    current_user: User = Depends(require_super_admin()),
+) -> StreamingResponse:
+    """SSE 即時 log 串流。契約見 openspec specs/system-log-viewer。"""
+    import asyncio
+
+    from app.config import settings
+    from app.utils.system_log_buffer import get_system_log_handler
+
+    global _active_log_streams
+    handler = get_system_log_handler()
+    if handler is None:
+        raise HTTPException(status_code=503, detail="log viewer 尚未初始化")
+    cfg = settings.log_viewer
+    if _active_log_streams >= cfg.max_streams:
+        raise HTTPException(status_code=429, detail="log 串流連線數已達上限")
+    _active_log_streams += 1
+    slot_owned = True
+
+    def release_stream_slot() -> None:
+        nonlocal slot_owned
+        global _active_log_streams
+        if slot_owned:
+            _active_log_streams -= 1
+            slot_owned = False
+
+    cursor = _parse_since_seq(since_seq)
+    if instance_id != handler.worker_instance_id:
+        cursor = None  # instance 不符或缺 instance_id：忽略 cursor，全量回放
+
+    try:
+        try:
+            from app.audit import ActionType, AuditSeverity, ResourceType, audit_service
+
+            await audit_service.log_action(
+                user_id=current_user.id,
+                username=current_user.username,
+                role=str(
+                    current_user.role.value
+                    if hasattr(current_user.role, "value")
+                    else current_user.role
+                ),
+                action_type=ActionType.READ,
+                resource_type=ResourceType.SYSTEM,
+                resource_id="system-logs-stream",
+                team_id=None,
+                severity=AuditSeverity.INFO,
+                action_brief="開啟系統 log 即時串流",
+                details={"worker_instance_id": handler.worker_instance_id, "since_seq": since_seq},
+                ip_address=request.client.host if request.client else None,
+                user_agent=request.headers.get("user-agent"),
+            )
+        except Exception as audit_exc:  # audit 失敗不阻斷串流
+            logger.error(f"log viewer audit 寫入失敗: {audit_exc}")
+
+        async def event_stream():
+            sub = None
+            try:
+                sub, replay, replay_latest_seq = handler.subscribe()
+                oldest = replay[0]["seq"] if replay else None
+                latest = replay[-1]["seq"] if replay else None
+                yield _sse_frame(
+                    "meta",
+                    {
+                        "worker_instance_id": handler.worker_instance_id,
+                        "pid": os.getpid(),
+                        "oldest_seq": oldest,
+                        "latest_seq": latest,
+                        "buffer_size": cfg.buffer_size,
+                        "stream_max_lifetime_seconds": cfg.stream_max_lifetime_seconds,
+                    },
+                )
+                effective_cursor = cursor
+                if effective_cursor is not None and latest is not None and effective_cursor > latest:
+                    effective_cursor = None  # cursor 超前於伺服器：reset
+                if (
+                    effective_cursor is not None
+                    and oldest is not None
+                    and effective_cursor < oldest - 1
+                ):
+                    yield _sse_frame("gap", {"lost_count": oldest - effective_cursor - 1})
+                    effective_cursor = None  # 從 buffer 可用最舊處回放
+                for entry in replay:
+                    if effective_cursor is None or entry["seq"] > effective_cursor:
+                        yield _sse_frame("log", _redacted(entry), seq=entry["seq"])
+
+                deadline = time.monotonic() + cfg.stream_max_lifetime_seconds
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        yield _sse_frame("end", {"reason": "lifetime"})
+                        break
+                    try:
+                        await asyncio.wait_for(
+                            sub.wake_event.wait(), timeout=min(cfg.keepalive_seconds, remaining)
+                        )
+                    except asyncio.TimeoutError:
+                        yield ": keep-alive\n\n"
+                        continue
+                    for entry in handler.take_batch(sub):
+                        if entry["seq"] > replay_latest_seq:  # 與 replay 去重
+                            yield _sse_frame("log", _redacted(entry), seq=entry["seq"])
+            finally:
+                if sub is not None:
+                    handler.unsubscribe(sub)
+                release_stream_slot()
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers={**_NO_STORE_HEADERS, "X-Accel-Buffering": "no"},
+        )
+    except BaseException:
+        release_stream_slot()
+        raise

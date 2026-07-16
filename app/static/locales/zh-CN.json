@@ -3679,5 +3679,31 @@
     "setupFailed": "设置失败，请稍后重试",
     "accountLabel": "账号：",
     "accountInstruction": "请为此账号设置新密码。"
+  },
+  "systemLogs": {
+    "pageTitle": "系统日志",
+    "pageSubtitle": "Super Admin 实时系统 log 查看",
+    "menuEntry": "系统日志",
+    "unauthorized": "您没有查看系统日志的权限，请以 Super Admin 身份登录。",
+    "pause": "暂停",
+    "resume": "继续",
+    "clear": "清空",
+    "download": "下载",
+    "gapNotice": "— 丢失 {count} 条 —",
+    "sourceSwitched": "— 数据来源已切换 —",
+    "perWorkerHint": "仅显示当前 worker 的 log；重启后清空，完整记录请用 docker logs",
+    "filter": {
+      "allLevels": "全部级别",
+      "loggerPlaceholder": "logger 前缀，如 app.",
+      "keywordPlaceholder": "关键字（仅前端筛选）",
+      "hideAccess": "隐藏 access log"
+    },
+    "status": {
+      "connecting": "连接中…",
+      "connected": "已连接",
+      "reconnecting": "重新连接中…",
+      "ended": "流已结束"
+    },
+    "workerLabel": "worker {pid}（{instance}）"
   }
 }

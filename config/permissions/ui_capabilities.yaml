@@ -30,6 +30,8 @@ pages:
       pm-active-toggle: { feature: user_management, action: toggle_active }
       syncOrgBtn:       { feature: user_management, action: view }
       auditLogBtn:      { feature: user_management, action: view }
+      # 系統日誌入口：organization_management 僅 super_admin 具 manage（admin 只有 view）
+      systemLogsLink:   { feature: organization_management, action: manage }
 
   test_case_management:
     components:

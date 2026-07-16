@@ -3679,5 +3679,31 @@
     "setupFailed": "設定失敗，請稍後再試",
     "accountLabel": "帳號：",
     "accountInstruction": "請為此帳號設定新密碼。"
+  },
+  "systemLogs": {
+    "pageTitle": "系統日誌",
+    "pageSubtitle": "Super Admin 即時系統 log 檢視",
+    "menuEntry": "系統日誌",
+    "unauthorized": "您沒有檢視系統日誌的權限，請以 Super Admin 身分登入。",
+    "pause": "暫停",
+    "resume": "續播",
+    "clear": "清空",
+    "download": "下載",
+    "gapNotice": "— 遺失 {count} 筆 —",
+    "sourceSwitched": "— 資料來源已切換 —",
+    "perWorkerHint": "僅顯示目前 worker 的 log；重啟後清空，完整紀錄請用 docker logs",
+    "filter": {
+      "allLevels": "全部等級",
+      "loggerPlaceholder": "logger 前綴，如 app.",
+      "keywordPlaceholder": "關鍵字（僅前端篩選）",
+      "hideAccess": "隱藏 access log"
+    },
+    "status": {
+      "connecting": "連線中…",
+      "connected": "已連線",
+      "reconnecting": "重新連線中…",
+      "ended": "串流已結束"
+    },
+    "workerLabel": "worker {pid}（{instance}）"
   }
 }
