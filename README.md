@@ -96,7 +96,7 @@ docker compose -f docker-compose.app.yml up -d --build
 | `UVICORN_LOG_LEVEL` | `info` | Uvicorn 日誌等級 |
 | `UVICORN_PROXY_HEADERS` | `1` | 啟用反向代理 header 信任 |
 | `FORWARDED_ALLOW_IPS` | `*` | 允許的轉發來源 IP |
-| `WEB_CONCURRENCY` | `1` | Worker 數量。背景服務（排程器 / automation ticker）已改由 DB advisory-lock leader 選舉確保跨 worker/副本僅單一執行，故可視負載調大（`>1` 時 entrypoint 會啟用對應數量的 uvicorn worker） |
+| `WEB_CONCURRENCY` | `1` | Worker 數量，建議不超過 CPU 核數 × 2。背景服務（排程器 / automation ticker）依 `openspec/specs/background-service-scaling/spec.md` 的 DB advisory-lock leader election 確保跨 worker/副本僅單一執行，故可視負載調大（`>1` 時 entrypoint 會啟用對應數量的 uvicorn worker）。注意認證失敗的 per-IP rate limit 是每個 worker 各自計算；N 個 worker 的有效上限為 N × 30 次/分鐘（設計依據見 `openspec/changes/harden-app-token-security/design.md`） |
 
 ### 開機升版備份與回退
 

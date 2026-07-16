@@ -1,3 +1,5 @@
+# ruff: noqa: E402
+
 from pathlib import Path
 import sys
 import asyncio
@@ -101,9 +103,12 @@ def test_super_admin_can_list_scheduled_services(scheduled_service_env):
     payload = response.json()
     assert payload["success"] is True
     assert payload["data"]["scheduler_running"] is False
-    assert len(payload["data"]["services"]) == 1
-    assert payload["data"]["services"][0]["service_key"] == "lark_org_sync"
-    assert payload["data"]["services"][0]["enabled"] is False
+    services = {
+        service["service_key"]: service
+        for service in payload["data"]["services"]
+    }
+    assert set(services) == set(scheduled_service_env["scheduler"].service_registry)
+    assert services["lark_org_sync"]["enabled"] is False
 
 
 def test_super_admin_can_update_daily_schedule(scheduled_service_env):

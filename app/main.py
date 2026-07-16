@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
+from app.utils.responses import ORJSONCompatResponse
 
 
 @asynccontextmanager
@@ -28,6 +29,7 @@ app = FastAPI(
     description="A web-based test case management system with Lark integration",
     version="1.0.0",
     lifespan=lifespan,
+    default_response_class=ORJSONCompatResponse,
 )
 
 # 啟用 GZip 壓縮（預設對 >= 1KB 的回應進行壓縮）

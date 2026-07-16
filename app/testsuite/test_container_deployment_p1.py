@@ -59,14 +59,16 @@ with bootstrap_lock():
 """
 
 
-def test_leader_lock_is_exclusive_across_processes():
+def test_leader_lock_is_exclusive_across_processes(tmp_path):
     """一個行程持有 leader 鎖時，另一個行程 try_acquire 應失敗。"""
+    env = {**os.environ, "TCRT_RUNTIME_LOCK_DIR": str(tmp_path)}
     holder = subprocess.Popen(
         [sys.executable, "-c", _LEADER_HOLDER],
         cwd=str(REPO),
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         text=True,
+        env=env,
     )
     try:
         first = holder.stdout.readline().strip()
@@ -78,6 +80,7 @@ def test_leader_lock_is_exclusive_across_processes():
             capture_output=True,
             text=True,
             timeout=60,
+            env=env,
         )
         assert "NOT_LEADER" in result.stdout, f"第二行程不應取得 leadership: {result.stdout!r} / {result.stderr[-500:]!r}"
     finally:
@@ -90,7 +93,12 @@ def test_leader_lock_is_exclusive_across_processes():
 
     # holder 釋放後，新行程應能取得 leadership（驗證鎖確實隨行程結束釋放）
     after = subprocess.run(
-        [sys.executable, "-c", _LEADER_TRY], cwd=str(REPO), capture_output=True, text=True, timeout=60
+        [sys.executable, "-c", _LEADER_TRY],
+        cwd=str(REPO),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env=env,
     )
     assert "LEADER" in after.stdout and "NOT_LEADER" not in after.stdout, after.stdout
 

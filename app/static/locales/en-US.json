@@ -134,7 +134,7 @@
       "userActivity": "User Activity",
       "auditAnalysis": "Audit Analysis",
       "departmentStats": "Department Stats",
-      "helperAi": "QA AI Agent - Test Case Helper"
+      "qaAiHelper": "QA AI Agent - Test Case Helper"
     },
     "overview": {
       "teamCount": "Total Teams",

@@ -4,6 +4,9 @@ Lark 使用者查詢 API
 提供以本地 lark_users 表為資料來源的查詢（名稱、頭像）。
 """
 
+import asyncio
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException, status, Depends, Query
 from pydantic import BaseModel
 from typing import Optional, List
@@ -22,9 +25,6 @@ class LarkUserBasic(BaseModel):
     id: str
     name: Optional[str] = None
     avatar: Optional[str] = None
-
-from datetime import datetime
-
 
 class LarkUserLite(BaseModel):
     id: str
@@ -137,7 +137,7 @@ async def get_lark_user_basic(
             from app.config import settings
 
             client = LarkClient(settings.lark.app_id, settings.lark.app_secret)
-            lark_user_data = client.user_manager.get_user_by_id(lark_user_id)
+            lark_user_data = await asyncio.to_thread(client.user_manager.get_user_by_id, lark_user_id)
             if lark_user_data:
                 avatar_info = lark_user_data.get('avatar', {})
                 avatar = avatar_info.get('avatar_240') or avatar_info.get('avatar_640') or avatar_info.get('avatar_origin')
