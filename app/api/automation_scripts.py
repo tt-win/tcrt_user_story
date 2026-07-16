@@ -12,7 +12,6 @@ from app.auth.dependencies import get_current_user
 from app.auth.models import PermissionType
 from app.auth.permission_service import permission_service
 from app.db_access.main import MainAccessBoundary, get_main_access_boundary
-from app.models.automation_run import AutomationRunResponse
 from app.models.automation_script import (
     AILinkSuggestRequest,
     AILinkSuggestResponse,
@@ -26,11 +25,6 @@ from app.models.database_models import AutomationScriptFormat, Team, User
 from app.services.automation.provider_registry import (
     ProviderNotConfiguredError,
     ProviderRegistryError,
-)
-from app.services.automation.run_service import (
-    AutomationRunService,
-    AutomationRunServiceError,
-    automation_run_to_dict,
 )
 from app.services.automation.ai_link_suggest_service import (
     AILinkSuggestError,

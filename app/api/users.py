@@ -955,7 +955,7 @@ async def get_user_lark_status(
 
     try:
         # 使用 UserService 檢查 Lark 整合狀態
-        status = await UserService.check_lark_integration_status(
+        integration_status = await UserService.check_lark_integration_status(
             user_id,
             main_boundary=main_boundary,
         )
@@ -963,12 +963,12 @@ async def get_user_lark_status(
         # 記錄顯示決策
         log_lark_display_decision(
             user_id, 
-            status.get("lark_linked", False), 
-            status.get("has_lark_data", False),
-            "顯示" if status.get("has_lark_data", False) else "隱藏"
+            integration_status.get("lark_linked", False),
+            integration_status.get("has_lark_data", False),
+            "顯示" if integration_status.get("has_lark_data", False) else "隱藏"
         )
         
-        return status
+        return integration_status
 
     except Exception as e:
         logger.error(f"取得使用者 Lark 狀態失敗: {e}")

@@ -3,13 +3,13 @@
 """
 
 import logging
-from typing import Callable, Optional, TypeVar, Union
+from typing import Callable, TypeVar
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 
 from ..db_access.main import MainAccessBoundary, create_main_access_boundary_for_session
-from ..models.database_models import TestCaseSection, TestCaseLocal, TestCaseSet
+from ..models.database_models import TestCaseSection, TestCaseLocal
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")

@@ -3,6 +3,7 @@ User Story Map API 路由
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, or_, and_, text, update
 from sqlalchemy.orm.attributes import flag_modified
@@ -20,7 +21,6 @@ from app.models.user_story_map import (
     UserStoryMapEdge,
     SearchNodeResult,
     RelationCreateRequest,
-    RelationDeleteRequest,
     RelationPayload,
     RelationBulkUpdateRequest,
     RelationBulkUpdateResponse,
@@ -2005,7 +2005,7 @@ async def move_node(
                 role=role_value,
                 action_type=ActionType.UPDATE,
                 resource_type=ResourceType.USER_STORY_MAP,
-                resource_id=f"{map_id}:{node_id}",
+                resource_id=f"{map_id}:{move_result['node_id']}",
                 team_id=team_id,
                 details={
                     "action": "move_node",
@@ -2035,9 +2035,6 @@ async def move_node(
 # ============================================================================
 # USM 文字模式 API Endpoints
 # ============================================================================
-
-from pydantic import BaseModel
-
 
 class USMTextImportRequest(BaseModel):
     """USM 文字匯入請求"""
@@ -2113,7 +2110,7 @@ async def import_usm_text(
             return USMTextImportResponse(
                 success=False,
                 nodes_count=0,
-                message=f"解析錯誤",
+                message="解析錯誤",
                 errors=[f"第 {e.line_num} 行: {e.message}"]
             )
         

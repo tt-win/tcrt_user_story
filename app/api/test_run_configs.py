@@ -5,14 +5,15 @@
 內容由本系統從團隊的 Test Case 中挑選並儲存於本地資料庫。
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
-from typing import List, Optional
+from datetime import datetime
 import json
 import logging
+from typing import List, Optional
 
-logger = logging.getLogger(__name__)
+from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.db_access import MainAccessBoundary, get_main_access_boundary
 from app.database import get_db
@@ -36,8 +37,8 @@ from app.services.test_run_set_status import (
     apply_config_status_transition_sync,
     recalculate_set_status_sync,
 )
-from datetime import datetime
-from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/teams/{team_id}/test-run-configs", tags=["test-run-configs"])
 

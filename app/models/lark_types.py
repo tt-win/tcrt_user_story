@@ -5,8 +5,7 @@ Lark 基礎資料類型模型
 """
 
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, List, Dict, Any, Union
-from datetime import datetime
+from typing import Optional, List, Dict, Union
 from enum import Enum
 
 

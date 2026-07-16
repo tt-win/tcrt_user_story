@@ -9,7 +9,6 @@ import logging
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 from app.config import get_settings
-import time
 
 logger = logging.getLogger(__name__)
 

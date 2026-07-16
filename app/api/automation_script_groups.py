@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from typing import Any
@@ -12,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.automation_scripts import require_team_admin, require_team_read
 from app.audit import ActionType, AuditSeverity, ResourceType, audit_service
 from app.db_access.main import MainAccessBoundary, get_main_access_boundary
-from app.models.automation_run import AutomationRunResponse
 from app.models.automation_script_group import (
     AutomationScriptGroupCreate,
     AutomationScriptGroupListResponse,
@@ -29,7 +27,6 @@ from app.services.automation.script_group_service import (
     AutomationScriptGroupScriptNotFoundError,
     AutomationScriptGroupService,
     AutomationScriptGroupServiceError,
-    automation_run_to_dict,
     script_group_to_dict,
 )
 

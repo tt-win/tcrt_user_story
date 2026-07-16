@@ -13,9 +13,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.database import get_sync_engine
-from app.models.database_models import TestCaseLocal, TestRunItem
-from app.services.attachment_storage import normalize_attachment_metadata
+from app.database import get_sync_engine  # noqa: E402
+from app.models.database_models import TestCaseLocal, TestRunItem  # noqa: E402
+from app.services.attachment_storage import normalize_attachment_metadata  # noqa: E402
 
 
 def _normalize_list(payload: str | None) -> tuple[str | None, bool]:

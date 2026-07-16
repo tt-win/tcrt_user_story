@@ -9,7 +9,7 @@
 """
 
 import logging
-from typing import List, Optional
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -124,8 +124,8 @@ async def get_organization_stats(
             ).count()
 
             total_users = sync_db.query(LarkUser).filter(
-                LarkUser.is_activated == True,
-                LarkUser.is_exited == False
+                LarkUser.is_activated.is_(True),
+                LarkUser.is_exited.is_(False)
             ).count()
 
             # 獲取最後同步時間

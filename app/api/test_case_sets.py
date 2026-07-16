@@ -26,7 +26,6 @@ from ..models.test_case_set import (
     TestCaseSet,
     TestCaseSetCreate,
     TestCaseSetUpdate,
-    TestCaseSetWithSections,
     TestCaseSetNameValidationResponse,
 )
 from ..models.test_run_scope import ImpactPreviewResponse
@@ -332,7 +331,7 @@ async def get_test_case_set(
         logger.error(f"查詢 Test Case Set 失敗: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"查詢 Test Case Set 失敗",
+            detail="查詢 Test Case Set 失敗",
         )
 
 

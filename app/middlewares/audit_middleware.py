@@ -1,7 +1,7 @@
 """全域審計記錄 Middleware"""
 
 import logging
-from typing import Optional, Dict
+from typing import Dict
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware

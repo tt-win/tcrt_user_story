@@ -5,9 +5,9 @@
 """
 
 from enum import Enum
-from typing import Optional, List
+from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 
 
 class UserRole(str, Enum):

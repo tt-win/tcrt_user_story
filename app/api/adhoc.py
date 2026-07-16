@@ -1,26 +1,22 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import logging
 import traceback
 
-from app.database import get_db
 from app.db_access.main import MainAccessBoundary, get_main_access_boundary
 from app.auth.dependencies import get_current_user
 from app.models.database_models import User, AdHocRun, AdHocRunSheet, AdHocRunItem, TestCaseLocal, TestCaseSet, TestCaseSection
-from sqlalchemy import or_
 from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
 from app.models.adhoc import (
     AdHocRunCreate, AdHocRunUpdate, AdHocRunResponse,
-    AdHocRunSheetCreate, AdHocRunSheetUpdate, AdHocRunSheetResponse,
-    AdHocRunItemCreate, AdHocRunItemUpdate, AdHocRunItemResponse
+    AdHocRunSheetCreate, AdHocRunSheetUpdate, AdHocRunSheetResponse
 )
-
-logger = logging.getLogger(__name__)
 from app.models.lark_types import Priority
 from app.models.test_run_config import TestRunStatus
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/adhoc-runs", tags=["adhoc-runs"])
 

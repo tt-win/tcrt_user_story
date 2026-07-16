@@ -22,7 +22,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.database_models import (
-    AutomationRun,
     AutomationScript,
     AutomationScriptCaseLink,
     AutomationScriptLinkType,

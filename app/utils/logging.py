@@ -4,7 +4,6 @@
 
 import logging
 from typing import Any, Dict
-from datetime import datetime
 
 
 def setup_app_logging():

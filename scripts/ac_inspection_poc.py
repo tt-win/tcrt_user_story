@@ -34,7 +34,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.qa_ai_helper_preclean import build_output, fetch_issue, validate_output_structure
+from scripts.qa_ai_helper_preclean import (  # noqa: E402
+    build_output,
+    fetch_issue,
+    validate_output_structure,
+)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -490,7 +494,7 @@ async def run(args: argparse.Namespace) -> int:
                 print(prompt)
                 print("=" * 80)
 
-        print(f"\n  Extraction Models:")
+        print("\n  Extraction Models:")
         for cfg in EXTRACTION_MODEL_CONFIGS:
             print(f"    {cfg.label}: {cfg.model_id} — {cfg.role_name}")
         print(f"  Consolidation Model: {args.consolidation_model}")

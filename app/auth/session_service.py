@@ -72,7 +72,7 @@ class SessionService:
                     select(ActiveSession).where(
                         and_(
                             ActiveSession.jti == jti,
-                            ActiveSession.is_revoked == True,
+                            ActiveSession.is_revoked.is_(True),
                         )
                     )
                 )
@@ -122,7 +122,7 @@ class SessionService:
                     select(ActiveSession).where(
                         and_(
                             ActiveSession.user_id == user_id,
-                            ActiveSession.is_revoked == False,
+                            ActiveSession.is_revoked.is_(False),
                         )
                     )
                 )
@@ -153,7 +153,7 @@ class SessionService:
             async def _load(session: AsyncSession) -> List[ActiveSession]:
                 query = select(ActiveSession).where(
                     and_(
-                        ActiveSession.is_revoked == False,
+                        ActiveSession.is_revoked.is_(False),
                         ActiveSession.expires_at > datetime.utcnow(),
                     )
                 )
@@ -179,7 +179,7 @@ class SessionService:
                         or_(
                             ActiveSession.expires_at < current_time,
                             and_(
-                                ActiveSession.is_revoked == True,
+                                ActiveSession.is_revoked.is_(True),
                                 ActiveSession.revoked_at < cleanup_time,
                             ),
                         )
@@ -274,14 +274,14 @@ class SessionService:
                 active_result = await session.execute(
                     select(func.count()).select_from(ActiveSession).where(
                         and_(
-                            ActiveSession.is_revoked == False,
+                            ActiveSession.is_revoked.is_(False),
                             ActiveSession.expires_at > current_time,
                         )
                     )
                 )
                 revoked_result = await session.execute(
                     select(func.count()).select_from(ActiveSession).where(
-                        ActiveSession.is_revoked == True
+                        ActiveSession.is_revoked.is_(True)
                     )
                 )
                 return {

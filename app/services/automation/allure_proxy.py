@@ -26,7 +26,6 @@ import tarfile
 import zipfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any
 
 import httpx
 from sqlalchemy import select

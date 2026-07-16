@@ -5,7 +5,6 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.automation_run import AutomationRunResponse
 from app.models.database_models import AutomationScriptFormat, AutomationScriptGroupJobType
 
 

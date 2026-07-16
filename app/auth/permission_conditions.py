@@ -7,7 +7,7 @@
 
 import re
 import ast
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List
 from app.models.database_models import User
 
 
@@ -213,7 +213,7 @@ class ConditionEvaluator:
                     # 嘗試評估為字串或數字
                     try:
                         args.append(ast.literal_eval(part))
-                    except:
+                    except (ValueError, SyntaxError):
                         args.append(part.strip().strip("'\""))
 
         return args, kwargs

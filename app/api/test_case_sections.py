@@ -11,17 +11,15 @@ import logging
 from ..database import get_db
 from ..db_access.main import create_main_access_boundary_for_session
 from ..auth.dependencies import get_current_user
-from ..auth.models import PermissionType, User
-from ..models.database_models import TestCaseSet as TestCaseSetDB, Team as TeamDB
+from ..auth.models import User
+from ..models.database_models import TestCaseSet as TestCaseSetDB
 from ..models.test_case_set import (
     TestCaseSection,
     TestCaseSectionCreate,
     TestCaseSectionUpdate,
-    TestCaseSectionWithChildren,
     TestCaseSectionReorderRequest,
 )
 from ..services.test_case_section_service import TestCaseSectionService
-from ..services.test_case_set_service import TestCaseSetService
 from ..audit import audit_service, ActionType, ResourceType, AuditSeverity
 
 logger = logging.getLogger(__name__)

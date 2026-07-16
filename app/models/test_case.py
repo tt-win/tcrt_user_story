@@ -5,6 +5,9 @@
 """
 
 from enum import Enum
+import re as _re
+import uuid as _uuid
+
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, List, Dict, Any, Union, ClassVar
 from datetime import datetime
@@ -97,9 +100,6 @@ class TestDataItem(BaseModel):
 MAX_TEST_DATA_NAME_LEN = 500
 MAX_TEST_DATA_VALUE_LEN = 100_000
 MAX_TEST_DATA_ITEMS = 100
-
-import re as _re
-import uuid as _uuid
 
 # C0 控制字元（保留 \t \n \r）
 _TD_CONTROL_CHARS_RE = _re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")

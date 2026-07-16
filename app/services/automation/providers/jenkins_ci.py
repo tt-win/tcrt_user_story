@@ -567,7 +567,9 @@ class JenkinsCIProvider:
             details["matching_runners"] = len(matching)
             details["checked_label"] = label
             if not matching:
-                runner_labels = sorted({l for r in online_runners for l in r.labels})
+                runner_labels = sorted(
+                    {runner_label for runner in online_runners for runner_label in runner.labels}
+                )
                 details["available_labels"] = runner_labels
                 return HealthStatus(
                     status="LIMITED",

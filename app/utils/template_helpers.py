@@ -3,7 +3,6 @@
 提供用於 Jinja2 模板的條件渲染邏輯
 """
 
-from typing import Optional
 from app.services.user_service import UserService
 
 

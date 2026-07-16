@@ -10,7 +10,7 @@ import logging
 import os
 from pathlib import Path
 from typing import AsyncGenerator, Callable, TypeVar
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.pool import NullPool
 from sqlalchemy import event, text
 from contextlib import asynccontextmanager
@@ -214,7 +214,7 @@ def get_sync_db():
     """同步版本的會話生成器（向後相容）"""
     if _in_async_runtime() and not _sync_db_allowed_in_runtime():
         raise RuntimeError("get_sync_db 在 Web runtime 不可使用，請改用 get_db (AsyncSession)")
-    engine = get_sync_engine()
+    get_sync_engine()
     db = _SyncSessionLocal()
     try:
         yield db

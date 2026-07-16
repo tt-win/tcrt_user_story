@@ -4,14 +4,13 @@
 """
 
 from typing import Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 
 from app.database import get_db
 from app.services.system_init_service import SystemInitService
-from app.auth.models import UserRole
 
 
 router = APIRouter(prefix="/api/system", tags=["System"])

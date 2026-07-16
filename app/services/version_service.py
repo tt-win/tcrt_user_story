@@ -4,8 +4,6 @@
 """
 from datetime import datetime
 from typing import Optional
-import os
-from pathlib import Path
 import logging
 
 logger = logging.getLogger(__name__)

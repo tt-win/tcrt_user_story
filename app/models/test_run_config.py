@@ -632,7 +632,7 @@ class TPTicketDataConverter:
         # 使用現有的 validator 進行驗證
         # 建立臨時的 TestRunConfig 模型實例來驗證
         try:
-            temp_config = TestRunConfigCreate(
+            TestRunConfigCreate(
                 name="temp", 
                 team_id=1,
                 related_tp_tickets=tp_tickets

@@ -19,7 +19,6 @@ from app.database import get_db
 from app.auth.dependencies import get_current_user
 from app.models.database_models import (
     AutomationRunStatus,
-    AutomationRunTrigger,
     Team,
     User,
 )
@@ -883,8 +882,6 @@ async def run_automation_for_test_run_set(
         AutomationEnvironmentIncompleteError,
         AutomationEnvironmentRequiredError,
     )
-    from app.models.database_models import AutomationRun, AutomationScriptGroup
-    from sqlalchemy import select as sa_select
 
     async def _run_async(async_db: AsyncSession) -> dict[str, list[int]]:
         service = TestRunSetAutomationService(async_db)
@@ -993,7 +990,6 @@ async def _audit_run_for_test_run_set(
 ) -> None:
     """Write a single automation run audit record for a Test Run Set trigger."""
     from app.models.database_models import AutomationRun, AutomationScriptGroup
-    from sqlalchemy import select
 
     row = (
         await db.execute(

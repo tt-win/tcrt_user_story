@@ -9,10 +9,8 @@ import asyncio
 import logging
 import hashlib
 import os
-import re
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Set, Tuple
-from functools import lru_cache
+from typing import Any, Dict, List, Optional, Tuple
 
 import casbin
 import yaml
@@ -400,7 +398,7 @@ class PermissionService:
         try:
             async def _load_role(session: AsyncSession) -> Optional[UserRole]:
                 result = await session.execute(
-                    select(User.role).where(User.id == user_id, User.is_active == True)
+                    select(User.role).where(User.id == user_id, User.is_active.is_(True))
                 )
                 user_role_str = result.scalar_one_or_none()
 
@@ -611,7 +609,7 @@ class PermissionService:
         try:
             async def _load_role(session: AsyncSession) -> Optional[UserRole]:
                 result = await session.execute(
-                    select(User.role).where(User.id == user_id, User.is_active == True)
+                    select(User.role).where(User.id == user_id, User.is_active.is_(True))
                 )
                 role_str = result.scalar_one_or_none()
                 return UserRole(role_str) if role_str else None
@@ -694,7 +692,6 @@ class PermissionService:
         Returns:
             可用動作列表
         """
-        user_role = (current_user.role or "").upper()
         available_actions = []
         
         # 取得該功能的所有可能動作

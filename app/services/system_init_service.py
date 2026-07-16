@@ -39,7 +39,7 @@ class SystemInitService:
                 super_admin_count = (
                     sync_db.query(UserORM)
                     .filter(UserORM.role == UserRole.SUPER_ADMIN.value)
-                    .filter(UserORM.is_active == True)
+                    .filter(UserORM.is_active.is_(True))
                     .count()
                 )
 
@@ -68,7 +68,7 @@ class SystemInitService:
 
                 # 使用者統計
                 total_users = sync_db.query(UserORM).count()
-                active_users = sync_db.query(UserORM).filter(UserORM.is_active == True).count()
+                active_users = sync_db.query(UserORM).filter(UserORM.is_active.is_(True)).count()
 
                 # 角色統計
                 role_stats = {}
@@ -76,7 +76,7 @@ class SystemInitService:
                     count = (
                         sync_db.query(UserORM)
                         .filter(UserORM.role == role.value)
-                        .filter(UserORM.is_active == True)
+                        .filter(UserORM.is_active.is_(True))
                         .count()
                     )
                     role_stats[role.value] = count
@@ -212,7 +212,7 @@ class SystemInitService:
         super_admin_count = (
             sync_db.query(UserORM)
             .filter(UserORM.role == UserRole.SUPER_ADMIN.value)
-            .filter(UserORM.is_active == True)
+            .filter(UserORM.is_active.is_(True))
             .count()
         )
         return super_admin_count > 0

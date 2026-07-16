@@ -117,7 +117,7 @@ class Config:
 
         if not raw:
             print(f"[ERROR] 找不到設定檔：{path}")
-            print(f"        請確認 scripts/automation_hub_poc.yaml 存在")
+            print("        請確認 scripts/automation_hub_poc.yaml 存在")
             sys.exit(1)
 
         try:
@@ -129,12 +129,12 @@ class Config:
         gh = expanded.get("github", {})
 
         if not gh.get("pat"):
-            print(f"[ERROR] automation_hub_poc.yaml 的 github.pat 未設定")
+            print("[ERROR] automation_hub_poc.yaml 的 github.pat 未設定")
             sys.exit(1)
 
         repo_url = gh.get("repo_url", "")
         if not repo_url:
-            print(f"[ERROR] automation_hub_poc.yaml 的 github.repo_url 未設定")
+            print("[ERROR] automation_hub_poc.yaml 的 github.repo_url 未設定")
             sys.exit(1)
 
         try:
@@ -182,13 +182,13 @@ class JenkinsConfig:
         jk = expanded.get("jenkins", {})
 
         if not jk.get("base_url"):
-            print(f"[ERROR] automation_hub_poc.yaml 的 jenkins.base_url 未設定")
+            print("[ERROR] automation_hub_poc.yaml 的 jenkins.base_url 未設定")
             sys.exit(1)
         if not jk.get("username"):
-            print(f"[ERROR] automation_hub_poc.yaml 的 jenkins.username 未設定")
+            print("[ERROR] automation_hub_poc.yaml 的 jenkins.username 未設定")
             sys.exit(1)
         if not jk.get("api_token"):
-            print(f"[ERROR] automation_hub_poc.yaml 的 jenkins.api_token 未設定")
+            print("[ERROR] automation_hub_poc.yaml 的 jenkins.api_token 未設定")
             sys.exit(1)
 
         return cls(
@@ -306,7 +306,7 @@ class GitHubClient:
             msg = data.get("message", "")
             if "sha" in msg.lower() or "does not match" in msg.lower():
                 raise RuntimeError(
-                    f"SHA mismatch: 檔案已被其他 commit 修改，current sha 與提供的不符"
+                    "SHA mismatch: 檔案已被其他 commit 修改，current sha 與提供的不符"
                 )
             raise RuntimeError(f"GitHub 422: {msg}")
         r.raise_for_status()
@@ -390,7 +390,7 @@ class GitHubClient:
             for run in r.json().get("workflow_runs", []):
                 # GitHub Actions 的 input 值不在 list API 裡，需個別查
                 run_id = run["id"]
-                jr = await self.get(
+                await self.get(
                     f"/repos/{self.cfg.repo_full}/actions/runs/{run_id}/jobs",
                     params={"per_page": 1},
                 )
@@ -722,11 +722,9 @@ async def suite_storage(gh: GitHubClient, readonly: bool = False):
         fail("list_files", str(e))
 
     # Step 4: read_file（路徑可能不存在，這是預期行為之一）
-    file_content_before = None
     file_sha = None
     try:
         content, etag, sha = await gh.read_file(cfg.test_path)
-        file_content_before = content
         file_sha = sha
         ok("read_file (existing)", f"size={len(content)} bytes, etag={etag[:20]}..., sha={sha[:8]}...")
 
@@ -819,7 +817,7 @@ def test_poc_smoke(page: Page):
         ok("write_file (pr branch)", f"file={pr_file}, commit={res2['commit']['sha'][:8]}")
 
         pr = await gh.create_pull_request(
-            title=f"[POC] automation_hub_github_poc test PR",
+            title="[POC] automation_hub_github_poc test PR",
             head=poc_branch,
             base=cfg.branch,
             body="This PR was created by `automation_hub_github_poc.py` as a POC test. **Please close without merging.**",
@@ -872,7 +870,7 @@ async def suite_workflow_crud(gh: GitHubClient):
     cfg = gh.cfg
 
     wf_path = f".github/workflows/poc-crud-{uuid.uuid4().hex[:8]}.yml"
-    wf_content_v1 = f"""\
+    wf_content_v1 = """\
 name: POC CRUD Test
 on:
   workflow_dispatch:
@@ -983,7 +981,7 @@ async def suite_ci(gh: GitHubClient):
     if not target_wf:
         print(f"\n  [Auto-create] 找不到 '{cfg.workflow_id}'，自動建立暫時 workflow ...")
         temp_wf_path = f".github/workflows/poc-ci-{uuid.uuid4().hex[:8]}.yml"
-        temp_wf_content = f"""\
+        temp_wf_content = """\
 name: POC CI Auto-created
 on:
   workflow_dispatch:
@@ -995,7 +993,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "tcrt_run_id=${{{{ github.event.inputs.tcrt_run_id }}}}"
+      - run: echo "tcrt_run_id=${{ github.event.inputs.tcrt_run_id }}"
 """
         try:
             res = await gh.write_file(
@@ -1038,15 +1036,15 @@ jobs:
         if "422" in error_msg or "Unprocessable" in error_msg:
             fail(
                 "trigger_workflow",
-                f"HTTP 422 — workflow 可能未定義 'on: workflow_dispatch' 觸發器\n"
-                f"     請確認 workflow yml 包含 workflow_dispatch 區塊",
+                "HTTP 422 — workflow 可能未定義 'on: workflow_dispatch' 觸發器\n"
+                "     請確認 workflow yml 包含 workflow_dispatch 區塊",
             )
         else:
             fail("trigger_workflow", error_msg)
         return
 
     # Step 3: 輪詢找到 run（概念驗證，簡化版）
-    print(f"\n  [Polling] 等候 run 出現（最多 60 秒）...")
+    print("\n  [Polling] 等候 run 出現（最多 60 秒）...")
     try:
         run = await gh.find_run_by_correlation_id(str(target_wf["id"]), correlation_id, timeout_s=60)
         if run:
@@ -1061,7 +1059,7 @@ jobs:
 
     # Step 4: cleanup 暫時 workflow
     if temp_wf_path and temp_wf_sha:
-        print(f"\n  [Cleanup] 刪除暫時 workflow ...")
+        print("\n  [Cleanup] 刪除暫時 workflow ...")
         try:
             # 先重新讀取 current sha（trigger 後 workflow 可能產生新 commit 導致 sha 變更）
             _, _, current_sha = await gh.read_file(temp_wf_path)
@@ -1109,7 +1107,7 @@ async def suite_jenkins(jk: JenkinsClient):
     try:
         nodes = await jk.list_nodes()
         for node in nodes:
-            labels = [l["name"] for l in node.get("assignedLabels", [])]
+            labels = [label["name"] for label in node.get("assignedLabels", [])]
             status = "online" if not node.get("offline") else "offline"
             busy = not node.get("idle", True)
             ok("jenkins.list_nodes", f"{node['displayName']}: status={status}, busy={busy}, labels={labels}")
@@ -1125,7 +1123,7 @@ async def suite_jenkins(jk: JenkinsClient):
 
     # Step 4: CREATE view
     try:
-        await jk.create_view(poc_view, f"POC test view created by automation_hub_github_poc")
+        await jk.create_view(poc_view, "POC test view created by automation_hub_github_poc")
         ok("jenkins.create_view", f"view='{poc_view}'")
     except Exception as e:
         fail("jenkins.create_view", str(e))
@@ -1187,7 +1185,7 @@ async def suite_jenkins(jk: JenkinsClient):
         fail("jenkins.list_jobs", str(e))
 
     # Step 10: Cleanup
-    print(f"\n  [Cleanup]")
+    print("\n  [Cleanup]")
     try:
         await jk.delete_job(poc_job)
         ok("jenkins.delete_job (cleanup)", f"job='{poc_job}' deleted")
@@ -1219,14 +1217,14 @@ async def main(suite: str, readonly: bool, config_path: Optional[Path]):
     cfg = Config.from_yaml(config_path)
 
     print(f"\n{'═' * 60}")
-    print(f"  Automation Hub GitHub POC")
+    print("  Automation Hub GitHub POC")
     print(f"{'═' * 60}")
     print(f"  Repo  : {cfg.repo_full}")
     print(f"  Branch: {cfg.branch}")
     print(f"  Path  : {cfg.test_path}")
     print(f"  Suite : {suite}")
     if readonly:
-        print(f"  Mode  : READONLY（不會建立/修改任何檔案）")
+        print("  Mode  : READONLY（不會建立/修改任何檔案）")
 
     async with GitHubClient(cfg) as gh:
         if suite in ("all", "storage"):
@@ -1244,7 +1242,7 @@ async def main(suite: str, readonly: bool, config_path: Optional[Path]):
 
     # 彙總
     print(f"\n{'═' * 60}")
-    print(f"  結果彙總")
+    print("  結果彙總")
     print(f"{'═' * 60}")
     passed = [r for r in results if r.passed and not r.skipped]
     failed = [r for r in results if not r.passed]

@@ -13,18 +13,15 @@ See `openspec/changes/move-automation-execution-to-test-run-set/`.
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.database_models import (
-    AutomationProviderSlot,
     AutomationScriptGroup,
     TestRunSet as TestRunSetDB,
 )
 from app.services.automation.script_group_service import AutomationScriptGroupService
-from app.services.automation.run_service import AutomationRunService
 
 
 logger = logging.getLogger(__name__)

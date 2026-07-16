@@ -7,15 +7,20 @@
 
 import logging
 from typing import Optional, AsyncGenerator
-from sqlalchemy import text, event
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.pool import NullPool
-from sqlalchemy.exc import SQLAlchemyError
 from contextlib import asynccontextmanager
 
+from sqlalchemy import Column, DateTime, Enum as SQLEnum, Index, Integer, String, event, text
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.pool import NullPool
+from sqlalchemy.sql import func
+
 from ..config import get_settings
+from ..db_types import MediumText as Text
 from ..db_sqlite_pragma import apply_sqlite_pragma
 from ..db_url import normalize_async_database_url
+from .models import ActionType, AuditSeverity, ResourceType
 
 logger = logging.getLogger(__name__)
 
@@ -205,13 +210,6 @@ async def audit_health_check() -> bool:
 
 
 # 資料庫表格定義
-from sqlalchemy import Column, Integer, String, DateTime, Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.sql import func
-from ..db_types import MediumText as Text
-from .models import ActionType, ResourceType, AuditSeverity
-
 AuditBase = declarative_base()
 
 
@@ -273,8 +271,6 @@ class AuditLogTable(AuditBase):
 
 
 # 索引定義（提升查詢效能）
-from sqlalchemy import Index
-
 # 複合索引
 Index('idx_audit_time_team', AuditLogTable.timestamp, AuditLogTable.team_id)
 Index('idx_audit_user_time', AuditLogTable.user_id, AuditLogTable.timestamp)

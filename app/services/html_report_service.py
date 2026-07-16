@@ -601,7 +601,7 @@ class HTMLReportService:
             </div>
             """
         else:
-            bugs_html = f"""
+            bugs_html = """
             <div class=\"section card\">
               <h2>Bug Tickets</h2>
               <div class=\"muted\">無關聯的 Bug Tickets</div>

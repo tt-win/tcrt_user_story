@@ -11,14 +11,12 @@ import asyncio
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 from sqlalchemy import select, func, and_, desc, asc
-from sqlalchemy.exc import SQLAlchemyError
-from contextlib import asynccontextmanager
 
 from .models import (
     AuditLog, AuditLogCreate, AuditLogQuery, AuditLogResponse, AuditLogSummary,
     AuditStatistics, ActionType, ResourceType, AuditSeverity
 )
-from .database import get_audit_session, AuditLogTable, audit_db_manager
+from .database import AuditLogTable, audit_db_manager
 from ..config import get_settings
 from app.models.database_models import User
 from app.auth.models import UserRole

@@ -5,16 +5,16 @@ Local CRUD for test run items stored in SQLite, detached from Lark.
 Items are created by selecting Test Cases and copying necessary fields.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session, aliased, contains_eager, joinedload
-from sqlalchemy import and_, or_
-from typing import List, Optional, Any, Dict, Union
 from datetime import datetime
 import json
 import logging
+from typing import List, Optional, Any, Dict, Union
 
-logger = logging.getLogger(__name__)
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from pydantic import BaseModel, Field
+from sqlalchemy import and_, or_
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session, contains_eager, joinedload
 
 from app.db_access import MainAccessBoundary, get_main_access_boundary
 from app.services.lark_client import LarkClient
@@ -30,7 +30,6 @@ from app.models.database_models import (
     User,
 )
 from app.models.lark_types import Priority, TestResultStatus
-from pydantic import BaseModel, Field
 from app.auth.dependencies import get_current_user
 from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
 from app.services.attachment_storage import (
@@ -42,6 +41,7 @@ from app.services.attachment_storage import (
 )
 from app.services.test_run_scope_service import TestRunScopeService
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/teams/{team_id}/test-run-configs/{config_id}/items", tags=["test-run-items"])
 
@@ -90,10 +90,8 @@ async def upload_test_run_results(
     4. 更新 test_run_items.execution_results_json 與統計欄位
     5. 回傳上傳明細
     """
-    import os
     import re
     import json
-    from pathlib import Path
     from datetime import datetime
 
     def _load_item(sync_db: Session) -> Dict[str, Any]:

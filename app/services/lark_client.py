@@ -11,8 +11,6 @@ Lark Base Client
 import logging
 import requests
 import threading
-import asyncio
-import aiohttp
 import time
 from typing import Dict, List, Optional, Tuple, Any, Callable
 from datetime import datetime, timedelta
@@ -924,10 +922,10 @@ class LarkClient:
         obj_token = self.table_manager.get_obj_token(wiki_token)
         if obj_token:
             self._current_obj_token = obj_token
-            self.logger.info(f"Wiki Token 設定成功")
+            self.logger.info("Wiki Token 設定成功")
             return True
         else:
-            self.logger.error(f"Wiki Token 設定失敗")
+            self.logger.error("Wiki Token 設定失敗")
             return False
     
     def test_connection(self, wiki_token: str = None) -> bool:

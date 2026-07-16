@@ -36,7 +36,6 @@ from app.auth.dependencies import get_current_user
 from app.auth.models import PermissionType
 from app.models.database_models import User
 from app.models.test_case import (
-    TestCase,
     TestCaseCreate,
     TestCaseUpdate,
     TestCaseResponse,
@@ -62,7 +61,6 @@ from app.services.attachment_storage import (
     normalize_attachment_metadata,
     resolve_attachment_metadata_path,
 )
-from app.services.lark_client import LarkClient
 from app.config import settings
 from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
 
@@ -764,7 +762,6 @@ async def create_test_case(
             # 如有暫存附件，搬移並記錄
             if getattr(case, "temp_upload_id", None):
                 project_root = Path(__file__).resolve().parents[2]
-                from app.config import settings
 
                 root_dir = get_attachments_root_dir(project_root)
                 staging_dir = root_dir / "staging" / case.temp_upload_id
@@ -1136,7 +1133,6 @@ async def update_test_case(
             # 如有暫存附件，搬移並與既存附件合併
             if getattr(case_update, "temp_upload_id", None):
                 project_root = Path(__file__).resolve().parents[2]
-                from app.config import settings
 
                 root_dir = get_attachments_root_dir(project_root)
                 staging_dir = root_dir / "staging" / case_update.temp_upload_id
@@ -1285,7 +1281,6 @@ async def upload_test_case_attachments_staging(
     - 回傳 temp_upload_id，前端於建立/更新 Test Case 時帶回即可完成搬移與綁定。
     目錄：attachments/staging/{temp_upload_id}/
     """
-    import re, json
     from pathlib import Path
     from datetime import datetime
 
@@ -1338,7 +1333,7 @@ async def upload_test_case_attachments_by_id(
     main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """上傳測試案例附件（本地 id 版）"""
-    import re, json
+    import json
     from pathlib import Path
     from datetime import datetime
 
@@ -1428,7 +1423,6 @@ async def list_test_case_attachments(
 ):
     """列出某測試案例的附件（以本地 id）。"""
     import json
-    from pathlib import Path
 
     def _get_item(sync_db: Session):
         return sync_db.query(TestCaseLocalDB).filter(TestCaseLocalDB.id == test_case_id).first()
@@ -1635,7 +1629,6 @@ async def upload_test_case_attachments(
     - 儲存路徑：attachments/test-cases/{team_id}/{test_case_number}/
     - 更新 TestCaseLocal.attachments_json
     """
-    import re
     import json
     from pathlib import Path
     from datetime import datetime
@@ -1660,7 +1653,6 @@ async def upload_test_case_attachments(
 
     # 固定以專案根做為 base，避免受啟動目錄影響
     project_root = Path(__file__).resolve().parents[2]
-    from app.config import settings
 
     root_dir = Path(settings.attachments.root_dir) if settings.attachments.root_dir else (project_root / "attachments")
     base_dir = root_dir / "test-cases" / str(team_id) / item.test_case_number

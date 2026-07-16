@@ -6,13 +6,10 @@ import logging
 from typing import Callable, TypeVar, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, case, or_
+from sqlalchemy import and_, case
 
 from ..db_access.main import MainAccessBoundary, create_main_access_boundary_for_session
 from ..models.database_models import TestCaseSet, TestCaseSection, TestCaseLocal
-from ..models.test_case_set import (
-    TestCaseSetCreate, TestCaseSetUpdate, TestCaseSet as TestCaseSetModel
-)
 from ..services.test_run_scope_service import TestRunScopeService
 
 logger = logging.getLogger(__name__)
@@ -118,7 +115,7 @@ class TestCaseSetService:
         from app.models.database_models import TestCaseSection as TestCaseSectionDB
         
         default_set = sync_db.query(TestCaseSetDB).filter(
-            and_(TestCaseSetDB.team_id == team_id, TestCaseSetDB.is_default == True)
+            and_(TestCaseSetDB.team_id == team_id, TestCaseSetDB.is_default.is_(True))
         ).first()
 
         if not default_set:
@@ -160,7 +157,7 @@ class TestCaseSetService:
             
             # 將其他 set 取消 default
             sync_db.query(TestCaseSet).filter(
-                and_(TestCaseSet.team_id == team_id, TestCaseSet.is_default == True, TestCaseSet.id != new_default_set_id)
+                and_(TestCaseSet.team_id == team_id, TestCaseSet.is_default.is_(True), TestCaseSet.id != new_default_set_id)
             ).update({"is_default": False})
             
             # 設為 default
@@ -231,7 +228,7 @@ class TestCaseSetService:
 
             # 獲取預設 Set
             default_set = sync_db.query(TestCaseSet).filter(
-                and_(TestCaseSet.team_id == team_id, TestCaseSet.is_default == True)
+                and_(TestCaseSet.team_id == team_id, TestCaseSet.is_default.is_(True))
             ).first()
 
             if not default_set:

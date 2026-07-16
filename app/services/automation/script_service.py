@@ -38,11 +38,6 @@ from app.services.automation.marker_parse import (  # noqa: F401
     _extract_declared_vars,
     _extract_test_entries,
 )
-
-
-logger = logging.getLogger(__name__)
-
-
 # Re-exports for backward compatibility — the canonical home of these utilities
 # is `app.services.automation.marker_sync`. Tests and external callers may
 # still import the names below; do not remove without an OpenSpec migration.
@@ -56,6 +51,7 @@ from app.services.automation.marker_sync import (  # noqa: F401
     parse_marker_note,
 )
 
+logger = logging.getLogger(__name__)
 
 DEFAULT_MANIFEST_PATH = "tcrt-automation.yml"
 # DEFAULT_SCAN_PATH / DEFAULT_INCLUDE_PATTERNS / DEFAULT_EXCLUDE_PATTERNS now live
