@@ -3704,6 +3704,49 @@
       "reconnecting": "重新连接中…",
       "ended": "流已结束"
     },
-    "workerLabel": "worker {pid}（{instance}）"
+    "workerLabel": "worker {pid}（{instance}）",
+    "tabs": {
+      "logs": "日志",
+      "runtimeSettings": "运行设置"
+    },
+    "settings": {
+      "perProcessHint": "仅显示处理本请求的 worker 进程的设置视角，日志分页的数据可能来自其他 worker。",
+      "refresh": "刷新",
+      "loading": "加载中…",
+      "loadError": "加载运行设置失败，请重试。",
+      "workerMismatch": "日志分页与此设置快照来自不同的 worker 进程，两边信息不一定对应。",
+      "workerUnknown": "无法确认日志分页与此快照是否来自同一 worker。",
+      "sectionProcess": "进程",
+      "pid": "PID",
+      "workerInstance": "Worker 实例",
+      "configuredConcurrency": "已配置的 WEB_CONCURRENCY",
+      "inferredConcurrency": "脚本推导的默认 worker 数",
+      "sourceConfigured": "已明确配置",
+      "sourceInferredDefault": "启动脚本将使用推导默认值",
+      "sourceInvalidConfigured": "设置异常——不会改用推导默认值",
+      "notActualWorkerCount": "并非实际 worker 进程数；仅为本进程可见配置的推算，实际数量以部署启动参数为准。",
+      "sectionDatabase": "数据库",
+      "dbTarget": "目标",
+      "dbEngine": "引擎",
+      "dbDriver": "Driver",
+      "dbHost": "Host",
+      "dbPort": "Port",
+      "dbName": "数据库",
+      "dbMain": "主库",
+      "dbAudit": "审计库",
+      "dbUsm": "User Story Map",
+      "sectionApp": "应用",
+      "publicBaseUrl": "对外 base URL",
+      "enableAuth": "启用认证",
+      "enabled": "已启用",
+      "disabled": "已停用",
+      "sectionLogViewer": "Log viewer 容量（per-worker）",
+      "bufferSize": "Buffer 条数",
+      "maxStreams": "并发流数量",
+      "maxMessageChars": "单条消息长度（字符）",
+      "subscriberQueueSize": "订阅 pending 深度",
+      "keepaliveSeconds": "Keep-alive 间隔（秒）",
+      "streamMaxLifetime": "流最大生命周期（秒）"
+    }
   }
 }

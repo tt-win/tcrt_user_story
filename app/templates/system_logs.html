@@ -32,6 +32,20 @@
     </div>
 
     <div id="logViewerMain">
+        <ul class="nav nav-tabs mb-2" id="systemLogsTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="logsTabBtn" data-bs-toggle="tab" data-bs-target="#logsTabPane"
+                        type="button" role="tab" aria-controls="logsTabPane" aria-selected="true"
+                        data-i18n="systemLogs.tabs.logs">Logs</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="runtimeSettingsTabBtn" data-bs-toggle="tab" data-bs-target="#runtimeSettingsTabPane"
+                        type="button" role="tab" aria-controls="runtimeSettingsTabPane" aria-selected="false"
+                        data-i18n="systemLogs.tabs.runtimeSettings">Runtime Settings</button>
+            </li>
+        </ul>
+        <div class="tab-content">
+        <div class="tab-pane fade show active" id="logsTabPane" role="tabpanel" aria-labelledby="logsTabBtn" tabindex="0">
         <div class="card mb-2">
             <div class="card-body py-2">
                 <div class="d-flex flex-wrap align-items-center gap-2">
@@ -74,6 +88,93 @@
                 <small class="text-muted" data-i18n="systemLogs.perWorkerHint">僅顯示目前 worker 的 log；重啟後清空，完整紀錄請用 docker logs</small>
             </div>
         </div>
+        </div><!-- /#logsTabPane -->
+
+        <div class="tab-pane fade" id="runtimeSettingsTabPane" role="tabpanel" aria-labelledby="runtimeSettingsTabBtn" tabindex="0">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                    <small class="text-muted" data-i18n="systemLogs.settings.perProcessHint">僅顯示處理本請求之 worker process 的設定視角，Logs 分頁的資料可能來自其他 worker</small>
+                    <div class="ms-auto d-flex align-items-center gap-2">
+                        <small class="text-muted" id="rtsGeneratedAt"></small>
+                        <button type="button" class="btn btn-secondary btn-sm" id="rtsRefreshBtn">
+                            <i class="fas fa-sync-alt me-1"></i><span data-i18n="systemLogs.settings.refresh">重新整理</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="rtsMismatchBanner" class="alert alert-warning d-none" role="alert">
+                    <i class="fas fa-triangle-exclamation me-2"></i><span data-i18n="systemLogs.settings.workerMismatch">Logs 分頁與此設定快照來自不同 worker process，兩邊資訊不一定對應。</span>
+                </div>
+                <div id="rtsWorkerUnknownNote" class="alert alert-secondary d-none" role="alert">
+                    <i class="fas fa-circle-question me-2"></i><span data-i18n="systemLogs.settings.workerUnknown">無法確認 Logs 分頁與此快照是否來自同一 worker。</span>
+                </div>
+
+                <div id="rtsLoading" class="text-muted d-none" data-i18n="systemLogs.settings.loading">載入中…</div>
+                <div id="rtsError" class="alert alert-danger d-none" role="alert" data-i18n="systemLogs.settings.loadError">載入 runtime 設定失敗，請重試。</div>
+
+                <div id="rtsContent" class="d-none">
+                    <h6 class="rts-section-title" data-i18n="systemLogs.settings.sectionProcess">Process</h6>
+                    <dl class="row rts-dl mb-3">
+                        <dt class="col-sm-4" data-i18n="systemLogs.settings.pid">PID</dt>
+                        <dd class="col-sm-8" id="rtsPid"></dd>
+                        <dt class="col-sm-4" data-i18n="systemLogs.settings.workerInstance">Worker instance</dt>
+                        <dd class="col-sm-8" id="rtsWorkerInstance"></dd>
+                        <dt class="col-sm-4" data-i18n="systemLogs.settings.configuredConcurrency">設定的 WEB_CONCURRENCY</dt>
+                        <dd class="col-sm-8">
+                            <span id="rtsConfiguredConcurrency"></span>
+                            <span class="badge ms-1 d-none" id="rtsConcurrencySourceBadge"></span>
+                        </dd>
+                        <dt class="col-sm-4" data-i18n="systemLogs.settings.inferredConcurrency">腳本推導預設 worker 數</dt>
+                        <dd class="col-sm-8" id="rtsInferredConcurrency"></dd>
+                    </dl>
+                    <p class="text-muted small" id="rtsWorkerCountNote"></p>
+
+                    <h6 class="rts-section-title" data-i18n="systemLogs.settings.sectionDatabase">資料庫</h6>
+                    <div class="table-responsive mb-3">
+                        <table class="table table-sm rts-table align-middle">
+                            <thead>
+                                <tr>
+                                    <th data-i18n="systemLogs.settings.dbTarget">目標</th>
+                                    <th data-i18n="systemLogs.settings.dbEngine">引擎</th>
+                                    <th data-i18n="systemLogs.settings.dbDriver">driver</th>
+                                    <th data-i18n="systemLogs.settings.dbHost">host</th>
+                                    <th data-i18n="systemLogs.settings.dbPort">port</th>
+                                    <th data-i18n="systemLogs.settings.dbName">資料庫</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rtsDatabaseRows"></tbody>
+                        </table>
+                    </div>
+
+                    <h6 class="rts-section-title" data-i18n="systemLogs.settings.sectionApp">應用</h6>
+                    <dl class="row rts-dl mb-3">
+                        <dt class="col-sm-4" data-i18n="systemLogs.settings.publicBaseUrl">對外 base URL</dt>
+                        <dd class="col-sm-8" id="rtsPublicBaseUrl"></dd>
+                        <dt class="col-sm-4" data-i18n="systemLogs.settings.enableAuth">啟用認證</dt>
+                        <dd class="col-sm-8" id="rtsEnableAuth"></dd>
+                    </dl>
+
+                    <h6 class="rts-section-title" data-i18n="systemLogs.settings.sectionLogViewer">Log viewer 容量（per-worker）</h6>
+                    <dl class="row rts-dl mb-0">
+                        <dt class="col-sm-4" data-i18n="systemLogs.settings.bufferSize">buffer 筆數</dt>
+                        <dd class="col-sm-8" id="rtsBufferSize"></dd>
+                        <dt class="col-sm-4" data-i18n="systemLogs.settings.maxStreams">同時串流數</dt>
+                        <dd class="col-sm-8" id="rtsMaxStreams"></dd>
+                        <dt class="col-sm-4" data-i18n="systemLogs.settings.maxMessageChars">單條訊息長度</dt>
+                        <dd class="col-sm-8" id="rtsMaxMessageChars"></dd>
+                        <dt class="col-sm-4" data-i18n="systemLogs.settings.subscriberQueueSize">訂閱 pending 深度</dt>
+                        <dd class="col-sm-8" id="rtsSubscriberQueueSize"></dd>
+                        <dt class="col-sm-4" data-i18n="systemLogs.settings.keepaliveSeconds">keep-alive 間隔（秒）</dt>
+                        <dd class="col-sm-8" id="rtsKeepaliveSeconds"></dd>
+                        <dt class="col-sm-4" data-i18n="systemLogs.settings.streamMaxLifetime">串流最大生命週期（秒）</dt>
+                        <dd class="col-sm-8" id="rtsStreamMaxLifetime"></dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+        </div><!-- /#runtimeSettingsTabPane -->
+        </div><!-- /.tab-content -->
     </div>
 </div>
 {% endblock %}

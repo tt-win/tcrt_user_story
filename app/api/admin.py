@@ -377,3 +377,47 @@ async def stream_system_logs(
     except BaseException:
         release_stream_slot()
         raise
+
+
+# ---------------------------------------------------------------------------
+# Super Admin runtime 設定快照（openspec: add-system-runtime-settings-viewer）
+# 固定 allowlist 契約見 openspec specs/system-runtime-settings-viewer
+# ---------------------------------------------------------------------------
+
+
+@router.get("/system-runtime-settings", include_in_schema=False)
+async def get_system_runtime_settings(
+    request: Request,
+    current_user: User = Depends(require_super_admin()),
+) -> JSONResponse:
+    """本請求 process 的唯讀設定快照（非跨 worker 聚合、不含實際 worker 數）。"""
+    from app.services.system_runtime_settings import build_runtime_settings_snapshot
+
+    snapshot = build_runtime_settings_snapshot()
+    try:
+        from app.audit import ActionType, AuditSeverity, ResourceType, audit_service
+
+        await audit_service.log_action(
+            user_id=current_user.id,
+            username=current_user.username,
+            role=str(
+                current_user.role.value
+                if hasattr(current_user.role, "value")
+                else current_user.role
+            ),
+            action_type=ActionType.READ,
+            resource_type=ResourceType.SYSTEM,
+            resource_id="system-runtime-settings",
+            team_id=None,
+            severity=AuditSeverity.INFO,
+            action_brief="讀取系統 runtime 設定快照",
+            details={
+                "pid": snapshot["pid"],
+                "worker_instance_id": snapshot["worker_instance_id"],
+            },
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+        )
+    except Exception as audit_exc:  # audit 失敗不阻斷快照回應
+        logger.error(f"runtime settings audit 寫入失敗: {audit_exc}")
+    return JSONResponse(content=snapshot, headers=_NO_STORE_HEADERS)

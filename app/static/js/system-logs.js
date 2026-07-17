@@ -10,6 +10,7 @@
     const MAX_RECORDS = 5000;
     const MAX_PENDING_NOTICES = 100;
     const STREAM_URL = '/api/admin/system-logs/stream';
+    const RUNTIME_SETTINGS_URL = '/api/admin/system-runtime-settings';
 
     class SystemLogsPage {
         constructor() {
@@ -39,6 +40,8 @@
                 return;
             }
             this.bindEvents();
+            this.settingsPanel = new RuntimeSettingsPanel(this);
+            this.settingsPanel.init();
             this.connect();
         }
 
@@ -164,6 +167,7 @@
                 }
                 this.reconnectAttempt = 0; // 成功收到 meta：退避重置
                 this.updateInstanceLabel(event.data);
+                if (this.settingsPanel) this.settingsPanel.updateWorkerComparison();
             } else if (event.event === 'log') {
                 const { gap, evictedSeqs } = this.model.push(event.data);
                 if (!this.paused) this.removeEvictedRows(evictedSeqs);
@@ -326,6 +330,195 @@
             if (this.abortController) this.abortController.abort();
             if (this.elements.main) this.elements.main.classList.add('d-none');
             if (this.elements.unauthorized) this.elements.unauthorized.classList.remove('d-none');
+        }
+    }
+
+    /**
+     * Runtime Settings 分頁（openspec: add-system-runtime-settings-viewer）。
+     * 狀態機在 Core.createRuntimeSettingsController（DOM-free）；本 class 只做安全 DOM 落地。
+     * 錯誤僅影響本面板，不碰 Logs 分頁的串流與資料模型。
+     */
+    class RuntimeSettingsPanel {
+        constructor(page) {
+            this.page = page;
+            this.controller = Core.createRuntimeSettingsController({
+                fetchSnapshot: () => this.fetchSnapshot(),
+            });
+            this.elements = {};
+        }
+
+        init() {
+            const byId = (id) => document.getElementById(id);
+            this.elements = {
+                tabButton: byId('runtimeSettingsTabBtn'),
+                refreshBtn: byId('rtsRefreshBtn'),
+                generatedAt: byId('rtsGeneratedAt'),
+                mismatchBanner: byId('rtsMismatchBanner'),
+                workerUnknownNote: byId('rtsWorkerUnknownNote'),
+                loading: byId('rtsLoading'),
+                error: byId('rtsError'),
+                content: byId('rtsContent'),
+                pid: byId('rtsPid'),
+                workerInstance: byId('rtsWorkerInstance'),
+                configuredConcurrency: byId('rtsConfiguredConcurrency'),
+                concurrencySourceBadge: byId('rtsConcurrencySourceBadge'),
+                inferredConcurrency: byId('rtsInferredConcurrency'),
+                workerCountNote: byId('rtsWorkerCountNote'),
+                databaseRows: byId('rtsDatabaseRows'),
+                publicBaseUrl: byId('rtsPublicBaseUrl'),
+                enableAuth: byId('rtsEnableAuth'),
+                bufferSize: byId('rtsBufferSize'),
+                maxStreams: byId('rtsMaxStreams'),
+                maxMessageChars: byId('rtsMaxMessageChars'),
+                subscriberQueueSize: byId('rtsSubscriberQueueSize'),
+                keepaliveSeconds: byId('rtsKeepaliveSeconds'),
+                streamMaxLifetime: byId('rtsStreamMaxLifetime'),
+            };
+            this.elements.tabButton.addEventListener('shown.bs.tab', () => {
+                this.loadWith(() => this.controller.onTabShown());
+            });
+            this.elements.refreshBtn.addEventListener('click', () => {
+                this.loadWith(() => this.controller.refresh());
+            });
+        }
+
+        async fetchSnapshot() {
+            const response = await this.page.authClient.fetch(RUNTIME_SETTINGS_URL);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return response.json();
+        }
+
+        async loadWith(action) {
+            const before = this.controller.state.fetchCount;
+            const pending = action();
+            if (this.controller.state.status === 'loading' && this.controller.state.fetchCount > before) {
+                this.showLoading();
+            }
+            await pending;
+            this.render();
+        }
+
+        setI18nText(el, key, params) {
+            const translate =
+                window.i18n && window.i18n.t ? (k, p) => window.i18n.t(k, p) : null;
+            Core.applyI18nText(el, key, params, translate);
+        }
+
+        showLoading() {
+            this.elements.loading.classList.remove('d-none');
+            this.elements.error.classList.add('d-none');
+        }
+
+        render() {
+            const state = this.controller.state;
+            this.elements.loading.classList.toggle('d-none', state.status !== 'loading');
+            this.elements.error.classList.toggle('d-none', state.status !== 'error');
+            this.elements.content.classList.toggle('d-none', state.status !== 'loaded' && !state.data);
+            if (state.data) this.renderData(state.data);
+            this.updateWorkerComparison();
+        }
+
+        renderData(data) {
+            const dash = '—';
+            this.elements.generatedAt.textContent = data.generated_at || '';
+            this.elements.pid.textContent = String(data.pid);
+            this.elements.workerInstance.textContent = data.worker_instance_id || dash;
+
+            const proc = data.process || {};
+            this.elements.configuredConcurrency.textContent =
+                proc.configured_web_concurrency !== null && proc.configured_web_concurrency !== undefined
+                    ? String(proc.configured_web_concurrency)
+                    : dash;
+            const sourceKey = Core.concurrencySourceKey(proc.web_concurrency_source);
+            const badge = this.elements.concurrencySourceBadge;
+            if (sourceKey) {
+                const badgeClass = {
+                    configured: 'bg-success',
+                    inferred_default: 'bg-secondary',
+                    invalid_configured: 'bg-danger',
+                }[proc.web_concurrency_source];
+                badge.className = `badge ms-1 ${badgeClass}`;
+                this.setI18nText(badge, sourceKey);
+                badge.classList.remove('d-none');
+            } else {
+                badge.classList.add('d-none');
+                badge.removeAttribute('data-i18n');
+                badge.textContent = '';
+            }
+            this.elements.inferredConcurrency.textContent = String(
+                proc.inferred_default_web_concurrency
+            );
+            const noteKey = Core.workerCountNoteKey(proc.worker_count_note_code);
+            if (noteKey) {
+                this.setI18nText(this.elements.workerCountNote, noteKey);
+            } else {
+                this.elements.workerCountNote.removeAttribute('data-i18n');
+                this.elements.workerCountNote.textContent = proc.worker_count_note_code || '';
+            }
+
+            this.renderDatabaseRows(data.database || {});
+
+            const appInfo = data.app || {};
+            this.elements.publicBaseUrl.textContent = appInfo.public_base_url || dash;
+            this.setI18nText(
+                this.elements.enableAuth,
+                appInfo.enable_auth ? 'systemLogs.settings.enabled' : 'systemLogs.settings.disabled'
+            );
+
+            const logViewer = data.log_viewer || {};
+            this.elements.bufferSize.textContent = String(logViewer.buffer_size);
+            this.elements.maxStreams.textContent = String(logViewer.max_streams);
+            this.elements.maxMessageChars.textContent = String(logViewer.max_message_chars);
+            this.elements.subscriberQueueSize.textContent = String(logViewer.subscriber_queue_size);
+            this.elements.keepaliveSeconds.textContent = String(logViewer.keepalive_seconds);
+            this.elements.streamMaxLifetime.textContent = String(
+                logViewer.stream_max_lifetime_seconds
+            );
+        }
+
+        renderDatabaseRows(database) {
+            const dash = '—';
+            const targets = [
+                ['main', 'systemLogs.settings.dbMain'],
+                ['audit', 'systemLogs.settings.dbAudit'],
+                ['usm', 'systemLogs.settings.dbUsm'],
+            ];
+            const tbody = this.elements.databaseRows;
+            tbody.textContent = '';
+            for (const [target, labelKey] of targets) {
+                const endpoint = database[target] || {};
+                const row = document.createElement('tr');
+                const th = document.createElement('th');
+                th.scope = 'row';
+                this.setI18nText(th, labelKey);
+                row.appendChild(th);
+                for (const field of ['engine', 'driver', 'host', 'port', 'database']) {
+                    const td = document.createElement('td');
+                    const value = endpoint[field];
+                    td.textContent = value === null || value === undefined ? dash : String(value);
+                    row.appendChild(td);
+                }
+                tbody.appendChild(row);
+            }
+        }
+
+        /** Logs 端或 Settings 端 instance 變動時重算 mismatch 顯示 */
+        updateWorkerComparison() {
+            const data = this.controller.state.data;
+            const banner = this.elements.mismatchBanner;
+            const unknownNote = this.elements.workerUnknownNote;
+            if (!banner || !unknownNote) return;
+            if (!data) {
+                banner.classList.add('d-none');
+                unknownNote.classList.add('d-none');
+                return;
+            }
+            const comparison = Core.workerMismatchState(
+                this.page.model.instanceId,
+                data.worker_instance_id
+            );
+            banner.classList.toggle('d-none', comparison !== 'mismatch');
+            unknownNote.classList.toggle('d-none', comparison !== 'unknown');
         }
     }
 

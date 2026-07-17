@@ -96,7 +96,7 @@ docker compose -f docker-compose.app.yml up -d --build
 | `UVICORN_LOG_LEVEL` | `info` | Uvicorn 日誌等級 |
 | `UVICORN_PROXY_HEADERS` | `1` | 啟用反向代理 header 信任 |
 | `FORWARDED_ALLOW_IPS` | `*` | 允許的轉發來源 IP |
-| `WEB_CONCURRENCY` | `1` | Worker 數量，建議不超過 CPU 核數 × 2。背景服務（排程器 / automation ticker）依 `openspec/specs/background-service-scaling/spec.md` 的 DB advisory-lock leader election 確保跨 worker/副本僅單一執行，故可視負載調大（`>1` 時 entrypoint 會啟用對應數量的 uvicorn worker）。注意認證失敗的 per-IP rate limit 是每個 worker 各自計算；N 個 worker 的有效上限為 N × 30 次/分鐘（設計依據見 `openspec/changes/harden-app-token-security/design.md`） |
+| `WEB_CONCURRENCY` | 依 DB 自動：SQLite `1`、MySQL/PostgreSQL `5`（未設定時）；有明確值則以設定為準 | Worker 數量，建議不超過 CPU 核數 × 2。由 `docker/app-entrypoint.sh` / `start.sh` 在 `WEB_CONCURRENCY` 未設定時依 resolved 主 DB 引擎（env `DATABASE_URL` 或 `config.yaml`，經 `scripts/print_inferred_web_concurrency.py`）選擇預設。背景服務依 `openspec/specs/background-service-scaling/spec.md` 的 DB advisory-lock leader election 確保跨 worker/副本僅單一執行（`>1` 時啟用對應數量的 uvicorn worker）。注意認證失敗的 per-IP rate limit 是每個 worker 各自計算；N 個 worker 的有效上限為 N × 30 次/分鐘（見 `openspec/changes/harden-app-token-security/design.md`） |
 
 ### 開機升版備份與回退
 

@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 2,
+  "changeName": "add-system-runtime-settings-viewer",
+  "issueKey": "TCG-152165",
+  "issueId": "689990",
+  "issueUrl": "https://jira.tc-gaming.co/jira/browse/TCG-152165",
+  "summary": "TCRT System Logs: Super Admin runtime settings tab",
+  "projectKey": "TCG",
+  "issueType": "Change Request",
+  "components": [
+    "ART"
+  ],
+  "fixVersions": [
+    "TP-4935 Auto QA Agent"
+  ],
+  "assigneeSource": "configured",
+  "assigneeStatus": "assigned",
+  "assigneeLastAttemptAt": "2026-07-17T04:30:16.983Z",
+  "linkType": "Relates",
+  "linkedIssues": [
+    {
+      "key": "TCG-150405",
+      "type": "Relates",
+      "status": "linked",
+      "lastAttemptAt": "2026-07-17T04:30:17.312Z"
+    }
+  ],
+  "state": "archived",
+  "lifecycleStage": "archived",
+  "targetJiraStatus": "Scheduled",
+  "statusMappings": {
+    "proposed": "To Do",
+    "in_progress": "In Progress",
+    "completed": "Resolved",
+    "archived": "Scheduled"
+  },
+  "jiraStatus": "Scheduled",
+  "transitionStatus": "transitioned",
+  "contentSha256": "f0858fbce15d8b57ea293b313806a3db1f71e6e7b40ed7eb17aab32e68b58b20",
+  "lastCommentedSha256": "f0858fbce15d8b57ea293b313806a3db1f71e6e7b40ed7eb17aab32e68b58b20",
+  "lastCommentedStage": "archived",
+  "lastCommentId": "779902",
+  "snapshotTruncated": false,
+  "createdAt": "2026-07-17T04:30:16.983Z",
+  "lastSyncedAt": "2026-07-17T06:31:57.337Z",
+  "archivedAt": "2026-07-17T06:31:57.337Z",
+  "transitionMessage": "Lifecycle transition verified",
+  "lastTransitionAttemptAt": "2026-07-17T06:31:58.273Z",
+  "lastTransitionedAt": "2026-07-17T06:31:58.273Z"
+}

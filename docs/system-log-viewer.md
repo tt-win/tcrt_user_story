@@ -1,10 +1,12 @@
 # Super Admin 系統 Log Viewer 運維說明
 
-最後更新：2026-07-16（openspec change: `add-super-admin-log-viewer`）
+最後更新：2026-07-17（openspec changes: `add-super-admin-log-viewer`、`add-system-runtime-settings-viewer`）
 
 `/system-logs` 提供 Super Admin 在瀏覽器即時 tail 應用 log（含 `uvicorn.access` / `uvicorn.error`），
 不需 SSH 或 `docker logs`。實作為 in-memory ring buffer 旁路副本：**stdout 輸出完全不變，
 `docker logs` 永遠是完整且權威的 log 來源**。
+
+頁面以分頁組織：**Logs**（即時 log）與 **Runtime Settings**（唯讀 runtime 設定快照，見下節）。
 
 ## 環境變數
 
@@ -46,3 +48,47 @@
   不把 secret 寫進 log 仍是第一原則。
 - 開啟串流會寫入 audit（`READ` / `system` / `system-logs-stream`，含來源 IP 與 User-Agent）。
 - 關鍵字搜尋純在瀏覽器端執行，不會出現在 URL、access log 或 proxy log。
+
+## Runtime Settings 分頁
+
+`/system-logs` 的 **Runtime Settings** 分頁透過
+`GET /api/admin/system-runtime-settings`（僅 Super Admin、不進 OpenAPI、`no-store`）
+唯讀顯示**處理該請求之 worker process** 的設定快照。首次切入分頁 lazy fetch 一次，
+之後以「重新整理」按鈕再取。
+
+### 快照契約摘要（固定 allowlist）
+
+根物件恰好含 `generated_at`（UTC 秒精度 + `Z`）、`pid`、`worker_instance_id`（log handler
+未安裝時為 null）、`process`、`database`、`app`、`log_viewer`，不多不少。**不回傳**任何 DB URL
+字串、query、userinfo、secret、`config.yaml` 內容或檔案系統完整路徑（SQLite 僅 basename）。
+
+### WEB_CONCURRENCY 三態
+
+`process.web_concurrency_source` 對齊部署腳本 shell `-z` 語意（不先 strip）：
+
+| env `WEB_CONCURRENCY` | source | 語意 |
+|---|---|---|
+| 未設或精確 `""` | `inferred_default` | 啟動腳本會用 main 引擎推導預設（sqlite→1、mysql/postgresql→5） |
+| 合法正整數 | `configured` | 明確設定 |
+| 純空白、`0`、負數、非整數 | `invalid_configured` | 設定異常；腳本**不會** fallback 到推導預設 |
+
+`worker_count_note_code` 恒為 `not_actual_worker_count`：以上皆非實際 worker 進程數
+（app 無法自知 worker 總數；reload 模式強制單 worker）。
+
+### 結構化 DB 摘要
+
+`database.main/audit/usm` 各為 `engine`（`sqlite`/`mysql`/`postgresql`/`other`；
+`postgres://` 別名正規化為 `postgresql`）、`driver`、`host`、`port`、`database` 五欄，
+無 URL、無密碼、無 query。URL 無法解析時 engine 為 `other`、其餘欄位 null，API 仍回 200。
+
+### Worker mismatch 判定
+
+Logs 與 Settings 可能由**不同 worker** 服務。僅當兩分頁的 `worker_instance_id`
+皆為非空字串且不同時，UI 才顯示 mismatch 提示；任一方缺失時顯示「無法確認」，
+**不以 PID 判定**（容器內常為 PID 1）。
+
+### 稽核
+
+每次快照 API 成功讀取寫一筆 best-effort audit（`READ` / `system` /
+`system-runtime-settings`），來源 IP 與 User-Agent 在一級欄位，`details` 僅含
+`pid` 與 `worker_instance_id`，不含快照本體；audit 失敗不影響回應。

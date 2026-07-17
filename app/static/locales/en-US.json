@@ -3704,6 +3704,49 @@
       "reconnecting": "Reconnecting…",
       "ended": "Stream ended"
     },
-    "workerLabel": "worker {pid} ({instance})"
+    "workerLabel": "worker {pid} ({instance})",
+    "tabs": {
+      "logs": "Logs",
+      "runtimeSettings": "Runtime Settings"
+    },
+    "settings": {
+      "perProcessHint": "Shows the settings view of the worker process serving this request; the Logs tab may come from a different worker.",
+      "refresh": "Refresh",
+      "loading": "Loading…",
+      "loadError": "Failed to load runtime settings. Please try again.",
+      "workerMismatch": "The Logs tab and this settings snapshot come from different worker processes; the two views may not correspond.",
+      "workerUnknown": "Cannot confirm whether the Logs tab and this snapshot come from the same worker.",
+      "sectionProcess": "Process",
+      "pid": "PID",
+      "workerInstance": "Worker instance",
+      "configuredConcurrency": "Configured WEB_CONCURRENCY",
+      "inferredConcurrency": "Script-inferred default workers",
+      "sourceConfigured": "Explicitly configured",
+      "sourceInferredDefault": "Startup script uses the inferred default",
+      "sourceInvalidConfigured": "Invalid value — inferred default does NOT apply",
+      "notActualWorkerCount": "Not the actual number of worker processes; this only reflects configuration visible to this process.",
+      "sectionDatabase": "Databases",
+      "dbTarget": "Target",
+      "dbEngine": "Engine",
+      "dbDriver": "Driver",
+      "dbHost": "Host",
+      "dbPort": "Port",
+      "dbName": "Database",
+      "dbMain": "Main",
+      "dbAudit": "Audit",
+      "dbUsm": "User Story Map",
+      "sectionApp": "Application",
+      "publicBaseUrl": "Public base URL",
+      "enableAuth": "Authentication",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "sectionLogViewer": "Log viewer capacity (per worker)",
+      "bufferSize": "Buffer entries",
+      "maxStreams": "Concurrent streams",
+      "maxMessageChars": "Max message length (chars)",
+      "subscriberQueueSize": "Subscriber pending depth",
+      "keepaliveSeconds": "Keep-alive interval (seconds)",
+      "streamMaxLifetime": "Max stream lifetime (seconds)"
+    }
   }
 }

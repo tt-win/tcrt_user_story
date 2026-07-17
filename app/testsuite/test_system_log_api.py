@@ -482,6 +482,18 @@ class TestPageSmoke:
         assert "/static/js/system-logs.js" in resp.text
         assert "/static/css/system-logs.css" in resp.text
 
+    def test_system_logs_page_has_tabs_shell(self):
+        """Logs / Runtime Settings 分頁殼層（openspec: add-system-runtime-settings-viewer）。"""
+        client = TestClient(app)
+        html = client.get("/system-logs").text
+        assert 'id="logsTabBtn"' in html and 'id="runtimeSettingsTabBtn"' in html
+        assert 'data-bs-toggle="tab"' in html
+        # 預設顯示 Logs 分頁；兩個 panel 皆可聚焦（tabindex="0"）
+        assert 'id="logsTabPane"' in html and 'id="runtimeSettingsTabPane"' in html
+        assert html.count('role="tabpanel"') == 2
+        assert html.count('tabindex="0"') >= 2
+        assert 'id="rtsRefreshBtn"' in html and 'id="rtsContent"' in html
+
     def test_static_assets_exist(self):
         client = TestClient(app)
         for path in (

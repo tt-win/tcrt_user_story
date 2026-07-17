@@ -188,6 +188,99 @@
         };
     }
 
+    // ---- Runtime Settings 分頁（openspec: add-system-runtime-settings-viewer） ----
+
+    /**
+     * Runtime Settings 載入狀態機（DOM-free、fetch 可注入）。
+     * 契約：首次切入分頁 lazy fetch 一次（onTabShown）；之後切入不自動重打；
+     * refresh() 永遠重新 fetch。錯誤只影響本狀態機，不碰 Logs 狀態。
+     */
+    function createRuntimeSettingsController(options) {
+        const fetchSnapshot = options.fetchSnapshot;
+        const state = {
+            status: 'idle', // idle | loading | loaded | error
+            data: null,
+            fetchCount: 0,
+        };
+        let generation = 0;
+
+        async function load() {
+            state.status = 'loading';
+            state.fetchCount += 1;
+            generation += 1;
+            const myGeneration = generation;
+            try {
+                const data = await fetchSnapshot();
+                if (generation !== myGeneration) return state; // 已被較新的 refresh 取代
+                state.data = data;
+                state.status = 'loaded';
+            } catch (_err) {
+                if (generation !== myGeneration) return state;
+                state.status = 'error';
+            }
+            return state;
+        }
+
+        return {
+            state,
+            /** 首次切入 lazy fetch 一次；已載入/已失敗/載入中皆不自動重打 */
+            onTabShown() {
+                if (state.status !== 'idle') return Promise.resolve(state);
+                return load();
+            },
+            /** 明確重新整理：永遠再 fetch 一次 */
+            refresh() {
+                if (state.status === 'loading') return Promise.resolve(state);
+                return load();
+            },
+        };
+    }
+
+    /**
+     * Worker mismatch 判定（唯一規則）：僅當兩側 instance id 皆為非空字串時比較；
+     * 任一缺失 → 'unknown'（不得以 PID 判定）。
+     */
+    function workerMismatchState(logsInstanceId, settingsInstanceId) {
+        const logsId =
+            typeof logsInstanceId === 'string' && logsInstanceId !== '' ? logsInstanceId : null;
+        const settingsId =
+            typeof settingsInstanceId === 'string' && settingsInstanceId !== ''
+                ? settingsInstanceId
+                : null;
+        if (!logsId || !settingsId) return 'unknown';
+        return logsId === settingsId ? 'match' : 'mismatch';
+    }
+
+    /** web_concurrency_source → i18n key（未知值回 null，由呼叫端顯示原始 code） */
+    function concurrencySourceKey(source) {
+        const keys = {
+            configured: 'systemLogs.settings.sourceConfigured',
+            inferred_default: 'systemLogs.settings.sourceInferredDefault',
+            invalid_configured: 'systemLogs.settings.sourceInvalidConfigured',
+        };
+        return Object.prototype.hasOwnProperty.call(keys, source) ? keys[source] : null;
+    }
+
+    /** worker_count_note_code → i18n key（未知 code 回 null） */
+    function workerCountNoteKey(code) {
+        return code === 'not_actual_worker_count'
+            ? 'systemLogs.settings.notActualWorkerCount'
+            : null;
+    }
+
+    /**
+     * 動態 i18n 落地（DOM-free：僅要求 setAttribute/removeAttribute/textContent）。
+     * 寫入 data-i18n（＋data-i18n-params），使全域 i18n lifecycle
+     * （i18nReady／languageChanged 的 document retranslate）能重繪本元素；
+     * 同時以 translate 立即填入當前語系文案。
+     */
+    function applyI18nText(el, key, params, translate) {
+        el.setAttribute('data-i18n', key);
+        if (params) el.setAttribute('data-i18n-params', JSON.stringify(params));
+        else el.removeAttribute('data-i18n-params');
+        el.textContent = translate ? translate(key, params || {}) : key;
+    }
+
     return {
         escapeRegExp,
         segmentHighlight,
@@ -196,5 +289,10 @@
         shouldStopReconnect,
         createLogModel,
         createBoundedQueue,
+        createRuntimeSettingsController,
+        workerMismatchState,
+        concurrencySourceKey,
+        workerCountNoteKey,
+        applyI18nText,
     };
 });

@@ -3704,6 +3704,49 @@
       "reconnecting": "重新連線中…",
       "ended": "串流已結束"
     },
-    "workerLabel": "worker {pid}（{instance}）"
+    "workerLabel": "worker {pid}（{instance}）",
+    "tabs": {
+      "logs": "日誌",
+      "runtimeSettings": "運行設定"
+    },
+    "settings": {
+      "perProcessHint": "僅顯示處理本請求之 worker process 的設定視角，日誌分頁的資料可能來自其他 worker。",
+      "refresh": "重新整理",
+      "loading": "載入中…",
+      "loadError": "載入 runtime 設定失敗，請重試。",
+      "workerMismatch": "日誌分頁與此設定快照來自不同的 worker process，兩邊資訊不一定對應。",
+      "workerUnknown": "無法確認日誌分頁與此快照是否來自同一 worker。",
+      "sectionProcess": "程序",
+      "pid": "PID",
+      "workerInstance": "Worker 實例",
+      "configuredConcurrency": "已設定的 WEB_CONCURRENCY",
+      "inferredConcurrency": "腳本推導的預設 worker 數",
+      "sourceConfigured": "已明確設定",
+      "sourceInferredDefault": "啟動腳本將使用推導預設值",
+      "sourceInvalidConfigured": "設定異常——不會改用推導預設值",
+      "notActualWorkerCount": "並非實際 worker 進程數；僅為本 process 可見設定的推算，實際數量以部署啟動參數為準。",
+      "sectionDatabase": "資料庫",
+      "dbTarget": "目標",
+      "dbEngine": "引擎",
+      "dbDriver": "Driver",
+      "dbHost": "Host",
+      "dbPort": "Port",
+      "dbName": "資料庫",
+      "dbMain": "主庫",
+      "dbAudit": "稽核庫",
+      "dbUsm": "User Story Map",
+      "sectionApp": "應用",
+      "publicBaseUrl": "對外 base URL",
+      "enableAuth": "啟用認證",
+      "enabled": "已啟用",
+      "disabled": "已停用",
+      "sectionLogViewer": "Log viewer 容量（per-worker）",
+      "bufferSize": "Buffer 筆數",
+      "maxStreams": "同時串流數",
+      "maxMessageChars": "單條訊息長度（字元）",
+      "subscriberQueueSize": "訂閱 pending 深度",
+      "keepaliveSeconds": "Keep-alive 間隔（秒）",
+      "streamMaxLifetime": "串流最大生命週期（秒）"
+    }
   }
 }

@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "changeName": "add-super-admin-log-viewer",
+  "issueKey": "TCG-152073",
+  "issueId": "689695",
+  "issueUrl": "https://jira.tc-gaming.co/jira/browse/TCG-152073",
+  "summary": "新增 Super Admin 系統 Log Viewer",
+  "projectKey": "TCG",
+  "issueType": "Change Request",
+  "components": [
+    "ART"
+  ],
+  "fixVersions": [
+    "TP-4935 Auto QA Agent"
+  ],
+  "linkType": "Relates",
+  "linkedIssues": [
+    {
+      "key": "TP-4935",
+      "type": "Relates",
+      "status": "linked",
+      "lastAttemptAt": "2026-07-16T10:55:11.443Z"
+    }
+  ],
+  "state": "archived",
+  "jiraStatus": "Done",
+  "jiraResolution": "Done",
+  "lastTransitionedAt": "2026-07-16T11:05:48Z",
+  "contentSha256": "24c236a89d1def9f02549f196b5ae35a3c717adebb1fd0f60ef0318c9c937f81",
+  "snapshotTruncated": false,
+  "createdAt": "2026-07-16T10:55:11.112Z",
+  "lastSyncedAt": "2026-07-17T05:06:08.029Z",
+  "archivedAt": "2026-07-17T05:06:08.029Z",
+  "lifecycleStage": "archived",
+  "targetJiraStatus": "Scheduled",
+  "statusMappings": {
+    "proposed": "To Do",
+    "in_progress": "In Progress",
+    "completed": "Resolved",
+    "archived": "Scheduled"
+  },
+  "lastCommentedSha256": "24c236a89d1def9f02549f196b5ae35a3c717adebb1fd0f60ef0318c9c937f81",
+  "lastCommentedStage": "archived",
+  "lastCommentId": "779865",
+  "transitionStatus": "pending",
+  "transitionMessage": "No currently available Jira transition reaches Scheduled",
+  "lastTransitionAttemptAt": "2026-07-17T05:06:08.565Z"
+}

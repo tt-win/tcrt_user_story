@@ -6,8 +6,36 @@ PORT="${PORT:-9999}"
 UVICORN_LOG_LEVEL="${UVICORN_LOG_LEVEL:-info}"
 UVICORN_PROXY_HEADERS="${UVICORN_PROXY_HEADERS:-1}"
 FORWARDED_ALLOW_IPS="${FORWARDED_ALLOW_IPS:-*}"
-WEB_CONCURRENCY="${WEB_CONCURRENCY:-1}"
 SKIP_DATABASE_BOOTSTRAP="${SKIP_DATABASE_BOOTSTRAP:-0}"
+
+# Default worker count from the *resolved* main DB engine (env DATABASE_URL or
+# config.yaml) when WEB_CONCURRENCY is unset/empty: SQLite → 1 (single-file DB);
+# MySQL / PostgreSQL → 5. Explicit WEB_CONCURRENCY always wins.
+# The Python helper is the single source of truth shared with the runtime settings
+# API; the env-pattern case below is only a fallback when the helper cannot run.
+_default_web_concurrency() {
+    if value="$(uv run python scripts/print_inferred_web_concurrency.py 2>/dev/null)" \
+        && [ -n "$value" ]; then
+        echo "$value"
+        return
+    fi
+    case "${DATABASE_URL:-}" in
+        mysql://*|mysql+*|postgresql://*|postgresql+*|postgres://*|postgres+*)
+            echo 5
+            ;;
+        *)
+            echo 1
+            ;;
+    esac
+}
+# Keep WEB_CONCURRENCY itself untouched: overwriting an exported empty string
+# would leak the resolved number into the uvicorn child process, and the runtime
+# settings API would then misreport source=configured instead of inferred_default.
+if [ -z "${WEB_CONCURRENCY:-}" ]; then
+    RESOLVED_WEB_CONCURRENCY="$(_default_web_concurrency)"
+else
+    RESOLVED_WEB_CONCURRENCY="$WEB_CONCURRENCY"
+fi
 
 if [ "$SKIP_DATABASE_BOOTSTRAP" != "1" ]; then
     # 外部 DB 服務（docker-compose.app.yml 本身不含 DB，見檔頭註解）在容器啟動當下
@@ -45,8 +73,9 @@ fi
 
 # 背景服務（排程器 / automation ticker）已改由 DB advisory-lock leader 選舉確保跨 worker/副本
 # 僅單一執行，故 WEB_CONCURRENCY 可 >1；此處據以啟用多 worker。
-if [ "$WEB_CONCURRENCY" != "1" ]; then
-    set -- "$@" --workers "$WEB_CONCURRENCY"
+echo "WEB_CONCURRENCY=${RESOLVED_WEB_CONCURRENCY} (resolved main DB engine default applies only when unset)"
+if [ "$RESOLVED_WEB_CONCURRENCY" != "1" ]; then
+    set -- "$@" --workers "$RESOLVED_WEB_CONCURRENCY"
 fi
 
 exec "$@"
