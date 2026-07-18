@@ -26,7 +26,7 @@ dependencies = [
     "pyjwt==2.11.0",
     "passlib==1.7.4",
     "bcrypt==4.0.1",
-    "cryptography==46.0.4",
+    "cryptography==48.0.1",
     "casbin==1.43.0",
     "psutil==7.2.2",
     "pytest==9.0.2",
