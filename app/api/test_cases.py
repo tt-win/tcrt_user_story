@@ -41,6 +41,7 @@ from app.models.test_case import (
     TestCaseResponse,
     TestCaseBatchOperation,
     TestCaseBatchResponse,
+    TestDataItem,
     normalize_test_data_items,
     validate_test_case_number_path_safe,
 )
@@ -103,6 +104,7 @@ class BulkTestCaseItem(BaseModel):
     steps: Optional[str] = None
     expected_result: Optional[str] = None
     tcg_numbers: Optional[List[str]] = None
+    test_data: Optional[List[TestDataItem]] = None
 
 
 class BulkCreateRequest(BaseModel):
@@ -1973,7 +1975,48 @@ async def bulk_create_test_cases(
             if not request.items:
                 return BulkCreateResponse(success=False, created_count=0, errors=["空的建立清單"]), None
 
-            # 取得或創建該 Team 的 Test Case Set
+            # Phase A1 — 編號衝突（DB 既有 + 同一 request 內重複）。
+            # run_sync_write 在正常返回時仍會 commit，因此任何仍可能失敗的
+            # 驗證階段之前都不得 session.add（含 Set / Section 等附帶資料列）。
+            existing_numbers = set(
+                n[0]
+                for n in sync_db.query(TestCaseLocalDB.test_case_number)
+                .filter(TestCaseLocalDB.team_id == team_id)
+                .all()
+            )
+            seen_in_request: set = set()
+            duplicates = []
+            for item in request.items:
+                number = item.test_case_number
+                if number in existing_numbers or number in seen_in_request:
+                    duplicates.append(number)
+                seen_in_request.add(number)
+            if duplicates:
+                return BulkCreateResponse(success=False, created_count=0, duplicates=duplicates, errors=[]), None
+
+            # Phase A2 — test_data normalize（僅記憶體暫存，全數通過才進入寫入）
+            normalize_errors = []
+            normalized_test_data_json: List[Optional[str]] = []
+            for it in request.items:
+                if not it.test_data:
+                    normalized_test_data_json.append(None)
+                    continue
+                try:
+                    normalized = normalize_test_data_items(it.test_data)
+                except ValueError as exc:
+                    normalize_errors.append(f"{it.test_case_number}: {exc}")
+                    normalized_test_data_json.append(None)
+                    continue
+                normalized_test_data_json.append(
+                    json.dumps([td.model_dump() for td in normalized], ensure_ascii=False) if normalized else None
+                )
+            if normalize_errors:
+                return BulkCreateResponse(
+                    success=False, created_count=0, duplicates=[], errors=normalize_errors
+                ), None
+
+            # Set / Section 解析先全程唯讀；缺少的預設 Set / Unassigned Section
+            # 延後到所有驗證通過後才建立（失敗 envelope 返回仍會 commit）
             if request.test_case_set_id:
                 test_case_set = (
                     sync_db.query(TestCaseSetDB)
@@ -1988,22 +2031,25 @@ async def bulk_create_test_cases(
                         errors=[f"Test Case Set {request.test_case_set_id} 不存在或不屬於此 Team"],
                     ), None
             else:
-                from app.services.test_case_set_service import TestCaseSetService
+                test_case_set = (
+                    sync_db.query(TestCaseSetDB)
+                    .filter(TestCaseSetDB.team_id == team_id, TestCaseSetDB.is_default.is_(True))
+                    .first()
+                )
 
-                test_case_set = TestCaseSetService.get_or_create_default_sync(sync_db, team_id)
-
-            # 取得或創建 Section
             target_section = None
 
             if request.test_case_section_id:
-                target_section = (
-                    sync_db.query(TestCaseSectionDB)
-                    .filter(
-                        TestCaseSectionDB.id == request.test_case_section_id,
-                        TestCaseSectionDB.test_case_set_id == test_case_set.id,
+                # 預設 Set 尚不存在（test_case_set 為 None）時，任何 section 都不可能屬於它
+                if test_case_set is not None:
+                    target_section = (
+                        sync_db.query(TestCaseSectionDB)
+                        .filter(
+                            TestCaseSectionDB.id == request.test_case_section_id,
+                            TestCaseSectionDB.test_case_set_id == test_case_set.id,
+                        )
+                        .first()
                     )
-                    .first()
-                )
 
                 if not target_section:
                     return BulkCreateResponse(
@@ -2011,6 +2057,12 @@ async def bulk_create_test_cases(
                         created_count=0,
                         errors=[f"Section {request.test_case_section_id} 不存在或不屬於此 Test Case Set"],
                     ), None
+
+            # 驗證全數通過 — 自此才允許建立附帶資料列
+            if test_case_set is None:
+                from app.services.test_case_set_service import TestCaseSetService
+
+                test_case_set = TestCaseSetService.get_or_create_default_sync(sync_db, team_id)
 
             if not target_section:
                 unassigned_section = (
@@ -2035,20 +2087,11 @@ async def bulk_create_test_cases(
 
                 target_section = unassigned_section
 
-            existing_numbers = set(
-                n[0]
-                for n in sync_db.query(TestCaseLocalDB.test_case_number)
-                .filter(TestCaseLocalDB.team_id == team_id)
-                .all()
-            )
-            duplicates = [item.test_case_number for item in request.items if item.test_case_number in existing_numbers]
-            if duplicates:
-                return BulkCreateResponse(success=False, created_count=0, duplicates=duplicates), None
-
+            # Phase B — 全批驗證通過後才建立 ORM 列
             created_count = 0
             created_items = []
             priority_map = {"high": "High", "medium": "Medium", "low": "Low"}
-            for it in request.items:
+            for idx, it in enumerate(request.items):
                 title = it.title.strip() if it.title else f"{it.test_case_number} 的測試案例"
                 priority_key = (it.priority or "Medium").strip().lower()
                 priority_value = priority_map.get(priority_key, "Medium")
@@ -2066,6 +2109,7 @@ async def bulk_create_test_cases(
                     local_version=1,
                     test_case_set_id=test_case_set.id,
                     test_case_section_id=target_section.id,
+                    test_data_json=normalized_test_data_json[idx],
                 )
 
                 tcg_numbers = it.tcg_numbers or []
@@ -2076,11 +2120,13 @@ async def bulk_create_test_cases(
 
                 sync_db.add(item)
                 created_count += 1
+                # audit details 只記 test_data 筆數，不落任何 value（credential 不得進 audit）
                 created_items.append(
                     {
                         "test_case_number": it.test_case_number,
                         "title": title,
                         "priority": priority_value,
+                        "test_data_count": len(it.test_data or []),
                     }
                 )
             audit_context = None
@@ -2219,6 +2265,8 @@ def run_bulk_clone_sync(sync_db: Session, team_id: int, request: BulkCloneReques
                 local_version=1,
                 test_case_set_id=src.test_case_set_id,
                 test_case_section_id=src.test_case_section_id,
+                # test_data 屬案例內容，clone 需一併複製；不 re-normalize 以免舊資料 clone 失敗
+                test_data_json=src.test_data_json,
             )
             sync_db.add(item)
             created += 1

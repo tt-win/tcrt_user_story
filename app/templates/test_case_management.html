@@ -860,7 +860,7 @@
                 <!-- 說明文字 -->
                 <div class="alert alert-info" role="alert">
                     <i class="fas fa-info-circle me-2"></i>
-                    <span data-i18n="testCase.bulkText.help">每行一筆資料，格式為「單號,標題」。單號可不連續。</span>
+                    <span data-i18n="testCase.bulkText.help">每行一筆資料，格式為「單號,標題,前置條件,步驟,預期結果,TCG,優先級,test_data」。標題之後皆為可選；第 8 欄為 test_data JSON 陣列。</span>
                     <div class="mt-2">
                         <a href="/static/samples/bulk_test_cases_sample.csv" class="link-dark text-decoration-underline" download data-i18n="testCase.bulkText.sampleLink">下載範例 CSV</a>
                     </div>
@@ -946,6 +946,7 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
                                 <th style="width: 220px;" data-i18n="testCase.steps">測試步驟</th>
                                 <th style="width: 220px;" data-i18n="testCase.expectedResults">預期結果</th>
                                 <th style="width: 280px; min-width: 21ch;" data-i18n="testCase.tcgColumn">JIRA Tickets</th>
+                                <th style="width: 200px;" data-i18n="testCase.bulkText.previewTestData">Test Data</th>
                                 <th style="width: 100px;" data-i18n="testCase.priority">優先級</th>
                             </tr>
                         </thead>

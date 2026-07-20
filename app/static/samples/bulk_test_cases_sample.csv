@@ -1,4 +1,4 @@
-Test Case Number,Title,Precondition,Steps,Expected Result,TCG,Priority
-TC-10000.010.010,User Login,"Ensure test account exists","1. Open login page; 2. Enter valid credentials","Dashboard is displayed",TCG-93178|TCG-99999,High
+Test Case Number,Title,Precondition,Steps,Expected Result,TCG,Priority,Test Data
+TC-10000.010.010,User Login,"Ensure test account exists","1. Open login page; 2. Enter valid credentials","Dashboard is displayed",TCG-93178|TCG-99999,High,"[{""name"":""login_email"",""category"":""email"",""value"":""qa@example.com""},{""name"":""login_password"",""category"":""credential"",""value"":""ChangeMe123!""},{""name"":""retry_limit"",""category"":""number"",""value"":""3""}]"
 TC-10000.010.020,Invalid Password,,Enter wrong password,Error message displayed,TCG-11111,Low
-TC-10000.010.030,API Health Check,"Service is running","Send GET /health","Service returns 200",TCG-11000,Medium
+TC-10000.010.030,API Health Check,"Service is running","Send GET /health","Service returns 200",TCG-11000,Medium,"[{""name"":""health_url"",""category"":""url"",""value"":""https://example.com/health""},{""name"":""expected_status_codes"",""category"":""json"",""value"":""[200,204]""},{""name"":""request_id"",""category"":""identifier"",""value"":""REQ-1001""},{""name"":""checked_at"",""category"":""date"",""value"":""2026-07-20""},{""name"":""fallback_note"",""category"":""other"",""value"":""n/a""},{""name"":""service_name"",""value"":""tcrt-api""}]"
