@@ -2,6 +2,8 @@
 
 本文件說明 TCRT 的 team-owned app token：`/api/app/*` 的正式外部 API 憑證，取代原本「MCP 專用 machine token」定位。
 
+> 完整的端點、scope、payload 與錯誤碼參考見 [app_token_api_reference.md](app_token_api_reference.md)。
+
 - App token 可對 test case / test run 執行完整讀寫操作，並可觸發 Test Run Set automation。
 - 既有 `/api/mcp/*` 保留為 read-only 相容端點，直到明確的移除計畫建立並完成；細節見 [mcp_machine_auth.md](mcp_machine_auth.md)。
 - 對應 OpenSpec change：`openspec/changes/add-team-app-token-apis/`。
