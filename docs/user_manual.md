@@ -67,7 +67,8 @@
 
 #### 1. 大量新增模式 (Bulk Create)
 - 支援類似 Excel 的介面，可一次輸入多筆測試案例。
-- 填寫 Title, Priority, Precondition, Steps, Expected Result 等欄位。
+- 每行格式：`編號,標題,前置條件,步驟,預期結果,TCG,優先級[,test_data_json]`（標題之後皆為可選）。
+- 可選第 8 欄為 test_data JSON 陣列，形狀與 Test Case Set CSV Export 的 `test_data` 儲存格相同；Export 整列欄序不同，不可整列直接貼回。test_data 可能含敏感 credential，請留意保護。
 - 點擊 **「預覽」** 確認資料無誤後，點擊 **「匯入」**。
 
 #### 2. 大量編輯模式 (Bulk Edit)

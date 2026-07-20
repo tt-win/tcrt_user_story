@@ -227,6 +227,136 @@ def test_export_csv_empty_set_returns_header_only(temp_db, test_data):
     assert rows[0] == TEST_CASE_SET_CSV_COLUMNS
 
 
+def _seed_test_data_cases(TestingSessionLocal, cases):
+    """建立獨立 team/set，寫入 (number -> test_data_json) 的多筆案例"""
+    with TestingSessionLocal() as session:
+        team = Team(name="TD Contract Team", wiki_token="tok-td", test_case_table_id="tbl-td")
+        session.add(team)
+        session.commit()
+
+        target_set = TestCaseSet(team_id=team.id, name="TD Set", is_default=True)
+        session.add(target_set)
+        session.commit()
+
+        for number, test_data_json in cases.items():
+            session.add(
+                TestCaseLocal(
+                    team_id=team.id,
+                    test_case_set_id=target_set.id,
+                    test_case_number=number,
+                    title=f"Case {number}",
+                    priority=Priority.MEDIUM,
+                    test_data_json=test_data_json,
+                )
+            )
+        session.commit()
+        return team.id, target_set.id
+
+
+def _export_test_data_cells(client, team_id, set_id):
+    response = client.get(f"/api/teams/{team_id}/test-case-sets/{set_id}/export-csv")
+    assert response.status_code == 200
+    rows = _parse_csv_response(response)
+    idx = {col: i for i, col in enumerate(rows[0])}
+    return {row[idx["test_case_number"]]: row[idx["test_data"]] for row in rows[1:]}
+
+
+def test_export_csv_test_data_cell_contract(temp_db):
+    """通過共用可 round-trip 判定的非空陣列保真輸出；其餘輸出空 cell"""
+    sync_engine, TestingSessionLocal = temp_db
+    valid_json = json.dumps(
+        [
+            {"id": "11111111-1111-1111-1111-111111111111", "name": "user", "category": "email", "value": "qa@example.com"},
+            {"name": "password", "category": "credential", "value": "s3cret-plain"},
+        ],
+        ensure_ascii=False,
+    )
+    cases = {
+        "TD-VALID": valid_json,
+        "TD-NULL": None,
+        "TD-EMPTY-STR": "",
+        "TD-EMPTY-ARR": "[]",
+        "TD-MALFORMED": "{not valid json",
+        "TD-NON-ARRAY": json.dumps({"name": "x", "value": "y"}),
+        "TD-SCALAR-ELEM": json.dumps([1]),
+        "TD-MISSING-VALUE": json.dumps([{"name": "x"}]),
+        "TD-NUMERIC-ID": json.dumps([{"id": 1, "name": "x", "value": "y"}]),
+        "TD-UNKNOWN-CATEGORY": json.dumps([{"name": "x", "value": "y", "category": "not-a-real-category"}]),
+    }
+    team_id, set_id = _seed_test_data_cases(TestingSessionLocal, cases)
+
+    client = TestClient(app)
+    cells = _export_test_data_cells(client, team_id, set_id)
+
+    parsed = json.loads(cells["TD-VALID"])
+    assert len(parsed) == 2
+    assert parsed[0] == {
+        "id": "11111111-1111-1111-1111-111111111111",
+        "name": "user",
+        "category": "email",
+        "value": "qa@example.com",
+    }
+    # credential value 保真，不遮罩
+    assert parsed[1]["value"] == "s3cret-plain"
+
+    for number in cases:
+        if number == "TD-VALID":
+            continue
+        assert cells[number] == "", f"{number} 應輸出空 cell，實際為 {cells[number]!r}"
+
+
+def test_export_csv_test_data_normalize_boundaries_empty_cell(temp_db):
+    """會被 normalize 拒絕或改寫的陣列一律輸出空 cell"""
+    sync_engine, TestingSessionLocal = temp_db
+    cases = {
+        # (a) 清洗後重複 name（"a" 與 " a "）
+        "TD-DUP-CLEANED": json.dumps([{"name": "a", "value": ""}, {"name": " a ", "value": ""}]),
+        # (b) 101 筆
+        "TD-101-ITEMS": json.dumps([{"name": f"n{i}", "value": ""} for i in range(101)]),
+        # (c) name / value 超長
+        "TD-NAME-TOO-LONG": json.dumps([{"name": "n" * 501, "value": ""}]),
+        "TD-VALUE-TOO-LONG": json.dumps([{"name": "n", "value": "v" * 100_001}]),
+        # (d) name 含需清洗字元
+        "TD-NAME-LEADING-SPACE": json.dumps([{"name": " x", "value": ""}]),
+        "TD-NAME-NEWLINE": json.dumps([{"name": "x\ny", "value": ""}]),
+        "TD-NAME-CONTROL": json.dumps([{"name": "x\x01y", "value": ""}]),
+        "TD-NAME-BIDI": json.dumps([{"name": "x\u202ey", "value": ""}]),
+        # (e) value 含 null byte
+        "TD-VALUE-NULL-BYTE": json.dumps([{"name": "x", "value": "a\x00b"}]),
+    }
+    team_id, set_id = _seed_test_data_cases(TestingSessionLocal, cases)
+
+    client = TestClient(app)
+    cells = _export_test_data_cells(client, team_id, set_id)
+
+    for number in cases:
+        assert cells[number] == "", f"{number} 應輸出空 cell，實際為 {cells[number]!r}"
+
+
+def test_export_csv_test_data_unicode_parity_boundaries(temp_db):
+    """code point 長度與 Python strip 集合的 parity 契約（與前端第 8 欄同規則）
+
+    - 300 emoji name（600 UTF-16 units、300 code points）→ 穩定、非空 cell
+    - \ufeff(BOM) 開頭：Python strip 不移除 → 穩定、非空 cell
+    - \x85(NEL) 結尾：Python strip 會移除 → 不穩定、空 cell
+    """
+    sync_engine, TestingSessionLocal = temp_db
+    emoji_name = "😀" * 300
+    cases = {
+        "TD-EMOJI-300": json.dumps([{"name": emoji_name, "value": "v"}], ensure_ascii=False),
+        "TD-BOM-NAME": json.dumps([{"name": "\ufeffx", "value": "v"}], ensure_ascii=False),
+        "TD-NEL-NAME": json.dumps([{"name": "x\x85", "value": "v"}], ensure_ascii=False),
+    }
+    team_id, set_id = _seed_test_data_cases(TestingSessionLocal, cases)
+
+    client = TestClient(app)
+    cells = _export_test_data_cells(client, team_id, set_id)
+
+    assert json.loads(cells["TD-EMOJI-300"])[0]["name"] == emoji_name
+    assert json.loads(cells["TD-BOM-NAME"])[0]["name"] == "\ufeffx"
+    assert cells["TD-NEL-NAME"] == ""
+
+
 def test_export_csv_missing_or_wrong_team_set_returns_404(temp_db, test_data):
     client = TestClient(app)
     team_id = test_data["team_id"]

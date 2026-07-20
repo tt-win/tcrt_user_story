@@ -28,6 +28,11 @@ from ..models.test_case_set import (
     TestCaseSetUpdate,
     TestCaseSetNameValidationResponse,
 )
+from ..models.test_case import (
+    TestDataCategory,
+    TestDataItem,
+    normalize_test_data_items,
+)
 from ..models.test_run_scope import ImpactPreviewResponse
 from ..services.test_case_set_service import TestCaseSetService
 from ..services.test_case_repo_service import TestCaseRepoService
@@ -78,6 +83,67 @@ def _csv_json_cell(raw: str | None) -> str:
         return json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
     except (TypeError, ValueError):
         return raw
+
+
+def _csv_test_data_cell(raw: str | None) -> str:
+    """test_data 欄位匯出契約：僅輸出通過「共用可 round-trip 判定」的非空陣列。
+
+    判定 = schema 型別 + 完整 normalize_test_data_items 穩定性（與 Bulk Create
+    第 8 欄同一規則）。null / 空字串 / `[]` / malformed / 非陣列 / 未通過判定
+    一律輸出空字串，不得原樣透傳。
+    """
+    if raw is None or not str(raw).strip():
+        return ""
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return ""
+    if not isinstance(parsed, list) or not parsed:
+        return ""
+
+    candidates: List[TestDataItem] = []
+    for element in parsed:
+        if not isinstance(element, dict):
+            return ""
+        name = element.get("name")
+        if not isinstance(name, str):
+            return ""
+        if "value" not in element or not isinstance(element["value"], str):
+            return ""
+        item_id = element.get("id")
+        if item_id is not None and not isinstance(item_id, str):
+            return ""
+        category = element.get("category")
+        if category is not None and not isinstance(category, str):
+            return ""
+        if category:
+            # TestDataItem 的 validator 會把未知 category 靜默退回 text，
+            # round-trip 判定必須先擋下未知 category
+            try:
+                TestDataCategory(category.lower())
+            except ValueError:
+                return ""
+        try:
+            candidates.append(TestDataItem(id=item_id, name=name, category=category, value=element["value"]))
+        except Exception:  # noqa: BLE001 - 任何無法建構 model 的元素都視為不可 round-trip
+            return ""
+
+    try:
+        normalized = normalize_test_data_items(candidates)
+    except ValueError:
+        return ""
+    for element, normalized_item in zip(parsed, normalized):
+        if normalized_item.name != element["name"] or normalized_item.value != element["value"]:
+            return ""
+
+    return json.dumps(
+        [
+            {key: element[key] for key in ("id", "name", "category", "value") if key in element}
+            for element in parsed
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
 
 
 def _csv_text(value) -> str:
@@ -594,7 +660,7 @@ async def export_test_case_set_csv(
                 _csv_text(row.steps),
                 _csv_text(row.expected_result),
                 _csv_json_cell(row.tcg_json),
-                _csv_json_cell(row.test_data_json),
+                _csv_test_data_cell(row.test_data_json),
                 _csv_datetime(row.created_at),
                 _csv_datetime(row.updated_at),
             ])

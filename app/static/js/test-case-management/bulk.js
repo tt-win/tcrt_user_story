@@ -394,6 +394,68 @@ function normalizeSingleTcg(input) {
 
 // NOTE: BULK_PRIORITY_ALLOWED 已統一定義於 Section 1 (常數定義)
 
+// test_data 第 8 欄「共用可 round-trip 判定」：與後端 export helper 同一規則
+// （schema 型別 + normalize_test_data_items 穩定性），限制值須與 server 一致
+const BULK_TEST_DATA_CATEGORIES = ['text', 'number', 'credential', 'email', 'url', 'identifier', 'date', 'json', 'other'];
+const BULK_TEST_DATA_MAX_ITEMS = 100;
+const BULK_TEST_DATA_MAX_NAME_LEN = 500;
+const BULK_TEST_DATA_MAX_VALUE_LEN = 100000;
+
+// Python str.strip() 的空白集合（與 server strip 對齊；和 JS String.trim 不同：
+// 含 \x85(NEL)、不含 \uFEFF(BOM)）
+const BULK_TEST_DATA_PY_STRIP_RE = /^[\t\n\v\f\r \x1c-\x1f\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\t\n\v\f\r \x1c-\x1f\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/g;
+
+// 與 server 一致以 Unicode code point 計長度（JS .length 是 UTF-16 code unit，
+// emoji 等 astral 字元會被多算而破壞與 export 的共用 round-trip 判定）
+function bulkCodePointLength(text) {
+    let count = 0;
+    for (const _ch of String(text)) count++;
+    return count;
+}
+
+// 與 server normalize_test_data_items 相同的 name 清洗（穩定性判定用）：
+// 移除 C0 控制字元（保留 \t）、bidi override，\n/\r 轉空白後做 Python 等價 strip
+function cleanBulkTestDataName(rawName) {
+    return String(rawName)
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+        .replace(/[\u202A-\u202E\u2066-\u2069]/g, '')
+        .replace(/\n/g, ' ')
+        .replace(/\r/g, ' ')
+        .replace(BULK_TEST_DATA_PY_STRIP_RE, '');
+}
+
+function bulkTestDataEffectiveCategory(category) {
+    if (category === undefined || category === null || category === '') return 'text';
+    return String(category).toLowerCase();
+}
+
+/**
+ * 驗證第 8 欄 test_data 陣列是否可 round-trip（未通過 → 該行格式錯誤）
+ * @param {any} parsed - JSON.parse 後的值
+ * @returns {boolean}
+ */
+function validateBulkTestDataArray(parsed) {
+    if (!Array.isArray(parsed)) return false;
+    if (parsed.length > BULK_TEST_DATA_MAX_ITEMS) return false;
+    const seenNames = new Set();
+    for (const element of parsed) {
+        if (!element || typeof element !== 'object' || Array.isArray(element)) return false;
+        if (typeof element.name !== 'string') return false;
+        if (!Object.prototype.hasOwnProperty.call(element, 'value') || typeof element.value !== 'string') return false;
+        if (element.id !== undefined && element.id !== null && typeof element.id !== 'string') return false;
+        const category = element.category;
+        if (category !== undefined && category !== null && category !== '') {
+            if (typeof category !== 'string' || !BULK_TEST_DATA_CATEGORIES.includes(category.toLowerCase())) return false;
+        }
+        const cleanedName = cleanBulkTestDataName(element.name);
+        if (!cleanedName || cleanedName !== element.name || bulkCodePointLength(cleanedName) > BULK_TEST_DATA_MAX_NAME_LEN) return false;
+        if (element.value.indexOf('\u0000') !== -1 || bulkCodePointLength(element.value) > BULK_TEST_DATA_MAX_VALUE_LEN) return false;
+        if (seenNames.has(cleanedName)) return false;
+        seenNames.add(cleanedName);
+    }
+    return true;
+}
+
 function parseCsvLine(line) {
     const result = [];
     let current = '';
@@ -564,7 +626,7 @@ function parseBulkText(rawText) {
             continue;
         }
 
-        if (columns.length > 7) {
+        if (columns.length > 8) {
             errors.push({
                 line,
                 code: 'too_many_columns',
@@ -574,11 +636,11 @@ function parseBulkText(rawText) {
             continue;
         }
 
-        while (columns.length < 7) {
+        while (columns.length < 8) {
             columns.push('');
         }
 
-        const [caseNoRaw, titleRaw, preconditionRaw, stepsRaw, expectedRaw, tcgRaw, priorityRaw] = columns;
+        const [caseNoRaw, titleRaw, preconditionRaw, stepsRaw, expectedRaw, tcgRaw, priorityRaw, testDataRaw] = columns;
 
         const case_no = (caseNoRaw || '').trim();
         const title = (titleRaw || '').trim();
@@ -632,6 +694,28 @@ function parseBulkText(rawText) {
             continue;
         }
 
+        // 第 8 欄（可選）：test_data JSON 陣列，需通過與 export 相同的可 round-trip 判定
+        let testData = null;
+        const testDataInput = (testDataRaw || '').trim();
+        if (testDataInput) {
+            let parsedTestData = null;
+            try {
+                parsedTestData = JSON.parse(testDataInput);
+            } catch (_) {
+                parsedTestData = null;
+            }
+            if (!validateBulkTestDataArray(parsedTestData)) {
+                errors.push({
+                    line,
+                    code: 'invalid_test_data',
+                    message: window.i18n ? window.i18n.t('testCase.bulkText.invalidTestData') : 'test_data 欄位需為合法 JSON 陣列且符合格式限制',
+                    raw
+                });
+                continue;
+            }
+            if (parsedTestData.length > 0) testData = parsedTestData;
+        }
+
         if (!caseNumbers.has(case_no)) {
             caseNumbers.set(case_no, []);
         }
@@ -645,7 +729,8 @@ function parseBulkText(rawText) {
             steps,
             expected_result,
             priority: normalizedPriority || 'Medium',
-            tcg_numbers: tcgNumbers
+            tcg_numbers: tcgNumbers,
+            test_data: testData
         });
     }
 
@@ -876,6 +961,10 @@ function showBulkPreviewModal(items) {
         const steps = item.steps || '';
         const expected = item.expected_result || '';
         const tcgDisplay = (item.tcg_numbers || []).join(', ');
+        // Test Data 摘要只顯示 name 與 canonical category，一律不顯示 value（credential 遮罩）
+        const testDataDisplay = (item.test_data || [])
+            .map(td => `${td.name} (${bulkTestDataEffectiveCategory(td.category)})`)
+            .join(', ');
 
         // 將字面的 \n 轉換為真正的換行符號，然後轉換為 <br> 用於 HTML 顯示
         const convertNewlinesForDisplay = (text) => {
@@ -898,6 +987,7 @@ function showBulkPreviewModal(items) {
             <td style="white-space: pre-wrap;" title="${convertNewlinesForTitle(steps)}">${convertNewlinesForDisplay(steps)}</td>
             <td style="white-space: pre-wrap;" title="${convertNewlinesForTitle(expected)}">${convertNewlinesForDisplay(expected)}</td>
             <td style="width: 280px; min-width: 21ch;" title="${escapeHtml(tcgDisplay)}">${escapeHtml(truncateText(tcgDisplay, 120))}</td>
+            <td style="width: 200px;" title="${escapeHtml(testDataDisplay)}">${escapeHtml(truncateText(testDataDisplay, 120))}</td>
             <td>${escapeHtml(priorityLabel)}</td>
         </tr>
         `;
@@ -950,6 +1040,7 @@ async function confirmBulkTextCreate() {
             return text.replace(/\\n/g, '\n');
         };
 
+        // 注意：test_data 為 JSON 解析結果，不得套用正文欄位的 \n 轉換
         const items = bulkTextParsedItems.map(item => ({
             test_case_number: item.case_no,
             title: item.title,
@@ -957,7 +1048,8 @@ async function confirmBulkTextCreate() {
             steps: convertLiteralNewlines(item.steps) || null,
             expected_result: convertLiteralNewlines(item.expected_result) || null,
             priority: item.priority || 'Medium',
-            tcg_numbers: Array.isArray(item.tcg_numbers) ? item.tcg_numbers : []
+            tcg_numbers: Array.isArray(item.tcg_numbers) ? item.tcg_numbers : [],
+            ...(Array.isArray(item.test_data) && item.test_data.length ? { test_data: item.test_data } : {})
         }));
 
         // 包含當前選擇的 Test Case Set ID 和 Section ID（如果有的話）
