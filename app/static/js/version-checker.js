@@ -184,20 +184,10 @@ class VersionChecker {
         if (this.isReloading) {
             return;
         }
-
-        this.isReloading = true;
-        this.newTimestamp = newTimestamp;
-        this.saveClientTimestamp(newTimestamp);
-        console.warn(`[VersionChecker] 偵測到 server 已重啟，強制更新頁面 (${source})`);
-
-        const reloadPromise = this.forceReload();
-        if (reloadPromise && typeof reloadPromise.catch === 'function') {
-            reloadPromise.catch(err => {
-                this.isReloading = false;
-                console.error('強制更新頁面失敗:', err);
-                this.showUpdateButton(newTimestamp);
-            });
-        }
+        // 背景版本檢查可能在使用者輸入表單或助手訊息時發生；自動 reload 會讓未保存內容消失。
+        // 僅顯示明確的更新按鈕，讓使用者自行選擇安全時機重新載入。
+        console.warn(`[VersionChecker] 偵測到新 server 版本，等待使用者更新 (${source})`);
+        this.showUpdateButton(newTimestamp);
     }
 
     /**
@@ -406,6 +396,7 @@ class VersionChecker {
 }
 
 // 全域實例
+window.VersionChecker = VersionChecker;
 window.versionChecker = new VersionChecker();
 
 // 當 DOM 載入完成後自動啟動

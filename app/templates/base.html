@@ -14,7 +14,8 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=Noto+Sans+CJK+TC:wght@400;500;600;700&family=Noto+Sans+Condensed:wght@400;600;700&display=swap" rel="stylesheet">
     <link href="{{ asset_url('css/style.css') }}" rel="stylesheet">
-    
+    <link href="{{ asset_url('css/assistant-widget.css') }}" rel="stylesheet">
+
     <!-- i18n 初始載入保護：在翻譯就緒前隱藏整體畫面，避免顯示鍵名（避免 FOUC） -->
     <style>
       body { transition: opacity .12s ease-in; }
@@ -140,6 +141,7 @@
     <script src="{{ asset_url('js/version-checker.js') }}"></script>
     <script src="{{ asset_url('js/team-nav-config.js') }}"></script>
     <script src="{{ asset_url('js/team-nav.js') }}"></script>
+    <script src="{{ asset_url('js/assistant-widget.js') }}"></script>
     {% block scripts %}{% endblock %}
 
     <!-- Language Switcher Script -->

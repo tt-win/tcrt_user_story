@@ -1,0 +1,646 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TCRT 全域助手 Widget — UI 狀態參考（v2）</title>
+<style>
+  /* ===== TCRT design tokens（沿用 app/static/css/style.css）===== */
+  :root {
+    --color-primary:#4a90e2; --color-primary-rgb:74,144,226; --color-primary-dark:#357abd; --color-primary-light:#e3f2fd;
+    --tr-primary:#4a90e2; --tr-primary-dark:#357abd; --tr-primary-light:#e3f2fd;
+    --tr-success:#5cb85c; --tr-success-dark:#449d44; --tr-success-light:#dff0d8;
+    --tr-warning:#f0ad4e; --tr-warning-dark:#ec971f; --tr-warning-light:#fcf8e3;
+    --tr-danger:#d9534f; --tr-danger-dark:#c9302c; --tr-danger-light:#f2dede;
+    --tr-bg-body:#f8f9fa; --tr-bg-header:#fff; --tr-bg-card:#fff; --tr-bg-sidebar:#f5f6f7;
+    --tr-border:#dee2e6; --tr-border-light:#e1e5e9; --tr-border-medium:#d1d5d9;
+    --tr-text-primary:#212529; --tr-text-secondary:#6c757d; --tr-text-muted:#868e96;
+    --tr-shadow-sm:0 1px 3px rgba(0,0,0,.08); --tr-shadow-md:0 4px 6px rgba(0,0,0,.1); --tr-shadow-lg:0 10px 25px rgba(0,0,0,.15);
+    --header-height:64px; --footer-height:52px;
+    color-scheme:light; /* TCRT 為 light-only 產品，mock 忠實呈現 */
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"PingFang TC","Microsoft JhengHei",sans-serif;
+    background:var(--tr-bg-body); color:var(--tr-text-primary); font-size:14px; line-height:1.5; min-height:100vh;}
+  button{font:inherit; cursor:pointer;}
+  button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--tr-primary); outline-offset:2px;}
+  code{background:var(--tr-bg-sidebar); border:1px solid var(--tr-border-light); border-radius:4px; padding:0 5px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12.5px;}
+
+  /* ===== 仿 TCRT 頁框 ===== */
+  .app-header{position:fixed; top:0; left:0; right:0; height:var(--header-height); background:var(--tr-bg-header);
+    border-bottom:1px solid var(--tr-border); display:flex; align-items:center; gap:24px; padding:0 24px; z-index:1030;}
+  .app-header .brand{font-weight:700; font-size:18px; color:var(--tr-primary); letter-spacing:.5px;}
+  .app-header nav{display:flex; gap:18px;}
+  .app-header nav a{color:var(--tr-text-secondary); text-decoration:none; font-size:13.5px;}
+  .app-header nav a.active{color:var(--tr-primary); font-weight:600;}
+  .app-header .spacer{flex:1;}
+  .app-header .team{font-size:12.5px; color:var(--tr-text-secondary);}
+  .app-header .avatar{width:32px; height:32px; border-radius:50%; background:var(--tr-primary-light);
+    color:var(--tr-primary-dark); display:grid; place-items:center; font-size:13px; font-weight:600;}
+  .app-main{padding:calc(var(--header-height) + 20px) 24px calc(var(--footer-height) + 32px); max-width:1120px; margin:0 auto;}
+  .page-head{display:flex; align-items:baseline; gap:12px; margin-bottom:14px;}
+  .page-head h1{font-size:20px; margin:0;}
+  .page-head .sub{color:var(--tr-text-muted); font-size:13px;}
+  .mock-table{width:100%; border-collapse:collapse; background:var(--tr-bg-card); border:1px solid var(--tr-border);
+    border-radius:8px; overflow:hidden; box-shadow:var(--tr-shadow-sm); font-variant-numeric:tabular-nums;}
+  .mock-table th,.mock-table td{padding:9px 14px; text-align:left; border-bottom:1px solid var(--tr-border-light); font-size:13px;}
+  .mock-table th{background:var(--tr-bg-sidebar); color:var(--tr-text-secondary); font-weight:600;}
+  .mock-table tr:last-child td{border-bottom:0;}
+  .badge-pill{display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:600;}
+  .badge-pass{background:var(--tr-success-light); color:var(--tr-success-dark);}
+  .badge-fail{background:var(--tr-danger-light); color:var(--tr-danger-dark);}
+  .badge-pending{background:var(--tr-warning-light); color:var(--tr-warning-dark);}
+  .app-footer{position:fixed; bottom:0; left:0; right:0; height:var(--footer-height); background:var(--tr-bg-header);
+    border-top:1px solid var(--tr-border); display:flex; align-items:center; justify-content:space-between; padding:0 24px;
+    z-index:1030; color:var(--tr-text-muted); font-size:12.5px;}
+  .lang-switch{display:flex; gap:6px;}
+  .lang-switch button{border:1px solid var(--tr-border); background:var(--tr-bg-card); border-radius:6px; padding:3px 10px;
+    font-size:12px; color:var(--tr-text-secondary);}
+  .lang-switch button.active{background:var(--tr-primary); border-color:var(--tr-primary); color:#fff;}
+
+  /* ===== Demo 情境條 ===== */
+  .demo-bar{position:fixed; top:calc(var(--header-height) + 16px); left:16px; z-index:1050; background:var(--tr-bg-card);
+    border:1px solid var(--tr-border); border-radius:10px; box-shadow:var(--tr-shadow-md); padding:12px 14px; width:230px;}
+  .demo-bar h2{margin:0 0 4px; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--tr-text-muted);}
+  .demo-bar p{margin:0 0 10px; font-size:12px; color:var(--tr-text-secondary);}
+  .demo-bar .btns{display:flex; flex-direction:column; gap:6px;}
+  .demo-bar button{border:1px solid var(--tr-border); background:var(--tr-bg-body); border-radius:7px; padding:6px 10px;
+    text-align:left; font-size:12.5px; color:var(--tr-text-primary);}
+  .demo-bar button:hover{border-color:var(--tr-primary); color:var(--tr-primary-dark); background:#fff;}
+  .demo-bar .sep{height:1px; background:var(--tr-border-light); margin:4px 0;}
+
+  /* ===== UI 狀態總覽（靜態） ===== */
+  .state-gallery{margin-top:28px;}
+  .state-gallery > h2{font-size:16px; margin:0 0 4px;}
+  .state-gallery > .lead{color:var(--tr-text-muted); font-size:13px; margin:0 0 16px;}
+  .gallery-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:16px;}
+  .g-card{background:var(--tr-bg-card); border:1px solid var(--tr-border); border-radius:10px; box-shadow:var(--tr-shadow-sm); overflow:hidden;}
+  .g-card > .g-head{padding:8px 12px; border-bottom:1px solid var(--tr-border-light); background:var(--tr-bg-sidebar);
+    font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--tr-text-secondary); display:flex; gap:8px; align-items:center;}
+  .g-card > .g-head .risk{margin-left:auto; font-weight:600; letter-spacing:0; text-transform:none; font-size:11px;
+    padding:1px 8px; border-radius:999px;}
+  .risk-read{background:#eef1f4; color:var(--tr-text-secondary);}
+  .risk-light{background:var(--tr-primary-light); color:var(--tr-primary-dark);}
+  .risk-warn{background:var(--tr-warning-light); color:var(--tr-warning-dark);}
+  .g-card > .g-body{padding:12px;}
+
+  /* ===== 助手 FAB ===== */
+  .assistant-fab{position:fixed; right:20px; bottom:calc(var(--footer-height) + 16px); z-index:1045; width:52px; height:52px;
+    border-radius:50%; background:linear-gradient(135deg,var(--tr-primary) 0%,var(--tr-primary-dark) 100%); border:none;
+    color:#fff; display:grid; place-items:center; box-shadow:0 4px 14px rgba(var(--color-primary-rgb),.45);
+    transition:transform .15s ease,box-shadow .15s ease;}
+  .assistant-fab:hover{transform:translateY(-2px); box-shadow:0 6px 18px rgba(var(--color-primary-rgb),.55);}
+  .assistant-fab svg{width:26px; height:26px;}
+  .assistant-fab .unread{position:absolute; top:3px; right:3px; width:12px; height:12px; border-radius:50%;
+    background:var(--tr-danger); border:2px solid #fff; display:none;}
+  .assistant-fab.has-unread .unread{display:block;}
+
+  /* ===== 助手面板 ===== */
+  .assistant-panel{position:fixed; right:20px; bottom:calc(var(--footer-height) + 16px + 52px + 12px); width:390px;
+    height:min(640px, calc(100vh - var(--header-height) - var(--footer-height) - 96px)); background:var(--tr-bg-card);
+    border:1px solid var(--tr-border); border-radius:14px; box-shadow:var(--tr-shadow-lg); z-index:1045; display:flex;
+    flex-direction:column; overflow:hidden; opacity:0; transform:translateY(10px) scale(.98); pointer-events:none;}
+  .assistant-panel.is-open{opacity:1; transform:none; pointer-events:auto;}
+  @media (prefers-reduced-motion:no-preference){.assistant-panel{transition:opacity .15s ease,transform .15s ease;}}
+  @media (max-width:575.98px){.assistant-panel{inset:0; width:auto; height:auto; border-radius:0; z-index:1046;}}
+
+  .assistant-head{display:flex; align-items:center; gap:8px; padding:12px 14px; position:relative;
+    background:linear-gradient(135deg,var(--tr-primary) 0%,var(--tr-primary-dark) 100%); color:#fff;}
+  .assistant-head .title{font-weight:600; font-size:14.5px;}
+  .assistant-head .team-badge{font-size:11.5px; background:rgba(255,255,255,.22); padding:2px 9px; border-radius:999px;}
+  .assistant-head .spacer{flex:1;}
+  .assistant-head .icon-btn{background:transparent; border:none; color:#fff; width:28px; height:28px; border-radius:6px;
+    display:grid; place-items:center; opacity:.85;}
+  .assistant-head .icon-btn:hover{background:rgba(255,255,255,.18); opacity:1;}
+  .assistant-head .icon-btn svg{width:16px; height:16px;}
+  /* 對話歷史下拉 */
+  .history-menu{position:absolute; top:48px; right:12px; width:260px; background:var(--tr-bg-card); color:var(--tr-text-primary);
+    border:1px solid var(--tr-border); border-radius:10px; box-shadow:var(--tr-shadow-lg); z-index:5; overflow:hidden; display:none;}
+  .history-menu.show{display:block;}
+  .history-menu .hm-title{padding:8px 12px; font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--tr-text-muted); border-bottom:1px solid var(--tr-border-light);}
+  .history-menu button.hm-item{display:flex; flex-direction:column; gap:1px; width:100%; text-align:left; border:none;
+    background:transparent; padding:8px 12px; border-bottom:1px solid var(--tr-border-light);}
+  .history-menu button.hm-item:hover{background:var(--tr-bg-sidebar);}
+  .history-menu button.hm-item .t{font-size:13px; color:var(--tr-text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .history-menu button.hm-item .m{font-size:11.5px; color:var(--tr-text-muted);}
+  .history-menu button.hm-new{display:flex; align-items:center; gap:8px; width:100%; text-align:left; border:none;
+    background:transparent; padding:9px 12px; font-size:13px; color:var(--tr-primary-dark); font-weight:600;}
+  .history-menu button.hm-new:hover{background:var(--tr-primary-light);}
+
+  .assistant-scope{padding:8px 14px; font-size:12px; color:var(--tr-text-secondary); background:var(--tr-primary-light);
+    border-bottom:1px solid var(--tr-border-light); display:flex; gap:7px; align-items:flex-start;}
+  .assistant-scope svg{width:14px; height:14px; flex:none; margin-top:1px; color:var(--tr-primary-dark);}
+  .assistant-scope .warn{color:var(--tr-warning-dark); font-weight:600;}
+
+  .assistant-messages{flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:12px; background:var(--tr-bg-body);}
+  .msg{max-width:88%;}
+  .msg.user{align-self:flex-end;}
+  .msg.assistant{align-self:flex-start;}
+  .bubble{padding:9px 13px; border-radius:14px; font-size:13.5px; overflow-wrap:break-word;}
+  .msg.user .bubble{background:var(--tr-primary); color:#fff; border-bottom-right-radius:5px;}
+  .msg.assistant .bubble{background:var(--tr-bg-card); border:1px solid var(--tr-border-light); border-bottom-left-radius:5px; box-shadow:var(--tr-shadow-sm);}
+  .bubble p{margin:0 0 6px;} .bubble p:last-child{margin-bottom:0;}
+  .bubble ul{margin:4px 0; padding-left:18px;}
+  .bubble table{border-collapse:collapse; margin:6px 0; font-size:12.5px; font-variant-numeric:tabular-nums;}
+  .bubble th,.bubble td{border:1px solid var(--tr-border-light); padding:4px 9px;}
+  .bubble th{background:var(--tr-bg-sidebar);}
+
+  .typing{display:inline-flex; gap:4px; padding:4px 2px;}
+  .typing i{width:6px; height:6px; border-radius:50%; background:var(--tr-text-muted); animation:blink 1.2s infinite;}
+  .typing i:nth-child(2){animation-delay:.2s;} .typing i:nth-child(3){animation-delay:.4s;}
+  @keyframes blink{0%,60%,100%{opacity:.25;} 30%{opacity:1;}}
+  @media (prefers-reduced-motion:reduce){.typing i{animation:none; opacity:.6;}}
+
+  /* 工具執行區 */
+  .tool-activity{margin-top:8px; border:1px solid var(--tr-border-light); border-radius:10px; background:var(--tr-bg-sidebar);
+    font-size:12.5px; overflow:hidden;}
+  .tool-activity summary{padding:7px 11px; cursor:pointer; color:var(--tr-text-secondary); font-weight:600; list-style:none;
+    display:flex; align-items:center; gap:6px; user-select:none;}
+  .tool-activity summary::before{content:"▸"; font-size:10px; transition:transform .12s;}
+  .tool-activity[open] summary::before{transform:rotate(90deg);}
+  .tool-step{display:flex; align-items:center; gap:8px; padding:6px 12px 6px 26px; color:var(--tr-text-secondary);}
+  .tool-step .st{width:15px; height:15px; flex:none; display:grid; place-items:center;}
+  .tool-step .spinner{width:12px; height:12px; border:2px solid var(--tr-border); border-top-color:var(--tr-primary);
+    border-radius:50%; animation:spin .8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  @media (prefers-reduced-motion:reduce){.tool-step .spinner{animation-duration:2s;}}
+  .tool-step.ok .st{color:var(--tr-success-dark); font-weight:700;} .tool-step.fail .st{color:var(--tr-danger-dark); font-weight:700;}
+  .tool-step .desc code{background:#fff;}
+
+  /* ===== 確認卡（兩級） ===== */
+  .confirm-card{margin-top:8px; border-radius:10px; font-size:13px;}
+  /* 輕量卡：idempotent / reversible */
+  .confirm-card.light{border:1px solid var(--tr-border); border-left:3px solid var(--tr-primary); background:var(--tr-bg-card); padding:10px 12px;}
+  .confirm-card.light .cc-desc{color:var(--tr-text-primary); margin-bottom:8px;}
+  .confirm-card.light .cc-desc .tag{font-size:11px; color:var(--tr-primary-dark); background:var(--tr-primary-light);
+    padding:1px 7px; border-radius:999px; margin-right:6px; font-weight:600;}
+  /* 警告卡：high_impact / irreversible */
+  .confirm-card.warning{border:1px solid var(--tr-warning); border-left:4px solid var(--tr-warning-dark);
+    background:var(--tr-warning-light); padding:11px 13px;}
+  .confirm-card.warning .cc-title{display:flex; align-items:center; gap:7px; font-weight:700; color:var(--tr-warning-dark); margin-bottom:6px;}
+  .confirm-card.warning .cc-title svg{width:15px; height:15px;}
+  .confirm-card.warning ul{margin:6px 0 10px; padding-left:18px; color:var(--tr-text-primary);}
+  .confirm-card .acts{display:flex; gap:8px; align-items:center;}
+  .btn{border-radius:7px; padding:5px 14px; font-size:13px; border:1px solid transparent; font-weight:500;}
+  .btn-sm{padding:4px 11px; font-size:12.5px;}
+  .btn-primary{background:var(--tr-primary); border-color:var(--tr-primary); color:#fff;} .btn-primary:hover{background:var(--tr-primary-dark);}
+  .btn-danger{background:var(--tr-danger); border-color:var(--tr-danger); color:#fff;} .btn-danger:hover{background:var(--tr-danger-dark);}
+  .btn-text{background:transparent; border:none; color:var(--tr-text-secondary); padding:5px 6px;} .btn-text:hover{color:var(--tr-text-primary);}
+  .btn-outline{background:#fff; border-color:var(--tr-border); color:var(--tr-text-secondary);} .btn-outline:hover{border-color:var(--tr-text-muted); color:var(--tr-text-primary);}
+  .resolved{display:inline-block; padding:3px 12px; border-radius:999px; font-size:12px; font-weight:700;}
+  .resolved.yes{background:var(--tr-danger-light); color:var(--tr-danger-dark);}
+  .resolved.done{background:var(--tr-success-light); color:var(--tr-success-dark);}
+  .resolved.no{background:var(--tr-bg-sidebar); color:var(--tr-text-secondary);}
+
+  /* ===== unknown / 結果不明卡 ===== */
+  .result-unknown{margin-top:8px; border:1px solid var(--tr-border-medium); border-left:4px solid var(--tr-warning-dark);
+    background:var(--tr-bg-sidebar); border-radius:10px; padding:10px 12px; font-size:12.5px;}
+  .result-unknown .ru-title{display:flex; align-items:center; gap:7px; font-weight:700; color:var(--tr-warning-dark); margin-bottom:4px;}
+  .result-unknown .ru-title svg{width:15px; height:15px;}
+  .result-unknown .ru-body{color:var(--tr-text-secondary);}
+
+  /* 錯誤氣泡 */
+  .error-bubble{margin-top:8px; border:1px solid var(--tr-danger); background:var(--tr-danger-light); color:var(--tr-danger-dark);
+    border-radius:10px; padding:9px 12px; font-size:13px; display:flex; align-items:center; gap:10px; justify-content:space-between;}
+  .error-bubble button{background:#fff; border:1px solid var(--tr-danger); color:var(--tr-danger-dark); border-radius:6px;
+    padding:3px 12px; font-size:12.5px; flex:none;}
+
+  /* 系統小徽章（如已取消 / 停止） */
+  .sys-note{align-self:center; font-size:12px; color:var(--tr-text-muted); background:var(--tr-bg-sidebar);
+    border:1px solid var(--tr-border-light); border-radius:999px; padding:3px 12px;}
+
+  /* Composer */
+  .assistant-composer{border-top:1px solid var(--tr-border-light); background:var(--tr-bg-card); padding:10px 12px;}
+  .assistant-composer .row{display:flex; align-items:flex-end; gap:8px;}
+  .assistant-composer textarea{flex:1; resize:none; border:1px solid var(--tr-border); border-radius:10px; padding:8px 11px;
+    font:inherit; font-size:13.5px; max-height:96px; min-height:38px; background:var(--tr-bg-body); color:var(--tr-text-primary);}
+  .assistant-composer textarea:disabled{background:var(--tr-bg-sidebar); color:var(--tr-text-muted);}
+  .composer-btn{width:38px; height:38px; flex:none; border-radius:10px; display:grid; place-items:center; border:none;}
+  .composer-btn svg{width:17px; height:17px;}
+  .attach-btn{background:var(--tr-bg-body); border:1px solid var(--tr-border); color:var(--tr-text-secondary);}
+  .attach-btn:hover{color:var(--tr-primary-dark); border-color:var(--tr-primary);}
+  .send-btn{background:var(--tr-primary); color:#fff;} .send-btn:hover{background:var(--tr-primary-dark);}
+  .send-btn:disabled{background:var(--tr-border); cursor:not-allowed;}
+  .send-btn.stop{background:var(--tr-danger);} .send-btn.stop:hover{background:var(--tr-danger-dark);}
+  .composer-hint{font-size:11.5px; color:var(--tr-text-muted); margin-top:6px; display:flex; justify-content:space-between; gap:8px;}
+  .composer-hint .lock{color:var(--tr-warning-dark); font-weight:600; display:none;}
+  .assistant-composer.locked .lock{display:inline;}
+  .assistant-composer.stopping .lock{display:inline; color:var(--tr-danger-dark);}
+  .attach-chip{display:none; align-items:center; gap:6px; margin-bottom:8px; background:var(--tr-primary-light);
+    border:1px solid var(--tr-border-light); border-radius:8px; padding:4px 10px; font-size:12.5px; color:var(--tr-primary-dark); width:fit-content;}
+  .attach-chip.show{display:inline-flex;}
+  .attach-chip button{border:none; background:transparent; color:var(--tr-text-muted); font-size:14px; padding:0 2px;}
+</style>
+
+<!-- ===== 仿 TCRT 頁面 ===== -->
+<header class="app-header">
+  <span class="brand">TCRT</span>
+  <nav>
+    <a href="#" onclick="return false">Dashboard</a>
+    <a href="#" class="active" onclick="return false">Test Cases</a>
+    <a href="#" onclick="return false">Test Runs</a>
+    <a href="#" onclick="return false">Automation Hub</a>
+    <a href="#" onclick="return false">User Story Map</a>
+  </nav>
+  <span class="spacer"></span>
+  <span class="team">團隊：ART</span>
+  <span class="avatar">JH</span>
+</header>
+
+<aside class="demo-bar" aria-label="mock 情境控制">
+  <h2>Mock 情境</h2>
+  <p>點按鈕在右下角 widget 重播（皆為前端假資料）。</p>
+  <div class="btns">
+    <button type="button" onclick="playScenario('query')">① 查詢（read 連鎖，免確認）</button>
+    <button type="button" onclick="playScenario('createLight')">② 建立 case（輕量確認卡）</button>
+    <button type="button" onclick="playScenario('multistep')">③ 多步驟逐步確認</button>
+    <button type="button" onclick="playScenario('deleteWarn')">④ 刪除（警告確認卡）</button>
+    <button type="button" onclick="playScenario('stopCancel')">⑤ 停止 → 已取消</button>
+    <button type="button" onclick="playScenario('unknown')">⑥ 結果不明（unknown）</button>
+    <button type="button" onclick="playScenario('credential')">⑦ credential 寫入被拒</button>
+    <button type="button" onclick="playScenario('offtopic')">⑧ Off-topic 拒絕</button>
+    <div class="sep"></div>
+    <button type="button" onclick="resetChat()">清空對話</button>
+  </div>
+</aside>
+
+<main class="app-main">
+  <div class="page-head"><h1>Test Cases</h1><span class="sub">ART 團隊 · 共 1,284 筆</span></div>
+  <table class="mock-table" aria-label="test case 示意">
+    <thead><tr><th>編號</th><th>標題</th><th>優先級</th><th>最近結果</th><th>更新時間</th></tr></thead>
+    <tbody>
+      <tr><td>TC-131806</td><td>登入頁 — 帳密錯誤顯示提示訊息</td><td>P1</td><td><span class="badge-pill badge-pass">Pass</span></td><td>2026-07-18</td></tr>
+      <tr><td>TC-131807</td><td>登入頁 — 連續失敗五次鎖定帳號</td><td>P1</td><td><span class="badge-pill badge-fail">Fail</span></td><td>2026-07-18</td></tr>
+      <tr><td>TC-132010</td><td>報表匯出 — CSV 欄位順序正確</td><td>P2</td><td><span class="badge-pill badge-pending">Pending</span></td><td>2026-07-17</td></tr>
+      <tr><td>TC-132321</td><td>推播設定 — 關閉後不再收到通知</td><td>P2</td><td><span class="badge-pill badge-pass">Pass</span></td><td>2026-07-16</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ===== UI 狀態總覽（靜態，供前端實作對照） ===== -->
+  <section class="state-gallery">
+    <h2>UI 狀態總覽</h2>
+    <p class="lead">下列為 8 輪 spec 審查後 widget 需呈現的所有狀態，供 task 7 前端實作逐項對照。右下角 widget 可重播互動流程。</p>
+    <div class="gallery-grid">
+
+      <div class="g-card">
+        <div class="g-head">Scope note（資料外送警告）</div>
+        <div class="g-body" style="padding:0">
+          <div class="assistant-scope" style="border-bottom:none">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
+            <span>僅協助 TCRT 的 test case 與 test run 操作，動作以你的帳號權限執行。<span class="warn">對話內容會送往外部 LLM，請勿貼入密碼等機密。</span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="g-card">
+        <div class="g-head">確認卡 — 輕量<span class="risk risk-light">idempotent / reversible</span></div>
+        <div class="g-body">
+          <div class="confirm-card light">
+            <div class="cc-desc"><span class="tag">建立</span>建立 test case「登入逾時自動登出」到 ART／登入模組。</div>
+            <div class="acts"><button class="btn btn-sm btn-primary" type="button">確認</button><button class="btn-text" type="button">取消</button></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="g-card">
+        <div class="g-head">確認卡 — 警告<span class="risk risk-warn">high_impact / irreversible</span></div>
+        <div class="g-body">
+          <div class="confirm-card warning">
+            <div class="cc-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17v.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>需要你的確認</div>
+            <ul><li>永久刪除 test run <strong>#58「Sprint 42 迴歸」</strong></li><li>一併移除 <strong>37 筆</strong>執行結果與備註（無法復原）</li><li>若只想收起來，建議改用「歸檔」</li></ul>
+            <div class="acts"><button class="btn btn-sm btn-danger" type="button">確認刪除</button><button class="btn btn-sm btn-outline" type="button">取消</button></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="g-card">
+        <div class="g-head">確認卡 — 決定後狀態</div>
+        <div class="g-body" style="display:flex; flex-direction:column; gap:8px;">
+          <div class="confirm-card light"><div class="cc-desc" style="margin:0; display:flex; justify-content:space-between; align-items:center;">建立 case<span class="resolved done">已確認</span></div></div>
+          <div class="confirm-card light"><div class="cc-desc" style="margin:0; display:flex; justify-content:space-between; align-items:center;">刪除 run #58<span class="resolved no">已取消</span></div></div>
+          <div class="confirm-card light"><div class="cc-desc" style="margin:0; display:flex; justify-content:space-between; align-items:center;">批次更新結果<span class="resolved no">已過期</span></div></div>
+        </div>
+      </div>
+
+      <div class="g-card">
+        <div class="g-head">結果不明（unknown）</div>
+        <div class="g-body">
+          <div class="result-unknown">
+            <div class="ru-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16v.01M12 13a2 2 0 1 0-2-2M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z"/></svg>結果不明</div>
+            <div class="ru-body">操作已送出但未收到執行確認。系統不會自動重試——請用查詢工具核對實際狀態後再決定。</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="g-card">
+        <div class="g-head">工具執行步驟</div>
+        <div class="g-body">
+          <details class="tool-activity" open style="margin:0"><summary>執行動作</summary>
+            <div class="tool-step ok"><span class="st">✓</span><span class="desc">查詢 test case（<code>list_test_cases</code>）— 2 筆</span></div>
+            <div class="tool-step"><span class="st"><span class="spinner"></span></span><span class="desc">建立 test run（<code>create_test_run_config</code>）</span></div>
+            <div class="tool-step fail"><span class="st">✕</span><span class="desc">更新結果（<code>batch_update_results</code>）— <span style="color:var(--tr-danger-dark)">逾時</span></span></div>
+          </details>
+        </div>
+      </div>
+
+      <div class="g-card">
+        <div class="g-head">停止 → 已取消（兩段）</div>
+        <div class="g-body" style="display:flex; flex-direction:column; gap:10px;">
+          <div class="composer-hint" style="margin:0"><span>執行中…</span><span class="lock" style="display:inline; color:var(--tr-danger-dark)">停止中…等待當前操作收尾</span></div>
+          <div class="sys-note" style="align-self:flex-start">已取消 — 已開始的單一操作照常完成，不再啟動下一步</div>
+        </div>
+      </div>
+
+      <div class="g-card">
+        <div class="g-head">credential 寫入被拒</div>
+        <div class="g-body">
+          <div class="msg assistant" style="max-width:100%"><div class="bubble" style="box-shadow:none">
+            <p>基於安全，我無法透過對話寫入密碼／token 類的 test data。</p><p>請改用 test case 編輯器的 <strong>test_data</strong> 欄位手動填入 credential。</p>
+          </div></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+</main>
+
+<footer class="app-footer">
+  <span>TCRT v2.14.0 · mock（UI 狀態參考 v2，對齊 8 輪審查後之 change）</span>
+  <div class="lang-switch"><button class="active" type="button">繁中</button><button type="button">简中</button><button type="button">EN</button></div>
+</footer>
+
+<!-- ===== FAB ===== -->
+<button class="assistant-fab has-unread" id="fab" type="button" aria-label="開啟 TCRT 助手" onclick="togglePanel()">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+    <path d="M21 12c0 4.1-4 7.4-9 7.4-1 0-2-.13-2.9-.38L4 21l1.2-3.6C3.8 16 3 14.1 3 12c0-4.1 4-7.4 9-7.4s9 3.3 9 7.4Z" stroke-linejoin="round"/>
+    <circle cx="8.6" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="15.4" cy="12" r="1" fill="currentColor" stroke="none"/>
+  </svg><span class="unread" aria-hidden="true"></span>
+</button>
+
+<!-- ===== 面板 ===== -->
+<section class="assistant-panel" id="panel" role="dialog" aria-modal="false" aria-label="TCRT 助手">
+  <header class="assistant-head">
+    <span class="title">TCRT 助手</span>
+    <span class="team-badge">ART</span>
+    <span class="spacer"></span>
+    <button class="icon-btn" type="button" title="對話紀錄" aria-label="對話紀錄" onclick="toggleHistory()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-9-9 9 9 0 0 1 9 9Z"/></svg>
+    </button>
+    <button class="icon-btn" type="button" title="新對話" aria-label="新對話" onclick="resetChat(); closeHistory();">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+    <button class="icon-btn" type="button" title="關閉" aria-label="關閉助手" onclick="togglePanel(false)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <div class="history-menu" id="historyMenu">
+      <div class="hm-title">近期對話（ART）</div>
+      <button class="hm-item" type="button" onclick="closeHistory()"><span class="t">Sprint 43 迴歸回報</span><span class="m">10 分鐘前 · 6 則</span></button>
+      <button class="hm-item" type="button" onclick="closeHistory()"><span class="t">登入模組失敗案例清查</span><span class="m">今天 09:14 · 4 則</span></button>
+      <button class="hm-item" type="button" onclick="closeHistory()"><span class="t">批次調整 P2 優先級</span><span class="m">昨天 · 11 則</span></button>
+      <button class="hm-new" type="button" onclick="resetChat(); closeHistory();">＋ 新對話</button>
+    </div>
+  </header>
+
+  <div class="assistant-scope">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
+    <span>僅協助 TCRT 的 test case 與 test run 操作，動作以你的帳號權限執行。<span class="warn">對話內容會送往外部 LLM，請勿貼入密碼等機密。</span></span>
+  </div>
+
+  <div class="assistant-messages" id="messages" aria-live="polite"></div>
+
+  <footer class="assistant-composer" id="composer">
+    <div class="attach-chip" id="attachChip"><span>📎 result_sprint43.zip（2.3 MB）</span><button type="button" aria-label="移除附件" onclick="toggleAttach(false)">✕</button></div>
+    <div class="row">
+      <button class="composer-btn attach-btn" type="button" title="附加檔案" aria-label="附加檔案" onclick="toggleAttach()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.5 12.6 21a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2l-8.5 8.5a1.8 1.8 0 0 1-2.6-2.6l7.8-7.8"/></svg>
+      </button>
+      <textarea id="input" rows="1" placeholder="詢問或操作 test case / test run…" aria-label="輸入訊息"></textarea>
+      <button class="composer-btn send-btn" id="sendBtn" type="button" aria-label="送出" onclick="handleSend()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <div class="composer-hint">
+      <span>Enter 送出 · Shift+Enter 換行</span>
+      <span class="lock">等待你確認上方操作</span>
+    </div>
+  </footer>
+</section>
+
+<script>
+'use strict';
+const $=(s)=>document.querySelector(s);
+const messagesEl=$('#messages'), panel=$('#panel'), fab=$('#fab');
+const input=$('#input'), sendBtn=$('#sendBtn'), composer=$('#composer');
+let busy=false, stopArmed=false;
+
+function togglePanel(force){
+  const open=force!==undefined?force:!panel.classList.contains('is-open');
+  panel.classList.toggle('is-open',open);
+  if(open){fab.classList.remove('has-unread'); input.focus();} else {closeHistory(); fab.focus();}
+}
+function toggleHistory(){$('#historyMenu').classList.toggle('show');}
+function closeHistory(){$('#historyMenu').classList.remove('show');}
+document.addEventListener('keydown',(e)=>{ if(e.key==='Escape'){ if($('#historyMenu').classList.contains('show')){closeHistory(); return;} if(panel.classList.contains('is-open')) togglePanel(false);} });
+input.addEventListener('keydown',(e)=>{ if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault(); handleSend();} });
+function toggleAttach(force){const c=$('#attachChip'); c.classList.toggle('show',force!==undefined?force:!c.classList.contains('show'));}
+function scroll_(){messagesEl.scrollTop=messagesEl.scrollHeight;}
+function el(html){const t=document.createElement('template'); t.innerHTML=html.trim(); return t.content.firstChild;}
+
+function addUser(text){messagesEl.appendChild(el('<div class="msg user"><div class="bubble"></div></div>')); messagesEl.lastChild.querySelector('.bubble').textContent=text; scroll_();}
+function addAssistantShell(){const n=el('<div class="msg assistant"><div class="bubble"><span class="typing"><i></i><i></i><i></i></span></div></div>'); messagesEl.appendChild(n); scroll_(); return n;}
+function addSysNote(text){messagesEl.appendChild(el('<div class="sys-note"></div>')); messagesEl.lastChild.textContent=text; scroll_();}
+function appendParts(container,html,done){const parts=html.split('|~|'); let i=0; const t=setInterval(()=>{ if(i>=parts.length){clearInterval(t); done&&done(); return;} container.insertAdjacentHTML('beforeend',parts[i++]); scroll_();},280);}
+function streamInto(node,html,done){const b=node.querySelector('.bubble'); setTimeout(()=>{b.innerHTML=''; appendParts(b,html,done);},600);}
+
+function addToolActivity(node,steps,done){
+  const act=el('<details class="tool-activity" open><summary>執行動作</summary></details>'); node.querySelector('.bubble').appendChild(act); scroll_();
+  let i=0; const next=()=>{ if(i>=steps.length){act.removeAttribute('open'); done&&done(); return;}
+    const s=steps[i++]; const row=el('<div class="tool-step"><span class="st"><span class="spinner"></span></span><span class="desc">'+s.label+'</span></div>'); act.appendChild(row); scroll_();
+    setTimeout(()=>{ row.classList.add(s.fail?'fail':'ok'); row.querySelector('.st').innerHTML=s.fail?'✕':'✓'; if(s.result) row.querySelector('.desc').insertAdjacentHTML('beforeend',' — '+s.result); next(); }, s.ms||850);
+  }; next();
+}
+function lockComposer(lock){busy=lock; input.disabled=lock; sendBtn.disabled=lock; composer.classList.toggle('locked',lock); if(!lock){composer.classList.remove('stopping'); stopArmed=false;}}
+function setStreaming(on){
+  stopArmed=on; sendBtn.classList.toggle('stop',on); sendBtn.setAttribute('aria-label',on?'停止':'送出');
+  sendBtn.disabled=false; // streaming 時停止鍵可按
+  sendBtn.innerHTML=on
+    ? '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>'
+    : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z" stroke-linejoin="round"/></svg>';
+}
+
+function resetChat(){
+  messagesEl.innerHTML=''; setStreaming(false); const n=addAssistantShell();
+  streamInto(n,'<p>嗨，我是 TCRT 助手 👋</p>|~|<p>我可以查詢與操作 <strong>test case</strong> 和 <strong>test run</strong>。查詢類直接執行；<strong>任何寫入</strong>都會先請你確認。</p>|~|<ul><li>「找登入模組最近失敗的 case」</li><li>「建一個 Sprint 43 的 run 並加入登入模組的 case」</li><li>「把 run #58 前三筆標成 Pass」</li></ul>');
+  lockComposer(false);
+}
+function handleSend(){
+  if(stopArmed){ triggerStop(); return; }
+  if(busy) return;
+  const text=input.value.trim(); if(!text){ playScenario('createLight'); return; }
+  input.value=''; runScenario([{user:text},{assistant:'<p>（mock — 請用左側情境按鈕重播完整流程）</p>'}]);
+}
+
+/* ===== 停止 / 取消 兩段 ===== */
+let stopResolver=null;
+function triggerStop(){
+  if(!stopArmed) return;
+  composer.classList.add('stopping'); // 顯示「停止中…」
+  setStreaming(false); sendBtn.disabled=true;
+  if(stopResolver){ const r=stopResolver; stopResolver=null; setTimeout(r,1100); } // 等當前工具收尾
+}
+
+/* ===== 情境腳本 ===== */
+const SCENARIOS={
+  query:[
+    {user:'幫我看登入模組最近有哪些 case 失敗'},
+    {assistant:'<p>幫你查了 <strong>ART</strong>「登入」相關、最近一次為 Fail 的 case：</p>',
+     tools:[{label:'查詢 test case（<code>list_test_cases</code>：keyword=登入, result=fail）',result:'2 筆',ms:1000}],
+     after:'<table><tr><th>編號</th><th>標題</th><th>最近結果</th></tr><tr><td>TC-131807</td><td>連續失敗五次鎖定帳號</td><td>Fail（07-18）</td></tr><tr><td>TC-131912</td><td>SSO 導轉逾時處理</td><td>Fail（07-17）</td></tr></table>|~|<p>需要我把這兩筆加進新的 run 重測嗎？（建立會先請你確認）</p>'},
+  ],
+  createLight:[
+    {user:'幫我建一個 case：登入逾時自動登出，P2，放登入模組'},
+    {assistant:'<p>準備建立這筆 test case，請確認：</p>',
+     confirm:{tier:'light', tag:'建立', desc:'建立 test case「登入逾時自動登出」（P2）到 ART／登入模組。',
+       tools:[{label:'建立 test case（<code>create_test_case</code>）',result:'TC-132560',ms:900}],
+       done:'<p>已建立 <strong>TC-132560</strong> ✅</p>'}},
+  ],
+  multistep:[
+    {user:'建一個「Sprint 43 迴歸」的 run，加入上面兩筆失敗的 case，然後把 TC-131807 標成 Pass'},
+    {assistant:'<p>好的，這需要三個寫入操作，我會逐步請你確認。先第一步：</p>',
+     confirm:{tier:'light', tag:'建立', desc:'建立 test run「Sprint 43 迴歸」。',
+       tools:[{label:'建立 run config（<code>create_test_run_config</code>）',result:'#61',ms:850}],
+       done:'<p>已建立 run <strong>#61</strong>。接著加入 case：</p>'}},
+    {confirm:{tier:'light', tag:'加入項目', desc:'將 TC-131807、TC-131912 加入 run #61（2 筆）。',
+       tools:[{label:'加入項目（<code>add_test_run_items</code>）',result:'成功 2/2',ms:850}],
+       done:'<p>已加入 2 筆。最後回報結果：</p>'}},
+    {confirm:{tier:'light', tag:'回報結果', desc:'將 TC-131807 標記為 Pass。',
+       tools:[{label:'回報結果（<code>batch_update_results</code>）',result:'成功 1/1',ms:850}],
+       done:'<p>完成 ✅ run #61 已建立、加入 2 筆、TC-131807 已標 Pass。TC-131912 尚未回報。</p>'}},
+  ],
+  deleteWarn:[
+    {user:'把舊的 run #58 刪掉'},
+    {assistant:'<p>這是<strong>永久刪除</strong>，無法復原。請確認：</p>',
+     confirm:{tier:'warning', title:'需要你的確認',
+       items:['永久刪除 test run <strong>#58「Sprint 42 迴歸」</strong>','一併移除 <strong>37 筆</strong>執行結果與備註（無法復原）','若只想收起來，建議改用「歸檔」'],
+       yesLabel:'確認刪除',
+       tools:[{label:'刪除 run（<code>delete_test_run_config</code>：#58）',result:'完成',ms:1000}],
+       done:'<p>已刪除 run <strong>#58</strong>，移除 37 筆執行紀錄。此操作已記錄於系統稽核。</p>',
+       no:'<p>好，已取消刪除。要改成<strong>歸檔</strong> run #58 嗎？歸檔後仍可還原。</p>'}},
+  ],
+  stopCancel:[
+    {user:'幫我把登入模組所有 case 重新跑一次並回報'},
+    {assistant:'<p>開始執行（你可隨時按停止）：</p>',
+     stoppable:[{label:'查詢登入模組 case（<code>list_test_cases</code>）',result:'12 筆',ms:900},
+                {label:'建立 run config（<code>create_test_run_config</code>）',result:'#62',ms:2600}],
+     autoStopAt:1,  // 展示用：第 2 個工具執行中自動觸發「停止中→已取消」
+     doneNote:'完成 — 已重跑並回報 12 筆',
+     doneMsg:'<p>全部完成 ✅</p>',
+     cancelledNote:'已取消 — 已開始的單一操作照常完成，不再啟動下一步',
+     cancelledMsg:'<p>已在你要求時停止。run #62 已建立，但後續加入項目未執行。要我接續嗎？</p>'},
+  ],
+  unknown:[
+    {user:'把 TC-132010 的優先級改成 P1'},
+    {assistant:'<p>準備更新優先級，請確認：</p>',
+     confirm:{tier:'light', tag:'更新', desc:'將 TC-132010 優先級改為 P1。',
+       tools:[{label:'更新 test case（<code>update_test_case</code>：priority=P1）',ms:1400,cut:true}],
+       unknown:'操作已送出但未收到執行確認。系統不會自動重試——請用查詢工具核對 TC-132010 目前狀態後再決定。'}},
+  ],
+  credential:[
+    {user:'建一個 case，test_data 放一組登入帳密：admin / P@ssw0rd123'},
+    {reject:'<p>基於安全，我無法透過對話寫入密碼／token 類的 credential test data（對話內容會送往外部 LLM）。</p>|~|<p>請改用 test case 編輯器的 <strong>test_data</strong> 欄位手動填入 credential；其他非機密欄位我可以幫你建。要我先建立不含帳密的 case 骨架嗎？</p>'},
+  ],
+  offtopic:[
+    {user:'幫我寫一首關於夏天的詩'},
+    {reject:'<p>抱歉，我只能協助 TCRT 內的 test case 與 test run 操作，沒辦法幫這類請求。</p>|~|<p>需要整理測試資料、建立 run 或查詢結果的話，隨時告訴我 👌</p>'},
+  ],
+};
+
+function runScenario(steps){
+  lockComposer(true); setStreaming(true);
+  let idx=0;
+  const next=()=>{
+    if(idx>=steps.length){ lockComposer(false); setStreaming(false); return; }
+    const s=steps[idx++];
+
+    if(s.user){ addUser(s.user); setTimeout(next,380); return; }
+    if(s.reject){ const n=addAssistantShell(); setStreaming(false); streamInto(n,s.reject,()=>{ lockComposer(false); }); return; }
+
+    if(s.confirm){
+      const n=addAssistantShell();
+      streamInto(n, s.assistant||'', ()=>{ renderConfirm(n.querySelector('.bubble'), s.confirm, next); });
+      setStreaming(false); return;
+    }
+    if(s.stoppable){
+      const n=addAssistantShell();
+      streamInto(n, s.assistant||'', ()=>{ runStoppable(n, s, next); });
+      return;
+    }
+    // assistant + tools/after
+    const n=addAssistantShell();
+    streamInto(n, s.assistant||'', ()=>{
+      if(s.tools){ addToolActivity(n, s.tools, ()=>{ if(s.after) appendParts(n.querySelector('.bubble'), s.after, next); else next(); }); }
+      else next();
+    });
+  };
+  next();
+}
+
+function renderConfirm(wrap, cfg, done){
+  let card;
+  if(cfg.tier==='warning'){
+    card=el('<div class="confirm-card warning" role="group" aria-label="需要確認的操作">'
+      +'<div class="cc-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17v.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>'+(cfg.title||'需要你的確認')+'</div>'
+      +'<ul>'+cfg.items.map(i=>'<li>'+i+'</li>').join('')+'</ul>'
+      +'<div class="acts"><button class="btn btn-sm btn-danger" type="button">'+(cfg.yesLabel||'確認')+'</button><button class="btn btn-sm btn-outline" type="button">取消</button></div></div>');
+  } else {
+    card=el('<div class="confirm-card light" role="group" aria-label="需要確認的操作">'
+      +'<div class="cc-desc">'+(cfg.tag?'<span class="tag">'+cfg.tag+'</span>':'')+cfg.desc+'</div>'
+      +'<div class="acts"><button class="btn btn-sm btn-primary" type="button">確認</button><button class="btn-text" type="button">取消</button></div></div>');
+  }
+  wrap.appendChild(card); scroll_(); lockComposer(true);
+  const [yesBtn,noBtn]=card.querySelectorAll('button');
+  const settle=(html)=>{ card.querySelector('.acts').outerHTML='<span class="resolved '+html.cls+'">'+html.label+'</span>'; };
+  yesBtn.addEventListener('click',()=>{
+    settle({cls:'done',label:'已確認'}); lockComposer(false);
+    const n=addAssistantShell();
+    streamInto(n,'', ()=>{
+      addToolActivity(n, cfg.tools||[], ()=>{
+        if(cfg.unknown){ n.querySelector('.bubble').appendChild(el('<div class="result-unknown"><div class="ru-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16v.01M12 13a2 2 0 1 0-2-2M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z"/></svg>結果不明</div><div class="ru-body">'+cfg.unknown+'</div></div>')); scroll_(); lockComposer(false); }
+        else appendParts(n.querySelector('.bubble'), cfg.done||'<p>完成 ✅</p>', ()=>{ done&&done(); });
+      });
+    });
+  });
+  noBtn.addEventListener('click',()=>{
+    settle({cls:'no',label:'已取消'}); lockComposer(false);
+    if(cfg.no){ const n=addAssistantShell(); streamInto(n,cfg.no); }
+  });
+}
+
+function runStoppable(node, s, done){
+  const steps=s.stoppable; let i=0; let cancelled=false;
+  const act=el('<details class="tool-activity" open><summary>執行動作</summary></details>'); node.querySelector('.bubble').appendChild(act); scroll_();
+  const requestStop=()=>{ if(cancelled) return; cancelled=true; setStreaming(false); sendBtn.disabled=true; composer.classList.add('stopping'); }; // 顯示「停止中…」
+  stopResolver=requestStop; // 使用者按停止 → 標記；當前工具收尾後停
+  const next=()=>{
+    if(i>=steps.length){ finish(); return; }
+    const idx=i; const st=steps[i++];
+    const row=el('<div class="tool-step"><span class="st"><span class="spinner"></span></span><span class="desc">'+st.label+'</span></div>'); act.appendChild(row); scroll_();
+    // 展示用：到 autoStopAt 的工具執行中，自動觸發停止（模擬使用者按下停止鍵）
+    if(s.autoStopAt===idx){ setTimeout(requestStop, Math.min(900,(st.ms||850)/2)); }
+    setTimeout(()=>{
+      row.classList.add('ok'); row.querySelector('.st').innerHTML='✓'; if(st.result) row.querySelector('.desc').insertAdjacentHTML('beforeend',' — '+st.result);
+      if(cancelled){ finish(true); } else next();
+    }, st.ms||850);
+  };
+  const finish=(wasCancelled)=>{
+    act.removeAttribute('open'); setStreaming(false); composer.classList.remove('stopping');
+    addSysNote(wasCancelled ? (s.cancelledNote||'已取消') : (s.doneNote||'完成'));
+    const n=addAssistantShell(); streamInto(n, wasCancelled ? (s.cancelledMsg||'<p>已停止。</p>') : (s.doneMsg||'<p>完成 ✅</p>'), ()=>{ lockComposer(false); });
+  };
+  next();
+}
+
+function playScenario(key){ if(busy) return; closeHistory(); togglePanel(true); runScenario(JSON.parse(JSON.stringify(SCENARIOS[key]))); }
+
+resetChat();
+</script>

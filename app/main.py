@@ -2,7 +2,7 @@
 from fastapi import FastAPI, Request, Query, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pathlib import Path
 import asyncio
 import logging
@@ -138,6 +138,16 @@ async def apply_version_headers(request: Request, call_next):
         response.headers["Cache-Control"] = STATIC_CACHE_CONTROL
 
     return response
+
+# Assistant 服務層例外 -> HTTPException：assistant 路由的擁有權/狀態檢查（get_conversation_owned
+# 等）直接拋 AssistantError，統一在此轉換，避免每個 endpoint 各自 try/except 漏接。
+from app.services.assistant.errors import AssistantError
+
+
+@app.exception_handler(AssistantError)
+async def _assistant_error_handler(_request: Request, exc: AssistantError) -> JSONResponse:
+    return JSONResponse(status_code=exc.http_status, content={"detail": {"code": exc.error_code, "message": str(exc)}})
+
 
 # 包含 API 路由
 from app.api import api_router
@@ -376,6 +386,16 @@ async def _start_background_services() -> None:
         await automation_background_manager.start()
     except Exception as auto_err:  # noqa: BLE001
         logging.warning("啟動 Automation Hub 背景 ticker 失敗（不阻止啟動）: %s", auto_err)
+
+    try:
+        from app.config import settings as _settings
+        from app.services.assistant.retention import get_assistant_retention_manager
+
+        if _settings.ai.assistant.enabled:
+            await get_assistant_retention_manager(_settings.ai.assistant).start()
+    except Exception as assistant_err:  # noqa: BLE001
+        logging.warning("啟動 Assistant 背景維護 ticker 失敗（不阻止啟動）: %s", assistant_err)
+
     _background_started = True
     logging.info("背景服務已啟動（本行程為 leader）")
 
@@ -490,6 +510,16 @@ async def _run_shutdown():
         logging.info("Automation Hub 背景 ticker 已停止")
     except Exception as e:
         logging.error(f"停止 Automation Hub 背景 ticker 失敗: {e}")
+
+    try:
+        from app.config import settings as _settings
+        from app.services.assistant.retention import get_assistant_retention_manager
+
+        if _settings.ai.assistant.enabled:
+            await get_assistant_retention_manager(_settings.ai.assistant).stop()
+            logging.info("Assistant 背景維護 ticker 已停止")
+    except Exception as e:  # noqa: BLE001
+        logging.error(f"停止 Assistant 背景維護 ticker 失敗: {e}")
 
     try:
         await audit_service.force_flush()

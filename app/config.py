@@ -326,14 +326,157 @@ class QAAIHelperConfig(BaseModel):
         )
 
 
+class AssistantConfig(BaseModel):
+    """Global AI assistant (floating chat widget) settings.
+
+    The assistant reuses ``settings.openrouter.api_key``; when that key is
+    empty or ``enabled`` is False the assistant is fully disabled (widget
+    hidden, chat APIs return 503) — there is no degraded fallback mode.
+
+    ``enabled`` defaults to False (opt-in): deployments that already set an
+    OpenRouter key for QA AI Helper must not gain the assistant on upgrade
+    without explicitly setting ``TCRT_ASSISTANT_ENABLED=true``.
+    """
+
+    enabled: bool = False
+    model: str = "google/gemini-3-flash-preview"
+    temperature: float = 0.1
+    max_iterations: int = 8
+    llm_timeout_seconds: int = 60
+    tool_timeout_seconds: int = 30
+    turn_timeout_seconds: int = 180
+    history_max_chars: int = 48000
+    tool_result_max_chars: int = 8000
+    max_message_chars: int = 4000
+    max_messages_per_hour: int = 60
+    max_messages_per_conversation: int = 200
+    max_active_turns_per_user: int = 3
+    max_active_turns_global: int = 32
+    max_active_turns_per_worker: int = 8
+    pending_action_ttl_seconds: int = 600
+    retention_days: int = 90
+    upload_max_files_per_message: int = 5
+    upload_max_file_bytes: int = 20 * 1024 * 1024
+    # 聊天附檔暫存的存活時間（與 conversation retention_days 分開控制，見 spec「聊天附檔暫存」）。
+    upload_retention_hours: int = 24
+    # write pending action 敏感執行參數的加密金鑰（AES-256-GCM，base64/hex；縱深防禦）。
+    # 空值時：被判定含敏感內容的 pending action 拒絕建立（不明文落檔）。
+    payload_encryption_key: str = ""
+    # 對話標題自動摘要（LLM 生成或 fallback 截斷）的最大字數。
+    title_max_chars: int = 40
+
+    @classmethod
+    def from_env(cls, fallback: "AssistantConfig" = None) -> "AssistantConfig":
+        current = fallback or cls()
+
+        def _int(name: str, default: int, lo: int, hi: int) -> int:
+            try:
+                val = int(os.getenv(name, str(default)))
+            except (TypeError, ValueError):
+                val = default
+            return max(lo, min(hi, val))
+
+        def _float(name: str, default: float, lo: float, hi: float) -> float:
+            try:
+                val = float(os.getenv(name, str(default)))
+            except (TypeError, ValueError):
+                val = default
+            return max(lo, min(hi, val))
+
+        return cls(
+            enabled=os.getenv("TCRT_ASSISTANT_ENABLED", str(current.enabled)).lower()
+            in ("1", "true", "yes"),
+            model=os.getenv("TCRT_ASSISTANT_MODEL", current.model),
+            temperature=_float("TCRT_ASSISTANT_TEMPERATURE", current.temperature, 0.0, 2.0),
+            max_iterations=_int("TCRT_ASSISTANT_MAX_ITERATIONS", current.max_iterations, 1, 32),
+            llm_timeout_seconds=_int(
+                "TCRT_ASSISTANT_LLM_TIMEOUT_SECONDS", current.llm_timeout_seconds, 5, 300
+            ),
+            tool_timeout_seconds=_int(
+                "TCRT_ASSISTANT_TOOL_TIMEOUT_SECONDS", current.tool_timeout_seconds, 5, 300
+            ),
+            turn_timeout_seconds=_int(
+                "TCRT_ASSISTANT_TURN_TIMEOUT_SECONDS", current.turn_timeout_seconds, 10, 900
+            ),
+            history_max_chars=_int(
+                "TCRT_ASSISTANT_HISTORY_MAX_CHARS", current.history_max_chars, 4000, 400000
+            ),
+            tool_result_max_chars=_int(
+                "TCRT_ASSISTANT_TOOL_RESULT_MAX_CHARS", current.tool_result_max_chars, 1000, 64000
+            ),
+            max_message_chars=_int(
+                "TCRT_ASSISTANT_MAX_MESSAGE_CHARS", current.max_message_chars, 200, 40000
+            ),
+            max_messages_per_hour=_int(
+                "TCRT_ASSISTANT_MAX_MESSAGES_PER_HOUR", current.max_messages_per_hour, 1, 100000
+            ),
+            max_messages_per_conversation=_int(
+                "TCRT_ASSISTANT_MAX_MESSAGES_PER_CONVERSATION",
+                current.max_messages_per_conversation,
+                1,
+                100000,
+            ),
+            max_active_turns_per_user=_int(
+                "TCRT_ASSISTANT_MAX_ACTIVE_TURNS_PER_USER",
+                current.max_active_turns_per_user,
+                1,
+                100,
+            ),
+            max_active_turns_global=_int(
+                "TCRT_ASSISTANT_MAX_ACTIVE_TURNS_GLOBAL",
+                current.max_active_turns_global,
+                1,
+                10000,
+            ),
+            max_active_turns_per_worker=_int(
+                "TCRT_ASSISTANT_MAX_ACTIVE_TURNS_PER_WORKER",
+                current.max_active_turns_per_worker,
+                1,
+                1000,
+            ),
+            pending_action_ttl_seconds=_int(
+                "TCRT_ASSISTANT_PENDING_ACTION_TTL_SECONDS",
+                current.pending_action_ttl_seconds,
+                30,
+                86400,
+            ),
+            retention_days=_int(
+                "TCRT_ASSISTANT_RETENTION_DAYS", current.retention_days, 1, 3650
+            ),
+            upload_max_files_per_message=_int(
+                "TCRT_ASSISTANT_UPLOAD_MAX_FILES_PER_MESSAGE",
+                current.upload_max_files_per_message,
+                1,
+                50,
+            ),
+            upload_max_file_bytes=_int(
+                "TCRT_ASSISTANT_UPLOAD_MAX_FILE_BYTES",
+                current.upload_max_file_bytes,
+                1024,
+                1024 * 1024 * 1024,
+            ),
+            upload_retention_hours=_int(
+                "TCRT_ASSISTANT_UPLOAD_RETENTION_HOURS", current.upload_retention_hours, 1, 720
+            ),
+            payload_encryption_key=os.getenv(
+                "TCRT_ASSISTANT_PAYLOAD_ENCRYPTION_KEY", current.payload_encryption_key
+            ),
+            title_max_chars=_int(
+                "TCRT_ASSISTANT_TITLE_MAX_CHARS", current.title_max_chars, 10, 200
+            ),
+        )
+
+
 class AIConfig(BaseModel):
     qa_ai_helper: QAAIHelperConfig = QAAIHelperConfig()
+    assistant: AssistantConfig = AssistantConfig()
 
     @classmethod
     def from_env(cls, fallback: "AIConfig" = None) -> "AIConfig":
         current = fallback or cls()
         return cls(
             qa_ai_helper=QAAIHelperConfig.from_env(current.qa_ai_helper),
+            assistant=AssistantConfig.from_env(current.assistant),
         )
 
 

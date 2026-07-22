@@ -23,6 +23,7 @@ from sqlalchemy import (
     select,
     func,
     event,
+    false,
 )
 from sqlalchemy.orm import relationship, declarative_base, column_property
 from datetime import datetime
@@ -2459,3 +2460,309 @@ class AdHocRunItem(Base):
 
     # Relationships
     sheet = relationship("AdHocRunSheet", back_populates="items")
+
+
+class AssistantConversation(Base):
+    """全域 AI 助手對話（per-user，team 脈絡可為空）"""
+
+    __tablename__ = "assistant_conversations"
+    __table_args__ = (
+        Index("ix_assistant_conversations_user_updated", "user_id", "last_message_at"),
+        # retention job 全域按 last_message_at 掃描
+        Index("ix_assistant_conversations_last_message_at", "last_message_at"),
+        CheckConstraint(
+            # team_id 不可出現在此 check：其 FK 帶 ON DELETE SET NULL，
+            # MySQL 8.0.16+ 禁止同一欄位同時用於 check constraint 與有動作的 FK（錯誤 3823）。
+            "(scope_type = 'global' AND source_team_id IS NULL) "
+            "OR (scope_type = 'team' AND source_team_id IS NOT NULL)",
+            name="ck_assistant_conversations_scope",
+        ),
+        CheckConstraint("message_count >= 0", name="ck_assistant_conversations_message_count"),
+        CheckConstraint("next_turn_seq >= 0", name="ck_assistant_conversations_next_turn_seq"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    # 不可重用的權威識別；journal 在 conversation 刪除後仍以此追查，避免 SQLite rowid 重用。
+    conversation_key = Column(String(32), nullable=False, unique=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    team_id = Column(Integer, ForeignKey("teams.id", ondelete="SET NULL"), nullable=True, index=True)
+    scope_type = Column(
+        String(16), nullable=False, default="global", server_default="global"
+    )  # global|team（建立後不可變）
+    source_team_id = Column(Integer, nullable=True)  # team scope 建立時的不可變副本
+    title = Column(String(255), nullable=True)
+    status = Column(
+        String(32), nullable=False, default="active", server_default="active", index=True
+    )  # active|archived
+    active_turn_key = Column(String(64), nullable=True)
+    turn_lease_expires_at = Column(DateTime, nullable=True)
+    message_count = Column(Integer, nullable=False, default=0, server_default="0")
+    next_turn_seq = Column(Integer, nullable=False, default=0, server_default="0")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    last_message_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    turns = relationship(
+        "AssistantTurn", back_populates="conversation", cascade="all, delete-orphan"
+    )
+    tool_executions = relationship(
+        "AssistantToolExecution", back_populates="conversation"
+    )
+
+
+class AssistantTurn(Base):
+    """單次 user→assistant turn（含 tool loop 狀態）。"""
+
+    __tablename__ = "assistant_turns"
+    __table_args__ = (
+        UniqueConstraint(
+            "conversation_id",
+            "client_message_id",
+            name="uq_assistant_turns_client_message_id",
+        ),
+        UniqueConstraint(
+            "conversation_id",
+            "turn_seq",
+            name="uq_assistant_turns_conversation_seq",
+        ),
+        Index("ix_assistant_turns_conversation_status", "conversation_id", "status"),
+        CheckConstraint("turn_seq >= 0", name="ck_assistant_turns_turn_seq"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    conversation_id = Column(
+        Integer,
+        ForeignKey("assistant_conversations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    turn_seq = Column(Integer, nullable=False)  # 由 conversation.next_turn_seq 原子配發
+    turn_key = Column(String(64), nullable=False, unique=True)
+    client_message_id = Column(String(64), nullable=False)
+    request_fingerprint = Column(String(64), nullable=False)  # normalized text + ordered attachment digests
+    status = Column(
+        String(32), nullable=False, default="running", server_default="running"
+    )  # running|completed|cancelled|failed
+    cancel_requested = Column(Boolean, nullable=False, default=False, server_default=false())
+    # terminal/recovery 以 CAS 確保 global/user admission counters 各只釋放一次。
+    admission_released = Column(Boolean, nullable=False, default=False, server_default=false())
+    next_event_seq = Column(Integer, nullable=False, default=0, server_default="0")
+    next_message_seq = Column(Integer, nullable=False, default=0, server_default="0")
+    error_message = Column(Text, nullable=True)
+    started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    completed_at = Column(DateTime, nullable=True)
+
+    conversation = relationship("AssistantConversation", back_populates="turns")
+    events = relationship(
+        "AssistantEvent", back_populates="turn", cascade="all, delete-orphan"
+    )
+    messages = relationship(
+        "AssistantMessage", back_populates="turn", cascade="all, delete-orphan"
+    )
+    pending_actions = relationship(
+        "AssistantPendingAction", back_populates="turn", cascade="all, delete-orphan"
+    )
+    uploaded_files = relationship(
+        "AssistantUploadedFile", back_populates="turn", cascade="all, delete-orphan"
+    )
+
+
+class AssistantEvent(Base):
+    """Turn 內有序 SSE/journal 事件。"""
+
+    __tablename__ = "assistant_events"
+    __table_args__ = (
+        UniqueConstraint("turn_id", "seq", name="uq_assistant_events_turn_seq"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    turn_id = Column(
+        Integer, ForeignKey("assistant_turns.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    seq = Column(Integer, nullable=False)
+    event_type = Column(String(32), nullable=False)
+    payload_json = Column(medium_text_type(), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    turn = relationship("AssistantTurn", back_populates="events")
+
+
+class AssistantMessage(Base):
+    """Turn 內持久化訊息（user/assistant/tool）。"""
+
+    __tablename__ = "assistant_messages"
+    __table_args__ = (
+        UniqueConstraint("turn_id", "message_seq", name="uq_assistant_messages_turn_seq"),
+        CheckConstraint(
+            "role IN ('user', 'assistant', 'tool')",
+            name="ck_assistant_messages_role",
+        ),
+        CheckConstraint(
+            "role != 'tool' OR (llm_tool_call_id IS NOT NULL AND tool_name IS NOT NULL)",
+            name="ck_assistant_messages_tool_pair",
+        ),
+        CheckConstraint(
+            "tool_calls_json IS NULL OR llm_tool_call_id IS NOT NULL",
+            name="ck_assistant_messages_call_id",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True)
+    turn_id = Column(
+        Integer, ForeignKey("assistant_turns.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    message_seq = Column(Integer, nullable=False)
+    role = Column(String(16), nullable=False)
+    content = Column(medium_text_type(), nullable=True)
+    tool_calls_json = Column(medium_text_type(), nullable=True)  # 僅含實際處理的 tool calls（見 spec）
+    llm_tool_call_id = Column(String(64), nullable=True)
+    tool_name = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    turn = relationship("AssistantTurn", back_populates="messages")
+
+
+class AssistantPendingAction(Base):
+    """需使用者確認的 write tool pending action。"""
+
+    __tablename__ = "assistant_pending_actions"
+    __table_args__ = (
+        Index("ix_assistant_pending_actions_turn_status", "turn_id", "status"),
+        Index("ix_assistant_pending_actions_status_expires", "status", "expires_at"),
+        Index(
+            "ix_assistant_pending_actions_status_execution_deadline",
+            "status",
+            "execution_deadline",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True)
+    turn_id = Column(
+        Integer, ForeignKey("assistant_turns.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    execution_key = Column(String(64), nullable=False, unique=True)
+    llm_tool_call_id = Column(String(64), nullable=False)
+    provider_tool_call_id = Column(String(64), nullable=True)
+    tool_name = Column(String(100), nullable=False)
+    arguments_redacted_json = Column(medium_text_type(), nullable=False)  # 遮罩後，可外顯
+    execution_payload_json = Column(medium_text_type(), nullable=True)  # 原始參數，resolve 後清 NULL
+    execution_payload_encrypted = Column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
+    confirmation_summary_json = Column(medium_text_type(), nullable=False)
+    confirmation_fingerprint = Column(String(64), nullable=False)
+    status = Column(
+        String(32), nullable=False, default="pending", server_default="pending", index=True
+    )  # pending|executing|succeeded|failed|cancelled|expired|unknown
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    executing_started_at = Column(DateTime, nullable=True)
+    execution_deadline = Column(DateTime, nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+
+    turn = relationship("AssistantTurn", back_populates="pending_actions")
+
+
+class AssistantToolExecution(Base):
+    """Tool 執行 journal（對話刪除後仍可稽核）。"""
+
+    __tablename__ = "assistant_tool_executions"
+    __table_args__ = (
+        Index("ix_assistant_tool_executions_status_created", "status", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    conversation_id = Column(
+        Integer,
+        ForeignKey("assistant_conversations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    source_conversation_key = Column(String(32), nullable=False, index=True)  # 不可重用的權威稽核鍵
+    source_conversation_id = Column(Integer, nullable=False, index=True)  # 不可變，稽核用
+    source_turn_key = Column(String(64), nullable=False)  # 不可變副本，追蹤用（每次執行必源自 turn）
+    execution_key = Column(String(64), nullable=False, unique=True)  # 伺服器生成，at-most-once 主鍵
+    user_id = Column(Integer, nullable=False, index=True)
+    team_id = Column(Integer, nullable=True)
+    llm_tool_call_id = Column(String(64), nullable=False)  # server-normalized assistant/tool 配對鍵
+    provider_tool_call_id = Column(String(64), nullable=True)  # provider 原始 call id，僅追蹤用
+    tool_name = Column(String(100), nullable=False)
+    risk_level = Column(String(32), nullable=False)
+    arguments_json = Column(medium_text_type(), nullable=True)  # 遮罩後參數
+    target_summary = Column(String(500), nullable=True)
+    status = Column(
+        String(32), nullable=False, default="started", server_default="started"
+    )  # started|succeeded|failed|unknown
+    # 注：journal.status 的 unknown 對應 pending_action.status 的 unknown 終態（orphan executing recovery）
+    http_status = Column(Integer, nullable=True)
+    error_message = Column(Text, nullable=True)  # 經遮罩管線
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    finished_at = Column(DateTime, nullable=True)
+
+    conversation = relationship("AssistantConversation", back_populates="tool_executions")
+
+
+class AssistantUploadedFile(Base):
+    """聊天附檔暫存記錄（逾期由排程清理）。
+
+    以單欄 turn_id FK 關聯發起訊息的 turn；`(turn_id, attachment_index)` unique 讓相同
+    turn 內 slot 不可重用。
+    """
+
+    __tablename__ = "assistant_uploaded_files"
+    __table_args__ = (
+        UniqueConstraint(
+            "turn_id", "attachment_index", name="uq_assistant_uploaded_files_slot"
+        ),
+    )
+
+    id = Column(Integer, primary_key=True)
+    turn_id = Column(
+        Integer, ForeignKey("assistant_turns.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    attachment_index = Column(Integer, nullable=False)
+    original_name = Column(String(255), nullable=False)
+    relative_path = Column(String(500), nullable=False)
+    sha256 = Column(String(64), nullable=False)
+    content_type = Column(String(100), nullable=True)
+    size_bytes = Column(Integer, nullable=False, default=0, server_default="0")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+
+    turn = relationship("AssistantTurn", back_populates="uploaded_files")
+
+
+class AssistantRateLimitBucket(Base):
+    """使用者小時級 rate-limit bucket。"""
+
+    __tablename__ = "assistant_rate_limit_buckets"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "bucket_started_at",
+            name="uq_assistant_rate_limit_user_bucket",
+        ),
+        CheckConstraint("used_count >= 0", name="ck_assistant_rate_limit_used_count"),
+        Index("ix_assistant_rate_limit_expires_at", "expires_at"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    bucket_started_at = Column(DateTime, nullable=False)
+    used_count = Column(Integer, nullable=False, default=0, server_default="0")
+    expires_at = Column(DateTime, nullable=False)
+
+
+class AssistantRuntimeCounter(Base):
+    """全域 / per-user active turn counters（admission control）。"""
+
+    __tablename__ = "assistant_runtime_counters"
+    __table_args__ = (
+        CheckConstraint("active_count >= 0", name="ck_assistant_runtime_counter_active"),
+    )
+
+    scope_key = Column(String(80), primary_key=True)  # global | user:<id>
+    active_count = Column(Integer, nullable=False, default=0, server_default="0")
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
