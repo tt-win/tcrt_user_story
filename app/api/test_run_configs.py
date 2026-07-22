@@ -933,10 +933,21 @@ async def restart_test_run(
         new_config.failed_cases = 0
         new_config.last_sync_at = now
 
+        # Keep the rerun in the same Test Run Set as the source (UI/assistant both expect this).
+        parent_set_id = None
+        if config_db.set_membership and config_db.set_membership.set_id is not None:
+            parent_set_id = config_db.set_membership.set_id
+            attach_config_to_set(sync_db, team_id, new_config, parent_set_id)
+            parent_set = ensure_test_run_set(sync_db, team_id, parent_set_id)
+            recalculate_set_status_sync(sync_db, parent_set)
+
+        sync_db.flush()
+
         return {
             "mode": mode,
             "new_config_id": new_config.id,
             "created_count": created,
+            "set_id": parent_set_id,
             "notifications_enabled": new_config.notifications_enabled,
             "notify_chat_ids_json": new_config.notify_chat_ids_json,
         }
@@ -962,6 +973,7 @@ async def restart_test_run(
         "mode": result["mode"],
         "new_config_id": result["new_config_id"],
         "created_count": result["created_count"],
+        "set_id": result.get("set_id"),
     }
 
 

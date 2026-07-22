@@ -11,6 +11,8 @@ import asyncio
 import contextlib
 import json
 import logging
+import mimetypes
+import urllib.parse
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -206,6 +208,56 @@ async def get_messages_endpoint(
     return MessageHistoryResponse(messages=[MessageHistoryItem(**r) for r in rows], active_turn=active_turn)
 
 
+@router.get("/conversations/{conversation_id}/turns/{turn_key}/attachments/{attachment_index}")
+async def download_attachment_endpoint(
+    conversation_id: int,
+    turn_key: str,
+    attachment_index: int,
+    current_user: User = Depends(get_current_user),
+    config: AssistantConfig = Depends(_get_config),
+    conv_svc: ConversationService = Depends(_get_conversation_service),
+) -> StreamingResponse:
+    """使用者重新取得自己隨訊息上傳的暫存附件（供對話串裡的附件圖示點擊下載/預覽）。
+
+    擁有權檢查 MUST 沿用既有的 join 過的 `get_turn_owned`／`get_uploaded_file_owned`（皆同時比對
+    user_id／conversation_id／turn_id），不得另開只用 turn_key 的單獨查詢，避免弱化既有的四重
+    擁有權比對。`Content-Disposition` 一律 `attachment`（不使用 inline),防止使用者上傳的
+    HTML/SVG 內容被同源瀏覽器 inline 執行。
+    """
+    _require_enabled(config)
+    turn = await conv_svc.get_turn_owned(user_id=current_user.id, conversation_id=conversation_id, turn_key=turn_key)
+    uploaded = await conv_svc.get_uploaded_file_owned(
+        user_id=current_user.id, conversation_id=conversation_id, turn_id=turn.id, attachment_index=attachment_index
+    )
+    try:
+        disk_path = attachment_storage.resolve_stored_path(uploaded.relative_path)
+    except ValueError:
+        disk_path = None
+    if disk_path is None or not disk_path.is_file():
+        # 暫存附件已過保存期被 retention job 清除（或尚未清完 DB row 前的極短窗口），一律視為
+        # 找不到，不回傳誤導性的其他狀態。
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "ATTACHMENT_NOT_FOUND", "message": "attachment is no longer available"},
+        )
+
+    media_type = uploaded.content_type or mimetypes.guess_type(uploaded.original_name)[0] or "application/octet-stream"
+    try:
+        uploaded.original_name.encode("ascii")
+        content_disposition = f'attachment; filename="{uploaded.original_name}"'
+    except UnicodeEncodeError:
+        encoded_name = urllib.parse.quote(uploaded.original_name, safe="")
+        content_disposition = f"attachment; filename*=UTF-8''{encoded_name}"
+
+    def _iterfile():
+        with open(disk_path, "rb") as f:
+            yield from f
+
+    return StreamingResponse(
+        _iterfile(), media_type=media_type, headers={"Content-Disposition": content_disposition}
+    )
+
+
 # ---------------------------------------------------------------------- #
 # 送出訊息（TurnStart + detached runner + SSE）
 # ---------------------------------------------------------------------- #
@@ -230,7 +282,7 @@ async def _read_capped(file: UploadFile, max_bytes: int) -> bytes:
 async def post_message_endpoint(
     conversation_id: int,
     request: Request,
-    text: str = Form(...),
+    text: str = Form(""),
     client_message_id: str = Form(...),
     after_seq: int = Query(-1),
     attachments: list[UploadFile] = File(default=[]),
@@ -283,6 +335,7 @@ async def post_message_endpoint(
 
     now = datetime.utcnow()
     expires_at = now + timedelta(hours=config.upload_retention_hours)
+    saved_attachments: list[dict] = []
     for idx, (original_name, content_type, data, sha256) in enumerate(files_data):
         absolute, relative = attachment_storage.generate_stored_path(conversation.conversation_key)
         absolute.parent.mkdir(parents=True, exist_ok=True)
@@ -294,6 +347,18 @@ async def post_message_endpoint(
         if saved is None:
             with contextlib.suppress(OSError):
                 absolute.unlink(missing_ok=True)
+        else:
+            saved_attachments.append(
+                {"attachment_index": idx, "original_name": original_name, "content_type": content_type, "size_bytes": len(data)}
+            )
+
+    if saved_attachments:
+        # 前端在此事件抵達前只知道「送出了幾個檔案」,不知道是否真的落地成功;讓使用者訊息泡泡裡
+        # 的附件圖示能從 pending 轉成已確認狀態（見 spec assistant-conversations「LLM 被告知本回合
+        # 可用的附件」旁的附件顯示 Requirement）。沿用既有事件系統,SSE 重連時天然可重播。
+        await conv_svc.append_event(
+            turn_id=result.turn.id, event_type="attachments_saved", payload={"attachments": saved_attachments}
+        )
 
     supervisor.spawn_reserved(
         result.turn.turn_key,

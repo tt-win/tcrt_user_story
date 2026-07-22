@@ -16,8 +16,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
-from functools import lru_cache
-from pathlib import Path
+import re
 from typing import Optional
 
 from app.auth.models import PermissionType, UserRole
@@ -38,11 +37,10 @@ from app.services.assistant.tool_executor import (
     ToolExecutionOutcome,
     ToolExecutor,
 )
+from app.services.assistant.content_store import assemble_system_prompt_for_agent
 from app.services.assistant.tool_registry import READ, ToolRegistry
 
 logger = logging.getLogger(__name__)
-
-_SYSTEM_PROMPT_PATH = Path(__file__).resolve().parents[3] / "prompts" / "assistant" / "system.md"
 
 # max_iterations 達上限時的收尾訊息；非 LLM 生成，系統控制路徑固定文案（見 design「上限即終止」）。
 _MAX_ITERATIONS_NOTICE = (
@@ -51,10 +49,28 @@ _MAX_ITERATIONS_NOTICE = (
     "or send a new message to continue."
 )
 
+# Confirm continuation used to drop all terminal prose (to avoid "ready to execute" after
+# success). We still drop *stale pre-confirm* phrasing, but allow real completion path summaries.
+_STALE_PRECONFIRM_RE = re.compile(
+    r"("
+    r"準備(好|執行|進行)|請(你)?確認|待確認|確認後再|"
+    r"ready\s+to\s+(execute|run|proceed|confirm)|please\s+confirm|"
+    r"awaiting\s+your\s+confirmation|i('ve| have)\s+prepared"
+    r")",
+    re.IGNORECASE,
+)
 
-@lru_cache(maxsize=1)
-def _load_system_prompt() -> str:
-    return _SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
+
+def _is_stale_preconfirm_prose(text: str) -> bool:
+    """True when terminal text only restates 'ready / please confirm' after a write already ran."""
+    stripped = (text or "").strip()
+    if not stripped:
+        return True
+    # Short messages that are pure pre-confirm noise; longer path summaries may mention
+    # "確認" historically but also contain facts — only drop when the whole reply is short.
+    if len(stripped) > 280:
+        return False
+    return bool(_STALE_PRECONFIRM_RE.search(stripped))
 
 
 def _allowed_permissions_for_role(role: UserRole) -> set[PermissionType]:
@@ -169,8 +185,9 @@ async def _run_llm_loop(
 ) -> None:
     """從 turn 目前歷史開始跑 LLM 迴圈，直到純文字回覆／pending 建立／取消／錯誤／上限。
 
-    confirm continuation 使用 ``suppress_terminal_text``：權威 tool_finished 已呈現結果；若模型沒有
-    提出真正的新工具呼叫，其 terminal prose 不再持久化／送 UI，避免完成後又說「準備執行」。
+    confirm continuation 使用 ``suppress_terminal_text``：過濾「準備執行／請確認」等時序倒置
+    空話；但**允許**有實質內容的完成路徑總結（text_delta），讓使用者看到做過的步驟。
+    空內容或純 stale pre-confirm 文案仍靜默收尾（權威結果已在 tool_finished 圖示）。
     """
     conversation_id = conversation.id
     turn_key = turn.turn_key
@@ -181,7 +198,13 @@ async def _run_llm_loop(
         tools = registry.filter_by_permission(_allowed_permissions_for_role(role))
     tools_by_name = {t.name: t for t in tools}
     llm_tools_schema = [t.to_llm_schema() for t in tools]
-    system_prompt = _load_system_prompt()
+    # System prompt + skill catalog from DB (factory seed fallback inside content_store).
+    system_prompt = await assemble_system_prompt_for_agent(conversation_service.main_boundary)
+    # 本 turn 若隨訊息上傳附件，LLM 必須被明確告知有哪些 file_ref 可用，否則工具 schema
+    # 裡的 file_ref 參數對模型而言無從得知合法值（見 spec assistant-conversations「聊天
+    # 附檔暫存」）。固定在迴圈外查一次即可：附件只在本 turn 建立時寫入，迴圈期間不會再變。
+    turn_attachments = await conversation_service.load_attachments_for_turn(turn.id)
+    attachments_by_turn = {turn.id: turn_attachments} if turn_attachments else {}
 
     if await conversation_service.is_cancel_requested(turn_id=turn.id):
         await _finish_cancelled(conversation_service, conversation=conversation, turn=turn, user_id=user_id)
@@ -224,7 +247,14 @@ async def _run_llm_loop(
             return
 
         rows = await conversation_service.load_conversation_messages(conversation_id=conversation_id)
-        messages = build_llm_messages(rows, max_chars=config.history_max_chars)
+        messages = build_llm_messages(
+            rows,
+            max_chars=config.history_max_chars,
+            attachments_by_turn=attachments_by_turn,
+            compact_enabled=config.history_compact_enabled,
+            compact_threshold_ratio=config.history_compact_threshold_ratio,
+            compact_keep_recent_groups=config.history_compact_keep_recent_groups,
+        )
 
         try:
             result = await llm_service.call(system_prompt=system_prompt, messages=messages, tools=llm_tools_schema)
@@ -281,12 +311,13 @@ async def _run_llm_loop(
             return
 
         if not result.tool_calls:
-            if suppress_terminal_text:
+            content = (result.content or "").strip()
+            if suppress_terminal_text and _is_stale_preconfirm_prose(content):
+                # Empty or "ready / please confirm" after a confirmed write — no bubble.
                 await _finish_without_terminal_text(
                     conversation_service, conversation=conversation, turn=turn, user_id=user_id
                 )
                 return
-            content = (result.content or "").strip()
             if not content:
                 await _finish_error(
                     conversation_service,
@@ -296,6 +327,7 @@ async def _run_llm_loop(
                     error_message="The assistant returned an empty response.",
                 )
                 return
+            # Path summary (or normal final answer): persist + SSE for the user.
             await conversation_service.append_message(turn_id=turn.id, role="assistant", content=content)
             await conversation_service.append_event(turn_id=turn.id, event_type="text_delta", payload={"content": content})
             await conversation_service.complete_turn_release_lease(

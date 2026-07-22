@@ -210,6 +210,7 @@ class TestCaseRepoService:
             # 排序
             order_desc = (sort_order or "desc").lower() == "desc"
             sort_field_map = {
+                "id": TestCaseLocal.id,
                 "title": TestCaseLocal.title,
                 "priority": TestCaseLocal.priority,
                 "test_case_number": TestCaseLocal.test_case_number,
@@ -218,7 +219,10 @@ class TestCaseRepoService:
                 "updated_at": TestCaseLocal.updated_at,
             }
             col = sort_field_map.get(sort_by, TestCaseLocal.created_at)
-            q = q.order_by(col.desc() if order_desc else col.asc())
+            if order_desc:
+                q = q.order_by(col.desc(), TestCaseLocal.id.asc())
+            else:
+                q = q.order_by(col.asc(), TestCaseLocal.id.asc())
 
             # 分頁並取得結果
             q = q.offset(skip).limit(limit)

@@ -623,26 +623,29 @@ def bootstrap_target(
             return engine, None
 
         backup_result: Optional[BackupResult] = None
-        if pending.is_fresh:
-            logger.debug(f"{label} 為全新資料庫，略過升版前備份")
-        elif policies.backup_mode == "off":
-            logger.info(f"{label} 備份政策為 off，略過升版前備份")
-        else:
-            try:
-                backup_result = create_backup(
-                    target_name,
-                    database_url=database_url,
-                    from_revision=pending.current,
-                    to_revision=pending.head,
-                    backup_dir=policies.backup_dir,
-                )
-                logger.info(f"已建立 {label} 升版前備份：{backup_result.path}")
-            except BackupError as exc:
-                if policies.backup_mode == "required":
-                    raise BootstrapTargetFailure(
-                        target_name, pending.head, pending.current, None, f"升版前備份失敗：{exc}"
-                    ) from exc
-                logger.warn(f"{label} 升版前備份失敗（best-effort，繼續升版）：{exc}")
+        # Temporarily disabled: skip pre-upgrade DB backup during bootstrap.
+        # Restore this block when backup is needed again.
+        logger.info(f"{label} 升版前備份已暫時停用，略過備份直接升版")
+        # if pending.is_fresh:
+        #     logger.debug(f"{label} 為全新資料庫，略過升版前備份")
+        # elif policies.backup_mode == "off":
+        #     logger.info(f"{label} 備份政策為 off，略過升版前備份")
+        # else:
+        #     try:
+        #         backup_result = create_backup(
+        #             target_name,
+        #             database_url=database_url,
+        #             from_revision=pending.current,
+        #             to_revision=pending.head,
+        #             backup_dir=policies.backup_dir,
+        #         )
+        #         logger.info(f"已建立 {label} 升版前備份：{backup_result.path}")
+        #     except BackupError as exc:
+        #         if policies.backup_mode == "required":
+        #             raise BootstrapTargetFailure(
+        #                 target_name, pending.head, pending.current, None, f"升版前備份失敗：{exc}"
+        #             ) from exc
+        #         logger.warn(f"{label} 升版前備份失敗（best-effort，繼續升版）：{exc}")
 
         logger.info(f"執行 {label} Alembic migration：upgrade head")
         try:

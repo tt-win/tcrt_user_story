@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -33,7 +34,10 @@ from app.services.assistant.crypto import (
 from app.services.assistant.ids import compute_confirmation_fingerprint
 from app.services.assistant.param_validation import validate_arguments
 from app.services.assistant.projection import project_and_redact, project_error
+from app.services.assistant.content_store import get_skill_enabled, list_enabled_skills
 from app.services.assistant.tool_registry import AssistantTool, ToolRegistry
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -127,9 +131,36 @@ def combined_schema(tool: AssistantTool) -> dict[str, Any]:
     return tool.to_llm_schema()["function"]["parameters"]
 
 
+def _apply_assistant_list_limits(tool: AssistantTool, query_params: dict[str, Any]) -> dict[str, Any]:
+    """Inject default_limit / clamp max_limit for assistant list tools (loopback only)."""
+    if tool.default_limit is None and tool.max_limit is None:
+        return query_params
+    if "limit" not in tool.query_params:
+        return query_params
+    out = dict(query_params)
+    if "limit" not in out and tool.default_limit is not None:
+        out["limit"] = tool.default_limit
+    if "limit" in out and tool.max_limit is not None:
+        try:
+            limit_val = int(out["limit"])
+        except (TypeError, ValueError):
+            limit_val = tool.max_limit
+        out["limit"] = max(1, min(limit_val, tool.max_limit))
+    return out
+
+
+def _request_skip_from_query(query_params: dict[str, Any]) -> int:
+    raw = query_params.get("skip", 0)
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _split_arguments(tool: AssistantTool, arguments: dict[str, Any]) -> tuple[dict, dict, dict]:
     path_params = {k: arguments[k] for k in tool.path_params if k in arguments}
     query_params = {k: arguments[k] for k in tool.query_params if k in arguments}
+    query_params = _apply_assistant_list_limits(tool, query_params)
     body_params = {
         k: v
         for k, v in arguments.items()
@@ -361,16 +392,36 @@ class ToolExecutor:
         return False
 
     async def check_update_overwrites_existing_credential(self, tool: AssistantTool, path_params: dict, body_params: dict) -> bool:
-        """update_test_case 專屬：既有 case 含 credential 時拒絕 test_data 覆寫（design D8）。"""
+        """update_test_case 專屬：既有 case 含 credential 時拒絕 test_data 覆寫（design D8）。
+
+        `record_id` 可能是本地整數 id 或 Lark record id 字串（紅隊發現：原本只查
+        `TestCaseLocal.id`，對 Lark 同步的 case 會查無此列而靜默回傳 False，等同 fail-open
+        繞過既有 credential 的保護）；查找順序須與 `resolvers.resolve_test_case_identity`／
+        `resolve_test_case_team` 一致——先試本地整數 id，查無才查 `lark_record_id`。"""
         if tool.name != "update_test_case" or "test_data" not in body_params:
             return False
+        record_id = path_params.get("record_id")
 
         async def _check(session: AsyncSession) -> bool:
-            row = (
-                await session.execute(
-                    select(TestCaseLocal.test_data_json).where(TestCaseLocal.id == path_params.get("record_id"))
-                )
-            ).scalar_one_or_none()
+            try:
+                local_id = int(record_id)
+            except (TypeError, ValueError):
+                local_id = None
+            row = None
+            if local_id is not None:
+                row = (
+                    await session.execute(
+                        select(TestCaseLocal.test_data_json).where(TestCaseLocal.id == local_id)
+                    )
+                ).scalar_one_or_none()
+            if row is None:
+                row = (
+                    await session.execute(
+                        select(TestCaseLocal.test_data_json).where(
+                            TestCaseLocal.lark_record_id == str(record_id)
+                        )
+                    )
+                ).scalar_one_or_none()
             if not row:
                 return False
             try:
@@ -443,6 +494,76 @@ class ToolExecutor:
             outer = {"action": tool.confirmation_action_key, "risk_level": highest,
                      "target_type": "batch_actions", "affected_count": len(entries), "actions": entries}
             return outer, {"kind": "batch_actions", "actions": identities}
+
+        if strategy == "filter_batch":
+            # Single shared resolver with the HTTP endpoint (title+number search, cap+1).
+            from fastapi import HTTPException
+
+            from app.api.test_run_items import (
+                FILTER_BATCH_MATCHED_CAP,
+                BatchUpdateByFilterFilter,
+                resolve_filter_batch_matches_sync,
+            )
+
+            config_id = path_params.get("config_id")
+            if config_id is None:
+                return None
+
+            async def _config_team(session: AsyncSession) -> Optional[int]:
+                return await resolvers.resolve_test_run_config_team(session, config_id)
+
+            config_team = await self.main_boundary.run_read(_config_team)
+            if config_team is None:
+                return None
+            raw_filter = body_params.get("filter") or {}
+            if not isinstance(raw_filter, dict):
+                return None
+            patch = body_params.get("patch") or {}
+            if not isinstance(patch, dict):
+                return None
+            if patch.get("assignee_name") is None and patch.get("test_result") is None:
+                return None
+            try:
+                filt = BatchUpdateByFilterFilter.model_validate(raw_filter)
+            except Exception:  # noqa: BLE001
+                return None
+
+            def _match(sync_db):
+                return resolve_filter_batch_matches_sync(
+                    sync_db,
+                    team_id=int(config_team),
+                    config_id=int(config_id),
+                    filt=filt,
+                )
+
+            try:
+                rows = await self.main_boundary.run_sync_read(_match)
+            except HTTPException:
+                # Mutual exclusion / validation from shared resolver → fail-closed (no pending).
+                return None
+            if not rows or len(rows) > FILTER_BATCH_MATCHED_CAP:
+                return None
+            matched_ids = [int(r.id) for r in rows]
+            filter_dump = filt.model_dump(exclude_none=True)
+            patch_dump = {k: v for k, v in patch.items() if v is not None}
+            summary = {
+                "action": tool.confirmation_action_key,
+                "risk_level": tool.risk_level,
+                "target_type": "filter_batch",
+                "affected_count": len(matched_ids),
+                "matched_count": len(matched_ids),
+                "filter": filter_dump,
+                "patch": patch_dump,
+                "sample_ids": matched_ids[:10],
+                "config_id": config_id,
+            }
+            return summary, {
+                "kind": "filter_batch",
+                "config_id": config_id,
+                "matched_ids": matched_ids,
+                "filter": filter_dump,
+                "patch": patch_dump,
+            }
 
         async def _resolve(session: AsyncSession) -> Optional[tuple[dict, Any]]:
             if strategy == "create":
@@ -637,6 +758,19 @@ class ToolExecutor:
     # Read tool（inline 執行；唯一可 inline 執行的 risk level）
     # ------------------------------------------------------------------ #
 
+    async def _run_local_read_tool(self, tool: AssistantTool, arguments: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        """In-process skill/catalog tools：讀 main DB（enabled only），不打 ASGI。"""
+        if tool.name == "list_skills":
+            skills = await list_enabled_skills(self.main_boundary)
+            return 200, {"skills": skills, "count": len(skills)}
+        if tool.name == "get_skill":
+            skill_id = arguments.get("skill_id")
+            skill = await get_skill_enabled(self.main_boundary, str(skill_id) if skill_id is not None else "")
+            if skill is None:
+                return 404, {"detail": f"unknown skill_id: {skill_id}"}
+            return 200, skill
+        return 500, {"detail": f"local tool handler missing for {tool.name}"}
+
     async def run_read_tool(
         self,
         tool: AssistantTool,
@@ -668,16 +802,22 @@ class ToolExecutor:
         if tool.team_check != "none" and resolved_team != conversation.team_id:
             return ReadToolResult(ok=False, result_payload={}, http_status=None, rejection=RejectionResult("team_mismatch", "resource does not belong to this conversation's team", fixable=False))
 
+        journal_args = {**query_params, **body_params} if tool.execution_mode == "local" else body_params
         journal_id = await conversation_service.start_read_tool_journal(
             conversation=conversation, turn=turn, user_id=user_id, team_id=conversation.team_id,
             llm_tool_call_id=llm_tool_call_id, tool_name=tool.name, risk_level=tool.risk_level,
-            arguments_json=json.dumps(body_params, ensure_ascii=False),
+            arguments_json=json.dumps(journal_args, ensure_ascii=False),
         )
         try:
-            status_code, payload = await self._loopback(
-                tool, team_id=resolved_team, path_params=path_params, query_params=query_params,
-                body_params=body_params, jwt=jwt, conversation_key=conversation.conversation_key,
-            )
+            if tool.execution_mode == "local":
+                status_code, payload = await self._run_local_read_tool(
+                    tool, {**query_params, **body_params, **path_params}
+                )
+            else:
+                status_code, payload = await self._loopback(
+                    tool, team_id=resolved_team, path_params=path_params, query_params=query_params,
+                    body_params=body_params, jwt=jwt, conversation_key=conversation.conversation_key,
+                )
         except Exception:  # noqa: BLE001
             safe_error = "The service could not be reached."
             await conversation_service.finish_read_tool_journal(
@@ -703,9 +843,15 @@ class ToolExecutor:
                 http_status=status_code,
                 error_message=safe_result["detail"],
             )
+            # 與 loopback 一致：4xx 進入 tool result 讓 LLM 自行修正，不 terminate turn。
             return ReadToolResult(ok=False, result_payload=safe_result, http_status=status_code)
 
-        result = project_and_redact(payload, tool.projection, self.config.tool_result_max_chars)
+        result = project_and_redact(
+            payload,
+            tool.projection,
+            self.config.tool_result_max_chars,
+            request_skip=_request_skip_from_query(query_params),
+        )
         await conversation_service.finish_read_tool_journal(journal_id=journal_id, status="succeeded", http_status=status_code, error_message=None)
         return ReadToolResult(ok=True, result_payload=result, http_status=status_code)
 
@@ -870,11 +1016,26 @@ class ToolExecutor:
                 tool, team_id=team_id, path_params=path_params, query_params=query_params,
                 body_params=body_params, jwt=jwt, conversation_key=conversation_key, files=files,
             )
-        except Exception:  # noqa: BLE001
-            return ConfirmExecutionResult(outcome_status=ToolExecutionOutcome.UNKNOWN, result_payload=project_error(0, "transport error"), http_status=None)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "assistant loopback transport error tool=%s error_type=%s",
+                tool.name,
+                type(exc).__name__,
+                exc_info=True,
+            )
+            return ConfirmExecutionResult(
+                outcome_status=ToolExecutionOutcome.UNKNOWN,
+                result_payload=project_error(0, "transport error"),
+                http_status=None,
+            )
 
         if status_code // 100 == 2:
-            result = project_and_redact(payload, tool.projection, self.config.tool_result_max_chars)
+            result = project_and_redact(
+                payload,
+                tool.projection,
+                self.config.tool_result_max_chars,
+                request_skip=_request_skip_from_query(query_params),
+            )
             semantic_outcome = _classify_batch_write_payload(tool.name, payload)
             if semantic_outcome != ToolExecutionOutcome.SUCCEEDED:
                 if result is None or result == {}:
@@ -922,11 +1083,30 @@ class ToolExecutor:
                     )
                     item = current_item
                     if status_code // 100 != 2:
-                        item["outcome"] = "unknown"
+                        # Surface child detail so UI/LLM can explain partial batches (e.g. illegal status hop).
+                        # 4xx (except timeout-ish 408) is definitive pre/post validation — not ambiguous.
+                        detail = payload.get("detail") if isinstance(payload, dict) else str(payload)
+                        is_definitive_client_error = 400 <= status_code < 500 and status_code != 408
+                        item["outcome"] = "failed" if is_definitive_client_error else "unknown"
+                        item["http_status"] = status_code
+                        if detail:
+                            item["detail"] = str(detail)[:500]
                         results.append(item)
-                        result = {"status": "unknown", "total": total, "attempted_count": len(results),
-                                  "succeeded_count": len(results) - 1, "remaining_count": total - len(results), "results": results}
-                        return ConfirmExecutionResult(ToolExecutionOutcome.UNKNOWN, result, status_code)
+                        succeeded_count = sum(1 for r in results if r.get("outcome") == "succeeded")
+                        if is_definitive_client_error and succeeded_count == 0:
+                            aggregate = ToolExecutionOutcome.FAILED
+                        else:
+                            aggregate = ToolExecutionOutcome.UNKNOWN
+                        result = {
+                            "status": aggregate,
+                            "total": total,
+                            "attempted_count": len(results),
+                            "succeeded_count": succeeded_count,
+                            "remaining_count": total - len(results),
+                            "results": results,
+                            "detail": str(detail)[:500] if detail else None,
+                        }
+                        return ConfirmExecutionResult(aggregate, result, status_code)
                     projected = project_and_redact(payload, child_tool.projection, self.config.tool_result_max_chars)
                     if projected:
                         item["result"] = projected

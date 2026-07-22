@@ -35,6 +35,13 @@ class ConversationResponse(BaseModel):
         from_attributes = True
 
 
+class AttachmentSummary(BaseModel):
+    attachment_index: int
+    original_name: str
+    content_type: Optional[str]
+    size_bytes: int
+
+
 class MessageHistoryItem(BaseModel):
     turn_seq: int
     turn_key: str
@@ -48,6 +55,7 @@ class MessageHistoryItem(BaseModel):
     tool_result: Optional[dict[str, Any]] = None
     tool_outcome: Optional[str] = None
     pending_action: Optional[dict[str, Any]] = None
+    attachments: Optional[list[AttachmentSummary]] = None
 
 
 class MessageHistoryResponse(BaseModel):

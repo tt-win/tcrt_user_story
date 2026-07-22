@@ -1,72 +1,14 @@
 let teams = [];
 let currentEditTeam = null;
-let mcpTokenListLoaded = false;
-let mcpTokenItems = [];
 let automationHubEntryEnabled = true;
 
-function toggleSyncTabVisibility(id, visible, isLi = false) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    if (isLi) {
-        el.style.display = visible ? '' : 'none';
-        return;
-    }
-    const li = el.closest('li');
-    if (li) {
-        li.style.display = visible ? '' : 'none';
-        return;
-    }
-    el.style.display = visible ? '' : 'none';
-}
+document.addEventListener('DOMContentLoaded', function() {
+    initTeamManagement();
+    applyTeamManagementUiVisibility();
+    showRelocatedFeatureNoticeIfNeeded();
+});
 
-function normalizeClientRole(role) {
-    return String(role || '').trim().toLowerCase();
-}
-
-function applyOrganizationUiVisibilityByRoleFallback() {
-    const role = normalizeClientRole(window.currentUser?.role);
-    const isSuperAdmin = role === 'super_admin' || role === 'superadmin';
-    const isAdmin = role === 'admin';
-
-    toggleSyncTabVisibility('tab-personnel-li', isAdmin || isSuperAdmin, true);
-    toggleSyncTabVisibility('tab-org', isSuperAdmin);
-    toggleSyncTabVisibility('tab-service-management', isSuperAdmin);
-    toggleSyncTabVisibility('tab-mcp-token', isSuperAdmin);
-}
-
-// 依據後端 UI 能力控制組織頁籤可視
-async function applyOrganizationUiVisibility() {
-    // 預設先隱藏需權限頁籤，避免權限配置尚未載入時誤顯示
-    toggleSyncTabVisibility('tab-org', false);
-    toggleSyncTabVisibility('tab-service-management', false);
-    toggleSyncTabVisibility('tab-mcp-token', false);
-
-    try {
-        if (!window.AuthClient) {
-            applyOrganizationUiVisibilityByRoleFallback();
-            return;
-        }
-        const resp = await window.AuthClient.fetch('/api/permissions/ui-config?page=organization');
-        if (!resp.ok) {
-            applyOrganizationUiVisibilityByRoleFallback();
-            return;
-        }
-        const json = await resp.json();
-        const map = json.components || {};
-        const hasMcpTokenRule = Object.prototype.hasOwnProperty.call(map, 'tab-mcp-token');
-        const mcpTokenVisible = hasMcpTokenRule ? !!map['tab-mcp-token'] : !!map['tab-org'];
-        // 人員管理分頁（Admin/SuperAdmin 應允許）
-        toggleSyncTabVisibility('tab-personnel-li', !!map['tab-personnel-li'], true);
-        // 進階分頁（僅 Super Admin）
-        toggleSyncTabVisibility('tab-org', !!map['tab-org']);
-        toggleSyncTabVisibility('tab-service-management', !!map['tab-service-management']);
-        toggleSyncTabVisibility('tab-mcp-token', mcpTokenVisible);
-    } catch (_) {
-        applyOrganizationUiVisibilityByRoleFallback();
-    }
-}
-
-// team-management 頁面按鈕（例如同步組織）可視控制
+// team-management 頁面按鈕（例如「組織與系統設定」連結）可視控制
 async function applyTeamManagementUiVisibility() {
     try {
         if (!window.AuthClient) return;
@@ -105,20 +47,24 @@ async function applyTeamManagementUiVisibility() {
     } catch (_) {}
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-    initTeamManagement();
-    applyOrganizationUiVisibility();
-    applyTeamManagementUiVisibility();
-});
+// 已搬遷分頁的舊錨點相容性提示：若使用者透過舊書籤/文件連結帶著
+// #tab-pane-personnel 等舊 hash 進入本頁，顯示一次性提示導向新頁面，
+// 避免誤以為功能消失（原本這些分頁掛在本頁「組織與系統設定」modal 內，
+// 現已搬至 /organization-management）。
+const RELOCATED_TAB_ANCHORS = [
+    'tab-pane-personnel',
+    'tab-pane-org',
+    'tab-pane-service-management',
+    'tab-pane-mcp-token',
+    'tab-pane-org-automation-infra',
+];
 
-// Super Admin 於「組織自動化基礎設施」切換入口開關後，即時重繪 team card
-// （隱藏／恢復「進入團隊」選單中的 Automation Hub 項目），免去手動刷新。
-window.addEventListener('automationHubEntryToggled', (event) => {
-    automationHubEntryEnabled = !!(event && event.detail && event.detail.enabled);
-    if (teams && teams.length) {
-        renderTeamCards();
-    }
-});
+function showRelocatedFeatureNoticeIfNeeded() {
+    const hash = (window.location.hash || '').replace(/^#/, '');
+    if (!RELOCATED_TAB_ANCHORS.includes(hash)) return;
+    const notice = document.getElementById('relocatedFeatureNotice');
+    if (notice) notice.classList.remove('d-none');
+}
 
 function initTeamManagement() {
     // 綁定事件監聽器
@@ -127,424 +73,22 @@ function initTeamManagement() {
     document.getElementById('saveTeamBtn').addEventListener('click', saveTeam);
     document.getElementById('validateLarkBtn').addEventListener('click', validateLarkConnection);
     // 審計記錄和團隊統計現在使用下拉選單中的 <a> 標籤，不需要額外的事件監聽器
-    document.getElementById('syncOrgBtn').addEventListener('click', openSyncModal);
-    
-    // 同步功能框事件監聽器
-    document.getElementById('startSyncBtn').addEventListener('click', () => startSyncFromModal('full'));
-    document.getElementById('startDeptSyncBtn').addEventListener('click', () => startSyncFromModal('departments'));
-    document.getElementById('startUserSyncBtn').addEventListener('click', () => startSyncFromModal('users'));
-    const refreshSyncBtn = document.getElementById('refreshSyncDataBtn');
-    if (refreshSyncBtn) refreshSyncBtn.addEventListener('click', refreshSyncModalData);
-
-    // MCP Machine Token 分頁
-    initMcpTokenTab();
+    // 「組織與系統設定」已改為導向 /organization-management 的連結（<a>），
+    // 不再是開啟本頁 modal 的按鈕，故不需要 click listener。
 
     // 載入團隊列表
     loadTeams();
 }
 
-function initMcpTokenTab() {
-    const form = document.getElementById('mcpTokenForm');
-    if (form) {
-        form.addEventListener('submit', createMcpMachineToken);
-    }
-
-    const allowAllCheckbox = document.getElementById('mcpAllowAllTeams');
-    if (allowAllCheckbox) {
-        allowAllCheckbox.addEventListener('change', syncMcpTokenTeamScopeState);
-    }
-
-    const resetBtn = document.getElementById('mcpResetTokenFormBtn');
-    if (resetBtn) {
-        resetBtn.addEventListener('click', resetMcpTokenForm);
-    }
-
-    const copyBtn = document.getElementById('mcpCopyTokenBtn');
-    if (copyBtn) {
-        copyBtn.addEventListener('click', copyMcpTokenToClipboard);
-    }
-
-    const tokenRefreshBtn = document.getElementById('mcpTokenRefreshBtn');
-    if (tokenRefreshBtn) {
-        tokenRefreshBtn.addEventListener('click', loadMcpTokens);
-    }
-
-    // 分頁首次顯示時才載入列表（lazy load）；Refresh 鈕則強制重載
-    const mcpTokenTabTrigger = document.getElementById('tab-mcp-token');
-    if (mcpTokenTabTrigger) {
-        mcpTokenTabTrigger.addEventListener('shown.bs.tab', () => {
-            if (!mcpTokenListLoaded) loadMcpTokens();
-        });
-    }
-
-    // 核發 modal：比照本專案其他 modal（org-automation-infra.js）以 JS new bootstrap.Modal
-    // 開啟，不依賴 data-bs-toggle data-API。
-    const mcpTokenCreateModalEl = document.getElementById('mcpTokenCreateModal');
-    let mcpTokenCreateModalInstance = null;
-    if (mcpTokenCreateModalEl && window.bootstrap && bootstrap.Modal) {
-        mcpTokenCreateModalInstance = new bootstrap.Modal(mcpTokenCreateModalEl);
-        // 開啟時重整可選團隊並清空表單（避免殘留上一次的一次性 token）
-        mcpTokenCreateModalEl.addEventListener('show.bs.modal', () => {
-            refreshMcpTokenTeamScopeOptions();
-            resetMcpTokenForm();
-        });
-    }
-    const mcpTokenOpenCreateBtn = document.getElementById('mcpTokenOpenCreateBtn');
-    if (mcpTokenOpenCreateBtn) {
-        mcpTokenOpenCreateBtn.addEventListener('click', () => {
-            if (mcpTokenCreateModalInstance) mcpTokenCreateModalInstance.show();
-        });
-    }
-
-    refreshMcpTokenTeamScopeOptions();
-    syncMcpTokenTeamScopeState();
-}
-
-function refreshMcpTokenTeamScopeOptions() {
-    const scopeSelect = document.getElementById('mcpTeamScopeIds');
-    if (!scopeSelect) return;
-
-    const selected = new Set(Array.from(scopeSelect.selectedOptions).map((option) => option.value));
-    const availableTeams = Array.isArray(teams) ? [...teams] : [];
-    availableTeams.sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
-
-    if (availableTeams.length === 0) {
-        const noOptionsText = getI18n('mcpToken.noTeamOptions', '目前沒有可選擇的團隊');
-        scopeSelect.innerHTML = `<option value="" disabled>${escapeHtml(noOptionsText)}</option>`;
-        scopeSelect.disabled = true;
-        return;
-    }
-
-    scopeSelect.innerHTML = availableTeams
-        .map((team) => `<option value="${team.id}">${escapeHtml(team.name || `Team ${team.id}`)} (#${team.id})</option>`)
-        .join('');
-
-    Array.from(scopeSelect.options).forEach((option) => {
-        option.selected = selected.has(option.value);
-    });
-
-    syncMcpTokenTeamScopeState();
-}
-
-function syncMcpTokenTeamScopeState() {
-    const allowAllCheckbox = document.getElementById('mcpAllowAllTeams');
-    const scopeSelect = document.getElementById('mcpTeamScopeIds');
-    const hintEl = document.getElementById('mcpTeamScopeHint');
-    if (!allowAllCheckbox || !scopeSelect) return;
-
-    const hasTeams = Array.isArray(teams) && teams.length > 0;
-    scopeSelect.disabled = allowAllCheckbox.checked || !hasTeams;
-    if (allowAllCheckbox.checked) {
-        Array.from(scopeSelect.options).forEach((option) => {
-            option.selected = false;
-        });
-    }
-
-    if (hintEl) {
-        const key = allowAllCheckbox.checked ? 'mcpToken.teamScopeIgnoredHint' : 'mcpToken.teamScopeHint';
-        const fallback = allowAllCheckbox.checked
-            ? '已啟用所有團隊，team scope 將被忽略。'
-            : '未啟用「所有團隊」時，至少選擇一個團隊。';
-        hintEl.textContent = getI18n(key, fallback);
-    }
-}
-
-function resetMcpTokenForm() {
-    const form = document.getElementById('mcpTokenForm');
-    if (form) form.reset();
-    syncMcpTokenTeamScopeState();
-    hideMcpTokenResult();
-}
-
-function hideMcpTokenResult() {
-    const resultBox = document.getElementById('mcpTokenResult');
-    const tokenValue = document.getElementById('mcpTokenValue');
-    const tokenMeta = document.getElementById('mcpTokenMeta');
-    if (tokenValue) tokenValue.textContent = '';
-    if (tokenMeta) tokenMeta.textContent = '';
-    if (resultBox) resultBox.classList.add('d-none');
-}
-
-function showMcpTokenResult(data) {
-    const resultBox = document.getElementById('mcpTokenResult');
-    const tokenValue = document.getElementById('mcpTokenValue');
-    const tokenMeta = document.getElementById('mcpTokenMeta');
-    if (!resultBox || !tokenValue || !tokenMeta) return;
-
-    tokenValue.textContent = data.raw_token || '';
-    const createdLabel = getI18n('mcpToken.createdAt', '建立時間');
-    const expiresLabel = getI18n('mcpToken.expiresAt', '到期時間');
-    const neverExpires = getI18n('mcpToken.neverExpires', '永不過期');
-    const createdText = formatIsoDatetime(data.created_at);
-    const expiresText = data.expires_at ? formatIsoDatetime(data.expires_at) : neverExpires;
-    tokenMeta.textContent = `${createdLabel}: ${createdText} | ${expiresLabel}: ${expiresText}`;
-
-    resultBox.classList.remove('d-none');
-}
-
-function formatIsoDatetime(rawValue) {
-    if (!rawValue) return '-';
-    const parsed = new Date(rawValue);
-    if (Number.isNaN(parsed.getTime())) return rawValue;
-    return parsed.toLocaleString();
-}
-
-function extractApiErrorMessage(payload) {
-    if (!payload) return '';
-    if (typeof payload === 'string') return payload;
-    if (typeof payload.message === 'string' && payload.message.trim()) return payload.message;
-
-    const detail = payload.detail;
-    if (typeof detail === 'string') return detail;
-    if (detail && typeof detail === 'object') {
-        if (typeof detail.message === 'string' && detail.message.trim()) return detail.message;
-        if (typeof detail.code === 'string' && detail.code.trim()) return detail.code;
-    }
-    return '';
-}
-
-async function createMcpMachineToken(event) {
-    if (event) event.preventDefault();
-
-    const nameInput = document.getElementById('mcpTokenName');
-    const descInput = document.getElementById('mcpTokenDescription');
-    const expiresInput = document.getElementById('mcpTokenExpiresDays');
-    const allowAllCheckbox = document.getElementById('mcpAllowAllTeams');
-    const scopeSelect = document.getElementById('mcpTeamScopeIds');
-    const submitBtn = document.getElementById('mcpCreateTokenBtn');
-    if (!nameInput || !submitBtn || !allowAllCheckbox || !scopeSelect || !expiresInput || !descInput) return;
-
-    const name = (nameInput.value || '').trim();
-    if (!name) {
-        AppUtils.showError(getI18n('mcpToken.requiredName', '請先填寫 token 名稱'));
-        return;
-    }
-
-    const allowAllTeams = !!allowAllCheckbox.checked;
-    const teamScopeIds = Array.from(scopeSelect.selectedOptions)
-        .map((option) => Number(option.value))
-        .filter((value) => Number.isInteger(value) && value > 0);
-
-    if (!allowAllTeams && teamScopeIds.length === 0) {
-        AppUtils.showError(getI18n('mcpToken.scopeRequired', '請至少選擇一個可存取團隊'));
-        return;
-    }
-
-    const expiresText = (expiresInput.value || '').trim();
-    const expiresInDays = expiresText ? Number(expiresText) : null;
-    if (expiresText && (!Number.isInteger(expiresInDays) || expiresInDays <= 0)) {
-        AppUtils.showError(getI18n('mcpToken.invalidExpiresDays', '有效天數需為正整數'));
-        return;
-    }
-
-    const originalHtml = submitBtn.innerHTML;
-    submitBtn.disabled = true;
-    const progressLabel = escapeHtml(getI18n('mcpToken.createInProgress', '產生中...'));
-    submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i><span>${progressLabel}</span>`;
-
-    try {
-        const response = await window.AuthClient.fetch('/api/organization/mcp/machine-tokens', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify({
-                name,
-                description: (descInput.value || '').trim() || null,
-                allow_all_teams: allowAllTeams,
-                team_scope_ids: teamScopeIds,
-                expires_in_days: expiresInDays
-            })
-        });
-
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok || !payload.success || !payload.data) {
-            const message = extractApiErrorMessage(payload) || `${response.status}`;
-            throw new Error(message);
-        }
-
-        showMcpTokenResult(payload.data);
-        AppUtils.showSuccess(getI18n('mcpToken.createSuccess', 'MCP machine token 已建立'));
-
-        const resetForm = document.getElementById('mcpTokenForm');
-        if (resetForm) resetForm.reset();
-        syncMcpTokenTeamScopeState();
-        loadMcpTokens();
-    } catch (error) {
-        console.error('建立 MCP machine token 失敗:', error);
-        const prefix = getI18n('mcpToken.createFailedPrefix', '建立 token 失敗');
-        AppUtils.showError(`${prefix}：${error.message}`);
-    } finally {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = originalHtml;
-        if (window.i18n && window.i18n.isReady()) {
-            window.i18n.retranslate(submitBtn);
-        }
-    }
-}
-
-async function copyMcpTokenToClipboard() {
-    const tokenValue = document.getElementById('mcpTokenValue');
-    const value = tokenValue ? (tokenValue.textContent || '').trim() : '';
-    if (!value) return;
-
-    try {
-        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-            await navigator.clipboard.writeText(value);
-            AppUtils.showSuccess(getI18n('mcpToken.copySuccess', '已複製 token'));
-            return;
-        }
-        throw new Error('Clipboard API unavailable');
-    } catch (_) {
-        if (AppUtils && typeof AppUtils.showCopyModal === 'function') {
-            AppUtils.showCopyModal(value, {
-                title: getI18n('mcpToken.copyModalTitle', '手動複製 Token'),
-                instruction: getI18n('mcpToken.copyModalInstruction', '請使用 Ctrl/Cmd + C 進行複製'),
-                urlLabel: getI18n('mcpToken.rawTokenLabel', 'Raw Token')
-            });
-            return;
-        }
-        AppUtils.showWarning(getI18n('mcpToken.copyFallback', '無法直接複製，請手動複製 token'));
-    }
-}
-
-async function loadMcpTokens() {
-    const loadingEl = document.getElementById('mcpTokenListLoading');
-    const emptyEl = document.getElementById('mcpTokenListEmpty');
-    const tableWrap = document.getElementById('mcpTokenTableWrap');
-    const tbody = document.getElementById('mcpTokenTableBody');
-    if (!tbody) return;
-
-    mcpTokenListLoaded = true;
-
-    if (loadingEl) loadingEl.classList.remove('d-none');
-    if (emptyEl) emptyEl.classList.add('d-none');
-    if (tableWrap) tableWrap.classList.add('d-none');
-
-    try {
-        if (!window.AuthClient) throw new Error('AuthClient 尚未初始化');
-        const response = await window.AuthClient.fetch('/api/organization/mcp/machine-tokens');
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok || !payload.success || !payload.data) {
-            const message = extractApiErrorMessage(payload) || `${response.status}`;
-            throw new Error(message);
-        }
-
-        mcpTokenItems = Array.isArray(payload.data.items) ? payload.data.items : [];
-        tbody.innerHTML = mcpTokenItems.map(renderMcpTokenRow).join('');
-        bindMcpTokenRowActions();
-
-        if (loadingEl) loadingEl.classList.add('d-none');
-        if (mcpTokenItems.length === 0) {
-            if (emptyEl) emptyEl.classList.remove('d-none');
-            if (tableWrap) tableWrap.classList.add('d-none');
-        } else if (tableWrap) {
-            tableWrap.classList.remove('d-none');
-        }
-    } catch (error) {
-        console.error('載入 MCP machine token 列表失敗:', error);
-        if (loadingEl) loadingEl.classList.add('d-none');
-        if (tableWrap) tableWrap.classList.add('d-none');
-        if (emptyEl) emptyEl.classList.add('d-none');
-        const loadFailedLabel = getI18n('mcpToken.listLoadFailed', '載入 token 列表失敗');
-        AppUtils.showError(`${loadFailedLabel}：${error.message}`);
-    }
-}
-
-function deriveMcpTokenDisplayStatus(item) {
-    if (String(item.status || '').toLowerCase() === 'revoked') return 'revoked';
-    if (item.expires_at) {
-        const expires = new Date(item.expires_at);
-        if (!Number.isNaN(expires.getTime()) && expires.getTime() <= Date.now()) {
-            return 'expired';
-        }
-    }
-    return 'active';
-}
-
-function renderMcpTokenStatusBadge(status) {
-    const map = {
-        active: { cls: 'bg-success', key: 'mcpToken.statusActive', fallback: 'Active' },
-        revoked: { cls: 'bg-secondary', key: 'mcpToken.statusRevoked', fallback: 'Revoked' },
-        expired: { cls: 'bg-warning text-dark', key: 'mcpToken.statusExpired', fallback: 'Expired' }
-    };
-    const conf = map[status] || map.active;
-    return `<span class="badge ${conf.cls}">${escapeHtml(getI18n(conf.key, conf.fallback))}</span>`;
-}
-
-function renderMcpTokenRow(item) {
-    const status = deriveMcpTokenDisplayStatus(item);
-    const name = escapeHtml(item.name || '');
-    const scope = item.allow_all_teams
-        ? escapeHtml(getI18n('mcpToken.scopeAllTeams', '所有團隊'))
-        : (Array.isArray(item.team_scope_ids) && item.team_scope_ids.length
-            ? escapeHtml(item.team_scope_ids.map((id) => `#${id}`).join(', '))
-            : '-');
-    const neverExpires = getI18n('mcpToken.neverExpires', '永不過期');
-    const neverUsed = getI18n('mcpToken.neverUsed', '從未');
-    const expires = item.expires_at ? escapeHtml(formatIsoDatetime(item.expires_at)) : escapeHtml(neverExpires);
-    const lastUsed = item.last_used_at ? escapeHtml(formatIsoDatetime(item.last_used_at)) : escapeHtml(neverUsed);
-    const created = escapeHtml(formatIsoDatetime(item.created_at));
-
-    let actions = '';
-    if (status !== 'revoked') {
-        const revokeLabel = escapeHtml(getI18n('mcpToken.revokeButton', '撤銷'));
-        actions = `<button type="button" class="btn btn-outline-danger btn-sm mcp-token-revoke-btn" data-credential-id="${item.credential_id}"><i class="fas fa-ban me-1"></i>${revokeLabel}</button>`;
-    }
-
-    return `<tr>
-        <td>${name}</td>
-        <td>${renderMcpTokenStatusBadge(status)}</td>
-        <td>${scope}</td>
-        <td>${expires}</td>
-        <td>${lastUsed}</td>
-        <td>${created}</td>
-        <td class="text-end">${actions}</td>
-    </tr>`;
-}
-
-function bindMcpTokenRowActions() {
-    document.querySelectorAll('#mcpTokenTableBody .mcp-token-revoke-btn').forEach((btn) => {
-        btn.addEventListener('click', () => revokeMcpToken(btn.getAttribute('data-credential-id')));
-    });
-}
-
-async function revokeMcpToken(credentialId) {
-    const item = mcpTokenItems.find((entry) => String(entry.credential_id) === String(credentialId));
-    const name = item && item.name ? item.name : `#${credentialId}`;
-    const confirmTpl = getI18n('mcpToken.revokeConfirm', '確定要撤銷 token「{name}」嗎？撤銷後該 token 將立即失效且無法復原。');
-    if (!window.confirm(confirmTpl.replace('{name}', name))) return;
-
-    try {
-        if (!window.AuthClient) throw new Error('AuthClient 尚未初始化');
-        const response = await window.AuthClient.fetch(`/api/organization/mcp/machine-tokens/${encodeURIComponent(credentialId)}`, {
-            method: 'DELETE',
-            headers: { 'Accept': 'application/json' }
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok || !payload.success) {
-            const message = extractApiErrorMessage(payload) || `${response.status}`;
-            throw new Error(message);
-        }
-        AppUtils.showSuccess(getI18n('mcpToken.revokeSuccess', 'Token 已撤銷'));
-        await loadMcpTokens();
-    } catch (error) {
-        console.error('撤銷 MCP machine token 失敗:', error);
-        const prefix = getI18n('mcpToken.revokeFailedPrefix', '撤銷 token 失敗');
-        AppUtils.showError(`${prefix}：${error.message}`);
-    }
-}
-
 async function loadTeams() {
     try {
         showLoading();
-        
+
         // 確保 AuthClient 已經初始化
         if (!window.AuthClient) {
             throw new Error('AuthClient 尚未初始化');
         }
-        
+
         automationHubEntryEnabled = await AppUtils.getAutomationHubEntryEnabled();
 
         const response = await window.AuthClient.fetch('/api/teams/');
@@ -554,8 +98,7 @@ async function loadTeams() {
 
         teams = await response.json();
         renderTeams();
-        refreshMcpTokenTeamScopeOptions();
-        
+
     } catch (error) {
         console.error('Load teams failed:', error);
         if (AppUtils && AppUtils.showError) {
@@ -565,7 +108,6 @@ async function loadTeams() {
             console.error('AppUtils not available:', error.message);
         }
         showNoTeams();
-        refreshMcpTokenTeamScopeOptions();
     } finally {
         hideLoading();
     }
@@ -576,7 +118,7 @@ function renderTeams() {
         showNoTeams();
         return;
     }
-    
+
     showTeamsList();
     renderTeamCards();
 }
@@ -620,7 +162,6 @@ async function showNoTeams() {
     if (container) container.innerHTML = '';
 
     teams = [];
-    refreshMcpTokenTeamScopeOptions();
 }
 
 function showTeamsList() {
@@ -631,14 +172,14 @@ function showTeamsList() {
 
 function renderTeamCards() {
     const container = document.getElementById('teams-container');
-    
+
     const teamsHtml = teams.map(team => `
         <div class="col-md-6 col-lg-4 mb-4">
             <div class="card h-100 team-card">
                 <div class="card-body d-flex flex-column h-100">
                     <div class="d-flex align-items-start mb-3">
                         <div class="flex-shrink-0 me-3">
-                            <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" 
+                            <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center"
                                  style="width: 48px; height: 48px; font-size: 18px; font-weight: bold;">
                                 ${getTeamInitials(team.name)}
                             </div>
@@ -654,8 +195,8 @@ function renderTeamCards() {
                         <div class="mb-2">
                             <div class="d-flex align-items-center mb-1">
                                 <i class="fas fa-table me-2 text-success"></i>
-                                <small class="text-muted">Lark: ${team.is_lark_configured ? 
-                                    ((window.i18n && window.i18n.isReady()) ? window.i18n.t('team.configured') : '已設定') : 
+                                <small class="text-muted">Lark: ${team.is_lark_configured ?
+                                    ((window.i18n && window.i18n.isReady()) ? window.i18n.t('team.configured') : '已設定') :
                                     ((window.i18n && window.i18n.isReady()) ? window.i18n.t('team.notConfigured') : '未設定')}</small>
                             </div>
                         </div>
@@ -705,7 +246,7 @@ function renderTeamCards() {
             </div>
         </div>
     `).join('');
-    
+
     container.innerHTML = teamsHtml;
 
     // Retranslate the newly added content only within container
@@ -736,7 +277,7 @@ function showCreateTeamModal() {
     const modalTitle = window.i18n ? window.i18n.t('team.createTeam') : '新增團隊';
     document.getElementById('teamModalLabel').textContent = modalTitle;
     document.getElementById('teamForm').reset();
-    
+
     const modal = new bootstrap.Modal(document.getElementById('teamModal'));
     modal.show();
 }
@@ -744,18 +285,18 @@ function showCreateTeamModal() {
 function editTeam(teamId) {
     const team = teams.find(t => t.id === teamId);
     if (!team) return;
-    
+
     currentEditTeam = team;
     const modalTitle = window.i18n ? window.i18n.t('team.editTeam') : '編輯團隊';
     document.getElementById('teamModalLabel').textContent = modalTitle;
-    
+
     // 填入表單資料
     document.getElementById('teamName').value = team.name;
     document.getElementById('teamDescription').value = team.description || '';
     document.getElementById('wikiToken').value = team.lark_config.wiki_token;
     document.getElementById('testCaseTableId').value = team.lark_config.test_case_table_id;
-    
-    
+
+
     const modal = new bootstrap.Modal(document.getElementById('teamModal'));
     modal.show();
 }
@@ -763,7 +304,7 @@ function editTeam(teamId) {
 async function saveTeam() {
     const form = document.getElementById('teamForm');
     const formData = new FormData(form);
-    
+
     // 構建團隊資料
     const teamData = {
         name: formData.get('name'),
@@ -776,23 +317,23 @@ async function saveTeam() {
             default_priority: 'Medium'
         }
     };
-    
+
     // 驗證必填欄位
     if (!teamData.name || !teamData.lark_config.wiki_token || !teamData.lark_config.test_case_table_id) {
         const errorMsg = window.i18n ? window.i18n.t('messages.fillRequiredFields') : '請填寫所有必填欄位';
         AppUtils.showError(errorMsg);
         return;
     }
-    
+
     try {
         let url = '/api/teams/';
         let method = 'POST';
-        
+
         if (currentEditTeam) {
             url = `/api/teams/${currentEditTeam.id}`;
             method = 'PUT';
         }
-        
+
         const response = await window.AuthClient.fetch(url, {
             method: method,
             headers: {
@@ -801,7 +342,7 @@ async function saveTeam() {
             },
             body: JSON.stringify(teamData)
         });
-        
+
         if (!response.ok) {
             let errMsg = '';
             try {
@@ -824,19 +365,19 @@ async function saveTeam() {
             const defaultMsg = window.i18n ? window.i18n.t('messages.saveFailed') : '儲存失敗';
             throw new Error(errMsg || `${defaultMsg} (HTTP ${response.status})`);
         }
-        
-        const successMsg = currentEditTeam ? 
+
+        const successMsg = currentEditTeam ?
             (window.i18n ? window.i18n.t('team.teamUpdated') : '團隊更新成功') :
             (window.i18n ? window.i18n.t('team.teamSaved') : '團隊建立成功');
         AppUtils.showSuccess(successMsg);
-        
+
         // 關閉模態視窗
         const modal = bootstrap.Modal.getInstance(document.getElementById('teamModal'));
         modal.hide();
-        
+
         // 重新載入團隊列表
         await loadTeams();
-        
+
     } catch (error) {
         console.error('Save team failed:', error);
         const errorMsg = window.i18n ? window.i18n.t('messages.saveFailed') : '儲存失敗';
@@ -848,18 +389,18 @@ async function validateLarkConnection() {
     const wikiToken = document.getElementById('wikiToken').value;
     const testCaseTableId = document.getElementById('testCaseTableId').value;
     const resultDiv = document.getElementById('larkValidationResult');
-    
+
     if (!wikiToken || !testCaseTableId) {
         const warningMsg = window.i18n ? window.i18n.t('team.pleaseEnterToken') : '請先填寫 Wiki Token 和 Test Case 表格 ID';
         showValidationMessage(warningMsg, 'warning');
         return;
     }
-    
+
     const validateBtn = document.getElementById('validateLarkBtn');
     validateBtn.disabled = true;
     const validatingMsg = window.i18n ? window.i18n.t('team.validating') : '驗證中...';
     validateBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${validatingMsg}`;
-    
+
     try {
         const response = await window.AuthClient.fetch('/api/teams/validate', {
             method: 'POST',
@@ -877,9 +418,9 @@ async function validateLarkConnection() {
                 }
             })
         });
-        
+
         const result = await response.json();
-        
+
         if (result.valid) {
             const successMsg = window.i18n ? window.i18n.t('team.connectionValid') : '連線驗證成功';
             showValidationMessage(successMsg, 'success');
@@ -887,7 +428,7 @@ async function validateLarkConnection() {
             const failMsg = window.i18n ? window.i18n.t('team.connectionInvalid') : '連線驗證失敗';
             showValidationMessage(failMsg, 'danger');
         }
-        
+
     } catch (error) {
         console.error('Validation failed:', error);
         const errorMsg = window.i18n ? window.i18n.t('team.connectionError') : '驗證過程發生錯誤';
@@ -896,17 +437,6 @@ async function validateLarkConnection() {
         validateBtn.disabled = false;
         const validateText = window.i18n ? window.i18n.t('team.validateConnection') : '驗證 Lark 連線';
         validateBtn.innerHTML = `<i class="fas fa-check me-2"></i>${validateText}`;
-    }
-}
-
-function selectTeam(teamId) {
-    const team = teams.find(t => t.id === teamId);
-    if (!team) return;
-
-    // 儲存選擇的團隊，直接導向（不顯示 Toast）
-    if (AppUtils && AppUtils.setCurrentTeam) {
-        AppUtils.setCurrentTeam(team);
-        window.location.href = '/test-case-management';
     }
 }
 
@@ -996,7 +526,7 @@ async function performDeleteTeam(teamId) {
 
 function getTeamInitials(name) {
     if (!name) return 'T';
-    
+
     return name
         .split(' ')
         .map(word => word.charAt(0).toUpperCase())
@@ -1006,7 +536,7 @@ function getTeamInitials(name) {
 
 function showValidationMessage(message, type) {
     const resultDiv = document.getElementById('larkValidationResult');
-    
+
     // 設定顏色和圖示
     let iconClass, textClass;
     switch(type) {
@@ -1026,10 +556,10 @@ function showValidationMessage(message, type) {
             iconClass = 'fas fa-info-circle';
             textClass = 'text-info';
     }
-    
+
     // 顯示訊息
     resultDiv.innerHTML = `<small class="${textClass}"><i class="${iconClass} me-1"></i>${message}</small>`;
-    
+
     // 3秒後自動清除
     setTimeout(() => {
         resultDiv.innerHTML = '';
@@ -1037,7 +567,8 @@ function showValidationMessage(message, type) {
 }
 
 function escapeHtml(text) {
-    if (!text) return '';
+    // Coerce non-strings (ids are often numbers). Do not use !text — 0 is valid.
+    if (text == null || text === '') return '';
     const map = {
         '&': '&amp;',
         '<': '&lt;',
@@ -1045,7 +576,7 @@ function escapeHtml(text) {
         '"': '&quot;',
         "'": '&#039;'
     };
-    return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+    return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
 }
 
 // 更新頁面標題翻譯
@@ -1058,822 +589,3 @@ function updatePageTitle() {
 // 監聽 i18n 初始化和語言變更事件
 document.addEventListener('i18nReady', updatePageTitle);
 document.addEventListener('languageChanged', updatePageTitle);
-
-// ===== 組織架構同步功能 =====
-
-// ===== 同步功能框模態視窗管理 =====
-
-// 模態視窗狀態管理
-let syncModalInstance = null;
-let syncPollingInterval = null;
-let scheduledServicesState = {
-    services: [],
-    loading: false,
-};
-
-// 開啟同步功能框
-async function openSyncModal() {
-
-    const modal = document.getElementById('syncModal');
-    if (!syncModalInstance) {
-        syncModalInstance = new bootstrap.Modal(modal);
-        
-        // 監聽模態框關閉事件，保存狀態到localStorage
-        modal.addEventListener('hidden.bs.modal', saveSyncModalState);
-        modal.addEventListener('shown.bs.modal', loadSyncModalState);
-    }
-
-    // modal 開啟前重新套用一次分頁可視權限（避免載入時序造成誤顯示）
-    await applyOrganizationUiVisibility();
-
-    // 載入模態框數據
-    await loadSyncModalData();
-
-    // 套用翻譯至整個 Modal（包含所有分頁，即使是隱藏的）
-    try {
-        if (window.i18n && window.i18n.isReady()) {
-            console.log('[Modal Translation] Translating entire modal');
-            // 強制翻譯所有分頁內容，包括隱藏的
-            window.i18n.retranslate(modal);
-        } else {
-            console.warn('[Modal Translation] i18n not ready');
-        }
-    } catch (e) {
-        console.error('[Modal Translation] Error:', e);
-    }
-    
-    syncModalInstance.show();
-}
-
-// 載入同步功能框所有數據
-async function loadSyncModalData() {
-    await Promise.all([
-        loadSyncStatus(),
-        loadOrgStats(),
-        loadScheduledServices(),
-    ]);
-}
-
-async function loadScheduledServices() {
-    const tabBtn = document.getElementById('tab-service-management');
-    if (!tabBtn || tabBtn.style.display === 'none' || tabBtn.offsetParent === null) {
-        return;
-    }
-
-    const loading = document.getElementById('scheduledServicesLoading');
-    const empty = document.getElementById('scheduledServicesEmpty');
-    const list = document.getElementById('scheduledServicesList');
-    const summary = document.getElementById('scheduledServicesSummary');
-    const schedulerState = document.getElementById('scheduledSchedulerState');
-    if (!loading || !empty || !list || !summary || !schedulerState) return;
-
-    scheduledServicesState.loading = true;
-    loading.classList.remove('d-none');
-    empty.classList.add('d-none');
-    list.innerHTML = '';
-    setDynamicI18nText(summary, 'scheduledServices.summaryLoading', '正在載入排程服務...');
-    setDynamicI18nText(schedulerState, 'scheduledServices.schedulerUnknown', '狀態未知');
-    schedulerState.className = 'badge rounded-pill text-bg-secondary';
-
-    try {
-        const response = await window.AuthClient.fetch('/api/organization/scheduled-services');
-        const payload = await response.json();
-        if (!response.ok || !payload.success) {
-            throw new Error(extractApiErrorMessage(payload) || `HTTP ${response.status}`);
-        }
-
-        const services = Array.isArray(payload.data?.services) ? payload.data.services : [];
-        scheduledServicesState.services = services;
-
-        setDynamicI18nText(
-            schedulerState,
-            payload.data?.scheduler_running ? 'scheduledServices.schedulerRunning' : 'scheduledServices.schedulerStopped',
-            payload.data?.scheduler_running ? 'Scheduler 運行中' : 'Scheduler 未啟動'
-        );
-        schedulerState.className = payload.data?.scheduler_running
-            ? 'badge rounded-pill text-bg-success'
-            : 'badge rounded-pill text-bg-secondary';
-
-        if (services.length === 0) {
-            empty.classList.remove('d-none');
-            setDynamicI18nText(empty, 'scheduledServices.empty', '目前沒有可排程服務');
-            setDynamicI18nText(summary, 'scheduledServices.summaryEmpty', '目前沒有可排程服務');
-            return;
-        }
-
-        setDynamicI18nText(summary, 'scheduledServices.summaryReady', '可管理 {count} 個排程服務', { count: services.length });
-        list.innerHTML = services.map(renderScheduledServiceCard).join('');
-    } catch (error) {
-        console.error('載入排程服務失敗:', error);
-        empty.classList.remove('d-none');
-        empty.removeAttribute('data-i18n');
-        empty.removeAttribute('data-i18n-params');
-        empty.innerHTML = `<i class="fas fa-exclamation-circle me-2 text-danger"></i>${escapeHtml(getI18n('scheduledServices.loadFailed', '載入排程服務失敗'))}`;
-        setDynamicI18nText(summary, 'scheduledServices.summaryError', '無法取得排程服務資料');
-        setDynamicI18nText(schedulerState, 'scheduledServices.schedulerUnknown', '狀態未知');
-        schedulerState.className = 'badge rounded-pill text-bg-secondary';
-    } finally {
-        scheduledServicesState.loading = false;
-        loading.classList.add('d-none');
-    }
-}
-
-function renderScheduledServiceCard(service) {
-    const statusClass = getScheduledServiceStatusClass(service.last_run_status, service.is_running);
-    const statusText = getScheduledServiceStatusText(service.last_run_status, service.is_running);
-    const enabledBadge = service.enabled
-        ? `<span class="badge rounded-pill text-bg-primary-subtle text-primary-emphasis">${escapeHtml(getI18n('scheduledServices.enabled', '已啟用'))}</span>`
-        : `<span class="badge rounded-pill text-bg-light text-secondary">${escapeHtml(getI18n('scheduledServices.disabled', '未啟用'))}</span>`;
-    const runningBadge = service.is_running
-        ? `<span class="badge rounded-pill text-bg-warning-subtle text-warning-emphasis">${escapeHtml(getI18n('scheduledServices.running', '執行中'))}</span>`
-        : '';
-
-    return `
-        <section class="scheduled-service-card" data-service-key="${escapeHtml(service.service_key)}">
-            <div class="scheduled-service-card__head">
-                <div>
-                    <div class="scheduled-service-card__eyebrow">${escapeHtml(service.service_key)}</div>
-                    <h6 class="scheduled-service-card__title mb-1">${escapeHtml(service.display_name || service.service_key)}</h6>
-                    <p class="scheduled-service-card__desc mb-0">${escapeHtml(service.description || getI18n('scheduledServices.noDescription', '尚未提供描述'))}</p>
-                </div>
-                <div class="scheduled-service-card__badges">
-                    ${enabledBadge}
-                    ${runningBadge}
-                    <span class="badge rounded-pill ${statusClass}">${escapeHtml(statusText)}</span>
-                </div>
-            </div>
-            <div class="scheduled-service-card__grid">
-                <div class="scheduled-service-card__metric">
-                    <span class="scheduled-service-card__label">${escapeHtml(getI18n('scheduledServices.nextRun', '下次執行'))}</span>
-                    <strong>${escapeHtml(formatIsoDatetime(service.next_run || ''))}</strong>
-                </div>
-                <div class="scheduled-service-card__metric">
-                    <span class="scheduled-service-card__label">${escapeHtml(getI18n('scheduledServices.lastRun', '上次執行'))}</span>
-                    <strong>${escapeHtml(formatIsoDatetime(service.last_run_finished_at || service.last_run || ''))}</strong>
-                </div>
-                <div class="scheduled-service-card__metric">
-                    <span class="scheduled-service-card__label">${escapeHtml(getI18n('scheduledServices.runTime', '每日時間'))}</span>
-                    <strong>${escapeHtml(service.run_at_time || '--:--')}</strong>
-                </div>
-                <div class="scheduled-service-card__metric">
-                    <span class="scheduled-service-card__label">${escapeHtml(getI18n('scheduledServices.lastMessage', '最近訊息'))}</span>
-                    <strong>${escapeHtml(service.last_run_message || service.last_error || getI18n('scheduledServices.noRecentMessage', '尚無執行紀錄'))}</strong>
-                </div>
-            </div>
-            <form class="scheduled-service-card__form" data-service-form="${escapeHtml(service.service_key)}">
-                <label class="form-check form-switch mb-0">
-                    <input class="form-check-input" type="checkbox" name="enabled" ${service.enabled ? 'checked' : ''}>
-                    <span class="form-check-label">${escapeHtml(getI18n('scheduledServices.enableSchedule', '啟用每日排程'))}</span>
-                </label>
-                <div class="scheduled-service-card__timebox">
-                    <label class="form-label mb-1" for="scheduled-time-${escapeHtml(service.service_key)}">${escapeHtml(getI18n('scheduledServices.timeLabel', '執行時間'))}</label>
-                    <input type="time" class="form-control" id="scheduled-time-${escapeHtml(service.service_key)}" name="run_at_time" value="${escapeHtml(service.run_at_time || '02:00')}">
-                </div>
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-clock me-2"></i><span>${escapeHtml(getI18n('scheduledServices.saveSchedule', '儲存排程'))}</span>
-                </button>
-            </form>
-            <div class="scheduled-service-card__hint text-muted small">${escapeHtml(getI18n('scheduledServices.timeHint', '第一版支援每日固定時間排程；多副本部署需額外處理 leader lock。'))}</div>
-        </section>
-    `;
-}
-
-function getScheduledServiceStatusClass(status, isRunning) {
-    if (isRunning) return 'text-bg-warning-subtle text-warning-emphasis';
-    switch (String(status || '').toLowerCase()) {
-        case 'completed':
-            return 'text-bg-success-subtle text-success-emphasis';
-        case 'failed':
-            return 'text-bg-danger-subtle text-danger-emphasis';
-        case 'interrupted':
-            return 'text-bg-secondary';
-        case 'running':
-            return 'text-bg-warning-subtle text-warning-emphasis';
-        default:
-            return 'text-bg-light text-secondary';
-    }
-}
-
-function getScheduledServiceStatusText(status, isRunning) {
-    if (isRunning) return getI18n('scheduledServices.running', '執行中');
-    switch (String(status || '').toLowerCase()) {
-        case 'completed':
-            return getI18n('scheduledServices.statusCompleted', '最近成功');
-        case 'failed':
-            return getI18n('scheduledServices.statusFailed', '最近失敗');
-        case 'interrupted':
-            return getI18n('scheduledServices.statusInterrupted', '啟動時回收');
-        case 'running':
-            return getI18n('scheduledServices.running', '執行中');
-        default:
-            return getI18n('scheduledServices.statusUnknown', '尚未執行');
-    }
-}
-
-async function handleScheduledServiceSubmit(event) {
-    event.preventDefault();
-    const form = event.target;
-    const card = form.closest('[data-service-key]');
-    const serviceKey = card?.dataset?.serviceKey;
-    if (!serviceKey) return;
-
-    const submitBtn = form.querySelector('button[type="submit"]');
-    const originalHtml = submitBtn ? submitBtn.innerHTML : '';
-    if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${escapeHtml(getI18n('scheduledServices.saving', '儲存中...'))}`;
-    }
-
-    const enabled = !!form.querySelector('input[name="enabled"]')?.checked;
-    const runAtTime = form.querySelector('input[name="run_at_time"]')?.value || '';
-
-    try {
-        const response = await window.AuthClient.fetch(`/api/organization/scheduled-services/${encodeURIComponent(serviceKey)}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                enabled,
-                run_at_time: runAtTime,
-            })
-        });
-        const payload = await response.json();
-        if (!response.ok || !payload.success) {
-            throw new Error(extractApiErrorMessage(payload) || `HTTP ${response.status}`);
-        }
-
-        AppUtils.showSuccess(getI18n('scheduledServices.saveSuccess', '排程設定已更新'));
-        await loadScheduledServices();
-    } catch (error) {
-        console.error('更新排程服務失敗:', error);
-        AppUtils.showError(`${getI18n('scheduledServices.saveFailed', '更新排程設定失敗')}: ${error.message}`);
-    } finally {
-        if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = originalHtml;
-        }
-    }
-}
-
-// 重新整理同步功能框數據
-async function refreshSyncModalData() {
-    const refreshBtn = document.getElementById('refreshSyncDataBtn');
-    const originalHtml = refreshBtn.innerHTML;
-    
-    refreshBtn.disabled = true;
-    refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>重新整理中...';
-    
-    try {
-        await loadSyncModalData();
-    } finally {
-        refreshBtn.disabled = false;
-        refreshBtn.innerHTML = originalHtml;
-    }
-}
-
-// 載入同步狀態
-async function loadSyncStatus() {
-    const loadingDiv = document.getElementById('syncStatusLoading');
-    const idleDiv = document.getElementById('syncStatusIdle');
-    const runningDiv = document.getElementById('syncStatusRunning');
-    
-    // 顯示載入狀態（使用 Bootstrap d-none 以避免 d-flex !important 影響）
-    loadingDiv.classList.remove('d-none');
-    idleDiv.classList.add('d-none');
-    runningDiv.classList.add('d-none');
-    
-    try {
-        const response = await window.AuthClient.fetch('/api/organization/sync/status');
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-        
-        const result = await response.json();
-        if (result.success && result.data) {
-            const data = result.data;
-            
-            loadingDiv.classList.add('d-none');
-            
-            if (data.is_syncing) {
-                // 同步進行中
-                setSyncStatus('running');
-                
-                // 更新進度信息
-                const progressText = document.getElementById('syncProgressText');
-                const progressBar = document.getElementById('syncProgressBar');
-                
-                // 僅顯示狀態，不顯示進度條或百分比
-                
-                // 開始輪詢狀態
-                startSyncPolling();
-                
-                // 按鈕狀態由 setSyncStatus 控制
-            } else {
-                // 系統空閒
-                setSyncStatus('idle');
-                
-                // 顯示最後同步時間
-                if (data.last_sync_end) {
-                    const lastSyncDiv = document.getElementById('lastSyncTime');
-                    const lastPrefix = getI18n('orgSync.lastSyncPrefix', '最後同步:');
-                    lastSyncDiv.textContent = `${lastPrefix} ${new Date(data.last_sync_end).toLocaleString()}`;
-                }
-                
-                // 按鈕狀態由 setSyncStatus 控制
-            }
-        }
-    } catch (error) {
-        console.error('載入同步狀態失敗:', error);
-        loadingDiv.classList.add('d-none');
-        setSyncStatus('idle');
-    }
-}
-
-function setSyncStatus(mode) {
-    const idleDiv = document.getElementById('syncStatusIdle');
-    const runningDiv = document.getElementById('syncStatusRunning');
-    const startBtn = document.getElementById('startSyncBtn');
-    const deptBtn = document.getElementById('startDeptSyncBtn');
-    const userBtn = document.getElementById('startUserSyncBtn');
-
-    if (mode === 'running') {
-        idleDiv.classList.add('d-none');
-        runningDiv.classList.remove('d-none');
-        if (startBtn) startBtn.disabled = true;
-        if (deptBtn) deptBtn.disabled = true;
-        if (userBtn) userBtn.disabled = true;
-    } else if (mode === 'idle') {
-        runningDiv.classList.add('d-none');
-        idleDiv.classList.remove('d-none');
-        if (startBtn) startBtn.disabled = false;
-        if (deptBtn) deptBtn.disabled = false;
-        if (userBtn) userBtn.disabled = false;
-        // 在同步完成後恢復按鈕原始內容（避免仍然顯示「啟動中…」並丟失 i18n 標籤）
-        restoreSyncActionButtons();
-        // 重新套用翻譯到剛恢復的按鈕文字
-        try {
-            const modal = document.getElementById('syncModal');
-            if (window.i18n && window.i18n.isReady() && modal) {
-                window.i18n.retranslate(modal);
-            }
-        } catch (_) {}
-    } else {
-        runningDiv.classList.add('d-none');
-        idleDiv.classList.add('d-none');
-        if (startBtn) startBtn.disabled = false;
-        if (deptBtn) deptBtn.disabled = false;
-        if (userBtn) userBtn.disabled = false;
-    }
-}
-
-// 恢復同步操作按鈕的原始圖示與文字（含 i18n 標籤）
-function restoreSyncActionButtons() {
-    const deptBtn = document.getElementById('startDeptSyncBtn');
-    const userBtn = document.getElementById('startUserSyncBtn');
-    const startBtn = document.getElementById('startSyncBtn');
-
-    if (deptBtn) {
-        deptBtn.innerHTML = '<i class="fas fa-sitemap me-2"></i><span data-i18n="orgSync.departmentsSync">部門同步</span>';
-        // 重新應用翻譯到按鈕內容
-        if (window.i18n && window.i18n.isReady()) {
-            window.i18n.retranslate(deptBtn);
-        }
-    }
-    if (userBtn) {
-        userBtn.innerHTML = '<i class="fas fa-address-book me-2"></i><span data-i18n="orgSync.contactsSync">用戶同步</span>';
-        // 重新應用翻譯到按鈕內容
-        if (window.i18n && window.i18n.isReady()) {
-            window.i18n.retranslate(userBtn);
-        }
-    }
-    if (startBtn) {
-        startBtn.innerHTML = '<i class="fas fa-play me-2"></i><span data-i18n="orgSync.fullSync">完整同步</span>';
-        // 重新應用翻譯到按鈕內容
-        if (window.i18n && window.i18n.isReady()) {
-            window.i18n.retranslate(startBtn);
-        }
-    }
-}
-
-// 載入組織統計
-async function loadOrgStats() {
-    const loadingDiv = document.getElementById('orgStatsLoading');
-    const dataDiv = document.getElementById('orgStatsData');
-    const errorDiv = document.getElementById('orgStatsError');
-    
-    // 顯示載入狀態
-    loadingDiv.style.display = 'block';
-    dataDiv.style.display = 'none';
-    errorDiv.style.display = 'none';
-    
-    try {
-        // 加上時間戳避免瀏覽器快取造成數字不更新
-        const response = await window.AuthClient.fetch(`/api/organization/stats?t=${Date.now()}`);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-        
-        const result = await response.json();
-        if (result.success && result.data) {
-            const data = result.data;
-            
-            // 更新部門統計
-            document.getElementById('totalDepartments').textContent = data.departments?.total_departments || 0;
-            // 更新用戶統計
-            document.getElementById('totalUsers').textContent = data.users?.total_users || 0;
-            
-            loadingDiv.style.display = 'none';
-            dataDiv.style.display = 'block';
-        } else {
-            throw new Error('API 返回錯誤');
-        }
-    } catch (error) {
-        console.error('載入組織統計失敗:', error);
-        loadingDiv.style.display = 'none';
-        errorDiv.style.display = 'block';
-    }
-}
-
-
-// 從模態框開始同步
-async function startSyncFromModal(syncType = 'full') {
-    const startBtn = syncType === 'full' ? document.getElementById('startSyncBtn') : 
-        (syncType === 'departments' ? document.getElementById('startDeptSyncBtn') : document.getElementById('startUserSyncBtn'));
-    const originalHtml = startBtn.innerHTML;
-    
-    startBtn.disabled = true;
-    startBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>啟動中...';
-    
-    try {
-        // Guard: ensure not already syncing
-        try {
-            const statusResp = await window.AuthClient.fetch('/api/organization/sync/status');
-            if (statusResp.ok) {
-                const statusJson = await statusResp.json();
-                if (statusJson.success && statusJson.data && statusJson.data.is_syncing) {
-                    AppUtils.showWarning(getI18n('orgSync.syncing', '同步進行中'));
-                    startBtn.disabled = false;
-                    startBtn.innerHTML = originalHtml;
-                    return;
-                }
-            }
-        } catch (_) {}
-        
-        const response = await window.AuthClient.fetch(`/api/organization/sync?sync_type=${syncType}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            }
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            // 同步啟動成功，重新載入狀態
-            await loadSyncStatus();
-            
-            // 保存觸發用戶到localStorage，用於後續的Toast通知
-            localStorage.setItem('sync_trigger_user', 'user-sync-modal');
-            
-            AppUtils.showSuccess(getI18n('orgSync.syncStarted', '組織架構同步已啟動'));
-        } else {
-            throw new Error(result.message || '同步啟動失敗');
-        }
-    } catch (error) {
-        console.error('啟動同步失敗:', error);
-        AppUtils.showError(getI18n('orgSync.startFailedPrefix', '啟動同步失敗') + '：' + error.message);
-        
-        startBtn.disabled = false;
-        startBtn.innerHTML = originalHtml;
-    }
-}
-
-// 開始同步狀態輪詢
-function startSyncPolling() {
-    if (syncPollingInterval) {
-        clearInterval(syncPollingInterval);
-    }
-    
-    let pollCount = 0;
-    const maxPolls = 120; // 10分鐘最大輪詢時間
-    
-    const poll = async () => {
-        try {
-            const response = await window.AuthClient.fetch('/api/organization/sync/status');
-            
-            if (response.ok) {
-                const result = await response.json();
-                
-                if (result.success && result.data) {
-                    const data = result.data;
-                    
-                    if (!data.is_syncing) {
-                        // 同步完成
-                        clearInterval(syncPollingInterval);
-                        syncPollingInterval = null;
-                        
-                        // 重新載入所有數據
-                        await loadSyncModalData();
-                        // 再次刷新統計以確保數字最新（繞過快取）
-                        try { await loadOrgStats(); } catch (_) {}
-                        
-                        // 檢查是否是當前用戶觸發的同步
-                        const triggerUser = localStorage.getItem('sync_trigger_user');
-                        if (triggerUser === 'user-sync-modal') {
-                            AppUtils.showSuccess(getI18n('orgSync.syncCompleted', '組織架構同步已完成！'));
-                            localStorage.removeItem('sync_trigger_user');
-                        }
-                    } else {
-                        // 僅顯示狀態指示
-                        setSyncStatus('running');
-                    }
-                }
-            }
-            
-            pollCount++;
-                    if (pollCount >= maxPolls) {
-                // 超時停止輪詢
-                clearInterval(syncPollingInterval);
-                syncPollingInterval = null;
-                AppUtils.showWarning(getI18n('orgSync.statusTimeout', '同步狀態檢查超時，請手動刷新查看結果'));
-                // 恢復按鈕
-                document.getElementById('startSyncBtn').disabled = false;
-                const deptBtn = document.getElementById('startDeptSyncBtn');
-                const userBtn = document.getElementById('startUserSyncBtn');
-                if (deptBtn) deptBtn.disabled = false;
-                if (userBtn) userBtn.disabled = false;
-                // 嘗試刷新統計
-                try { await loadOrgStats(); } catch (_) {}
-            }
-        } catch (error) {
-            console.error('輪詢同步狀態失敗:', error);
-        }
-    };
-    
-    // 每5秒輪詢一次
-    syncPollingInterval = setInterval(poll, 5000);
-}
-
-// 保存模態框狀態到localStorage
-function saveSyncModalState() {
-    const modalState = {
-        lastClosed: Date.now(),
-        wasPolling: syncPollingInterval !== null
-    };
-    localStorage.setItem('sync_modal_state', JSON.stringify(modalState));
-}
-
-// 從localStorage載入模態框狀態
-function loadSyncModalState() {
-    try {
-        const savedState = localStorage.getItem('sync_modal_state');
-        if (savedState) {
-            const state = JSON.parse(savedState);
-            
-            // 如果之前在輪詢且關閉時間不超過30秒，繼續輪詢
-            const timeSinceClose = Date.now() - state.lastClosed;
-            if (state.wasPolling && timeSinceClose < 30000) {
-                // 先載入一次狀態，如果仍在同步則開始輪詢
-                loadSyncStatus();
-            }
-        }
-    } catch (error) {
-        console.error('載入模態框狀態失敗:', error);
-    }
-}
-
-// ===== 測試案例同步（UI 綁定） =====
-
-async function loadTcSyncTeams() {
-    try {
-        const res = await window.AuthClient.fetch('/api/teams/');
-        if (!res.ok) return;
-        const teams = await res.json();
-        sel.innerHTML = '';
-        const placeholder = document.createElement('option');
-        placeholder.value = '';
-        sel.appendChild(placeholder);
-        for (const t of teams) {
-            const opt = document.createElement('option');
-            opt.value = t.id;
-            opt.textContent = t.name;
-            sel.appendChild(opt);
-        }
-        sel.addEventListener('change', () => {
-            document.getElementById('btn-tc-init').disabled = disabled;
-            document.getElementById('btn-tc-diff').disabled = disabled;
-            document.getElementById('btn-tc-full').disabled = disabled;
-        });
-    } catch (e) {
-        console.error('載入團隊清單失敗', e);
-    }
-}
-
-
-document.addEventListener('DOMContentLoaded', () => {
-    // 當切到組織分頁時重新應用翻譯
-    const orgTabBtn = document.getElementById('tab-org');
-    const orgPane = document.getElementById('tab-pane-org');
-    if (orgTabBtn && orgPane) {
-        orgTabBtn.addEventListener('shown.bs.tab', () => {
-            try {
-                if (window.i18n && window.i18n.isReady()) {
-                    window.i18n.retranslate(orgPane);
-                }
-            } catch (_) {}
-        });
-    }
-
-    // 當切到 MCP Token 分頁時重新載入團隊選單與翻譯
-    const mcpTokenTabBtn = document.getElementById('tab-mcp-token');
-    const mcpTokenPane = document.getElementById('tab-pane-mcp-token');
-    if (mcpTokenTabBtn && mcpTokenPane) {
-        mcpTokenTabBtn.addEventListener('shown.bs.tab', () => {
-            refreshMcpTokenTeamScopeOptions();
-            try {
-                if (window.i18n && window.i18n.isReady()) {
-                    window.i18n.retranslate(mcpTokenPane);
-                }
-            } catch (_) {}
-        });
-    }
-
-    const scheduledTabBtn = document.getElementById('tab-service-management');
-    const scheduledPane = document.getElementById('tab-pane-service-management');
-    if (scheduledTabBtn && scheduledPane) {
-        scheduledTabBtn.addEventListener('shown.bs.tab', async () => {
-            await loadScheduledServices();
-            try {
-                if (window.i18n && window.i18n.isReady()) {
-                    window.i18n.retranslate(scheduledPane);
-                }
-            } catch (_) {}
-        });
-
-        scheduledPane.addEventListener('submit', (event) => {
-            const form = event.target.closest('[data-service-form]');
-            if (!form) return;
-            handleScheduledServiceSubmit(event);
-        });
-    }
-});
-
-// ===== 全域組織架構同步功能 =====
-
-// 觸發全域同步
-async function triggerGlobalSync() {
-    const syncBtn = document.getElementById('syncOrgBtn');
-    const statusDiv = document.getElementById('global-sync-status');
-    
-    try {
-        // 顯示同步中狀態
-        syncBtn.disabled = true;
-        statusDiv.style.display = 'block';
-        
-        // 觸發全域組織同步
-        const response = await window.AuthClient.fetch('/api/organization/sync?sync_type=full', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            // 同步開始成功
-            AppUtils.showSuccess(getI18n('orgSync.syncStarted', '組織架構同步已開始'));
-            
-            // 開始輪詢同步狀態
-            pollGlobalSyncStatus();
-            
-        } else {
-            // 同步開始失敗
-            AppUtils.showError(getI18n('orgSync.syncFailedPrefix', '同步失敗') + `: ${result.message}`);
-            syncBtn.disabled = false;
-            statusDiv.style.display = 'none';
-        }
-        
-    } catch (error) {
-        console.error('觸發全域同步失敗:', error);
-        AppUtils.showError(getI18n('orgSync.triggerFailedPrefix', '觸發全域同步失敗') + `: ${error.message}`);
-        syncBtn.disabled = false;
-        statusDiv.style.display = 'none';
-    }
-}
-
-// 輪詢全域同步狀態
-async function pollGlobalSyncStatus() {
-    const maxPolls = 60; // 最多輪詢 60 次 (5 分鐘)
-    let pollCount = 0;
-    
-    const poll = async () => {
-        try {
-            const response = await window.AuthClient.fetch('/api/organization/sync/status');
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            
-            const result = await response.json();
-            
-            if (result.success && result.data) {
-                const data = result.data;
-                
-                if (!data.is_syncing) {
-                    // 同步完成
-                    const syncBtn = document.getElementById('syncOrgBtn');
-                    const statusDiv = document.getElementById('global-sync-status');
-                    
-                    syncBtn.disabled = false;
-                    statusDiv.style.display = 'none';
-                    
-                    // 檢查最後結果
-                    if (data.last_result && data.last_result.success) {
-                        AppUtils.showSuccess(getI18n('orgSync.syncCompleted', '組織架構同步完成'));
-                    } else {
-                        AppUtils.showWarning(getI18n('orgSync.syncCompletedWithIssues', '同步完成，但可能有部分錯誤'));
-                    }
-                    // 若同步管理模態框開啟，刷新其中的統計與狀態
-                    const modalEl = document.getElementById('syncModal');
-                    if (modalEl && modalEl.classList.contains('show')) {
-                        try {
-                            await loadSyncModalData();
-                            await loadOrgStats();
-                        } catch (_) {}
-                    }
-                    
-                    return; // 停止輪詢
-                }
-                
-                // 繼續輪詢
-                pollCount++;
-                if (pollCount < maxPolls) {
-                    setTimeout(poll, 5000); // 5秒後再次檢查
-                } else {
-                    // 超時停止
-                    document.getElementById('syncOrgBtn').disabled = false;
-                    document.getElementById('global-sync-status').style.display = 'none';
-                    AppUtils.showWarning(getI18n('orgSync.statusTimeout', '同步狀態檢查超時，請手動刷新頁面查看結果'));
-                }
-            }
-            
-        } catch (error) {
-            console.error('檢查全域同步狀態失敗:', error);
-            // 發生錯誤時也停止輪詢
-            document.getElementById('syncOrgBtn').disabled = false;
-            document.getElementById('global-sync-status').style.display = 'none';
-        }
-    };
-    
-    // 開始第一次輪詢
-    setTimeout(poll, 2000); // 2秒後開始檢查
-}
-
-
-
-
-
-// ===== i18n helper without calling window.i18n.t =====
-function getI18n(key, fallback = '') {
-    const container = document.getElementById('org-sync-i18n');
-    if (!container) return fallback || key;
-    const el = container.querySelector(`[data-i18n="${key}"]`);
-    if (el && el.textContent && el.textContent.trim().length > 0) {
-        return el.textContent.trim();
-    }
-    return fallback || key;
-}
-
-function setDynamicI18nText(element, key, fallback = '', params = null) {
-    if (!element) return;
-
-    if (key) {
-        element.setAttribute('data-i18n', key);
-    } else {
-        element.removeAttribute('data-i18n');
-    }
-
-    if (params && Object.keys(params).length > 0) {
-        element.setAttribute('data-i18n-params', JSON.stringify(params));
-    } else {
-        element.removeAttribute('data-i18n-params');
-    }
-
-    const translated = key ? getI18n(key, fallback) : (fallback || '');
-    element.textContent = applyI18nParams(translated, params);
-}
-
-function applyI18nParams(template, params) {
-    let output = String(template || '');
-    if (!params) return output;
-
-    Object.entries(params).forEach(([key, value]) => {
-        output = output.split(`{${key}}`).join(String(value));
-    });
-    return output;
-}

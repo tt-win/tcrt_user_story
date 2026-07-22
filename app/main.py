@@ -172,6 +172,11 @@ async def team_management(request: Request):
     return templates.TemplateResponse("team_management.html", {"request": request})
 
 
+@app.get("/organization-management", response_class=HTMLResponse)
+async def organization_management(request: Request):
+    return templates.TemplateResponse("organization_management.html", {"request": request})
+
+
 @app.get("/automation-provider-settings", response_class=HTMLResponse)
 async def automation_provider_settings(request: Request):
     return templates.TemplateResponse("automation_provider_settings.html", {"request": request})
@@ -200,6 +205,11 @@ async def audit_logs(request: Request):
 @app.get("/system-logs", response_class=HTMLResponse)
 async def system_logs(request: Request):
     return templates.TemplateResponse("system_logs.html", {"request": request})
+
+
+@app.get("/assistant-admin", response_class=HTMLResponse)
+async def assistant_admin(request: Request):
+    return templates.TemplateResponse("assistant_admin.html", {"request": request})
 
 
 @app.get("/test-case-sets", response_class=HTMLResponse)

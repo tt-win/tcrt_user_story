@@ -16,11 +16,11 @@ pages:
       tab-service-management: { feature: organization_management, action: advanced }
       tab-test-cases:   { feature: organization_management, action: advanced }
       tab-mcp-token:    { feature: organization_management, action: advanced }
-
-  team_management:
-    components:
-      createTeamBtn:    { feature: team_management, action: edit }
-      createTeamHint:   { feature: team_management, action: edit }
+      # 組織自動化基礎設施：action 必須為 advanced（與同頁其他 Super-Admin-only 分頁一致），
+      # 不可用 view——view 對 ADMIN 角色會放行，advanced 才只放行 Super Admin。
+      tab-org-automation-infra: { feature: organization_management, action: advanced }
+      # 人員管理元件鍵（隨 redesign-team-settings-information-architecture 從
+      # pages.team_management 搬移至此，因人員管理 UI 已改掛載於組織與系統設定頁面）
       pm-tab-personnel: { feature: user_management, action: view }
       pm-btn-create:    { feature: user_management, action: create }
       pm-btn-save:      { feature: user_management, action: update }
@@ -28,6 +28,16 @@ pages:
       pm-btn-reset:     { feature: user_management, action: reset_password }
       pm-role-select:   { feature: user_management, action: change_role }
       pm-active-toggle: { feature: user_management, action: toggle_active }
+      # AI 助手設定入口（原掛在 team_management 的「數據與記錄」選單，
+      # 隨助手設定改掛載於組織與系統設定頁面而搬移至此）
+      assistantAdminLink: { feature: organization_management, action: manage }
+
+  team_management:
+    components:
+      createTeamBtn:    { feature: team_management, action: edit }
+      createTeamHint:   { feature: team_management, action: edit }
+      # syncOrgBtn 現為導向 /organization-management 頁面的連結（原為開啟
+      # 「組織與系統設定」modal 的按鈕），權限鍵不變。
       syncOrgBtn:       { feature: user_management, action: view }
       auditLogBtn:      { feature: user_management, action: view }
       # 系統日誌入口：organization_management 僅 super_admin 具 manage（admin 只有 view）

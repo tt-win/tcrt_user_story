@@ -36,9 +36,14 @@ class AssistantTool:
     summary: str  # 供 LLM 的簡短英文描述
     permission: PermissionType
     risk_level: RiskLevel
-    execution_mode: str = "loopback"  # "loopback" | "batch_actions"（internal composite）
+    execution_mode: str = "loopback"  # "loopback" | "batch_actions" | "local"（in-process recipe/catalog）
 
     path_params: tuple[str, ...] = ()  # LLM 可提供的 path 參數（team_id 由 executor 注入，不列於此）
+    # path_params 預設一律視為整數 id；少數 path 參數其實是字串識別碼（例如檔名、ticket number、
+    # enum 值),必須在此明確覆寫型別,否則 `to_llm_schema()` 硬塞 "integer" 會逼 LLM 捏造假整數,
+    # 導致確認卡建立、但實際呼叫必然因值不對而失敗（見 red-team 案例：delete_test_case_attachment
+    # 的 target／remove_item_bug_ticket 的 ticket_number／unpin_entity 的 entity_type）。
+    path_param_schemas: dict[str, dict[str, Any]] = field(default_factory=dict)
     query_params: dict[str, dict[str, Any]] = field(default_factory=dict)  # name -> JSON schema fragment
     required_query: tuple[str, ...] = ()
     body_schema: Optional[dict[str, Any]] = None  # 完整 JSON Schema（object/properties/required），None=無 body
@@ -59,6 +64,11 @@ class AssistantTool:
     sensitive_input_paths: tuple[str, ...] = ()  # 命中即加密 execution_payload（縱深防禦，見 D8）
     credential_check_fields: tuple[str, ...] = ()  # 需套用 reject_credential_test_data_value 的 body 欄位
 
+    # Assistant loopback list tools: inject default / clamp max for `limit` query only.
+    # Does not change browser/UI defaults when the same API is called outside the assistant.
+    default_limit: Optional[int] = None
+    max_limit: Optional[int] = None
+
     def is_write(self) -> bool:
         return self.risk_level in _WRITE_RISK_LEVELS
 
@@ -73,7 +83,7 @@ class AssistantTool:
         properties: dict[str, Any] = {}
         required: list[str] = []
         for name in self.path_params:
-            properties[name] = {"type": "integer"}
+            properties[name] = self.path_param_schemas.get(name, {"type": "integer"})
             required.append(name)
         for name, schema in self.query_params.items():
             properties[name] = schema
@@ -133,14 +143,26 @@ class ToolRegistry:
                 raise ToolRegistryError(f"{tool.name}: 未知 risk_level {tool.risk_level}")
             if tool.team_check not in ("inject", "resolve", "none"):
                 raise ToolRegistryError(f"{tool.name}: 未知 team_check {tool.team_check}")
-            if tool.execution_mode not in ("loopback", "batch_actions"):
+            if tool.execution_mode not in ("loopback", "batch_actions", "local"):
                 raise ToolRegistryError(f"{tool.name}: 未知 execution_mode {tool.execution_mode}")
             if tool.execution_mode == "batch_actions" and tool.method != "COMPOSITE":
                 raise ToolRegistryError(f"{tool.name}: batch_actions 必須使用 COMPOSITE method")
+            if tool.execution_mode == "local":
+                if tool.method != "LOCAL":
+                    raise ToolRegistryError(f"{tool.name}: local 工具必須使用 LOCAL method")
+                if tool.is_write():
+                    raise ToolRegistryError(f"{tool.name}: local 工具僅允許 read（skill/catalog）")
+                if tool.team_check != "none":
+                    raise ToolRegistryError(f"{tool.name}: local 工具 team_check 必須為 none")
             if tool.team_check == "resolve" and not tool.resource_team_resolver:
                 raise ToolRegistryError(f"{tool.name}: team_check=resolve 但缺 resource_team_resolver")
             if not tool.projection and not tool.has_no_response_body:
                 raise ToolRegistryError(f"{tool.name}: 缺 projection allowlist")
+            if not set(tool.path_param_schemas).issubset(tool.path_params):
+                raise ToolRegistryError(
+                    f"{tool.name}: path_param_schemas 含未宣告於 path_params 的鍵 "
+                    f"{sorted(set(tool.path_param_schemas) - set(tool.path_params))}"
+                )
             if tool.is_write():
                 if not tool.confirmation_action_key:
                     raise ToolRegistryError(f"{tool.name}: write 工具缺 confirmation_action_key")
@@ -168,7 +190,11 @@ class ToolRegistry:
         return [t for t in self._tools.values() if t.permission in allowed]
 
     def discovery_only(self) -> list[AssistantTool]:
-        """全域（無 team）對話僅提供 discovery 工具（design D2）。"""
+        """全域（無 team）對話僅提供 discovery 工具（design D2）。
+
+        包含 local skill catalog（team_check=none、read）——技能本身不操作 team 資料，
+        讓使用者在切 team 前也能查可用操作路徑。
+        """
         return [t for t in self._tools.values() if t.risk_level == READ and t.team_check == "none"]
 
 

@@ -105,7 +105,12 @@ TOOLS = [
         name="set_test_run_status",
         method="PUT",
         path_template="/api/teams/{team_id}/test-run-configs/{config_id}/status",
-        summary="Transition a test run config's status (draft/active/completed).",
+        summary=(
+            "Transition a test run config's status. Allowed edges: draft→active|archived, "
+            "active→completed|archived, completed→archived, archived→active|draft. "
+            "Main-path multi-hop: draft→completed is applied as draft→active→completed in one call. "
+            "Use archive_test_run for archived. Prefer status=completed after results are saved."
+        ),
         permission=PermissionType.WRITE,
         risk_level=REVERSIBLE_WRITE,
         path_params=("config_id",),
@@ -153,7 +158,12 @@ TOOLS = [
         name="restart_test_run",
         method="POST",
         path_template="/api/teams/{team_id}/test-run-configs/{config_id}/restart",
-        summary="Create a new test run config from this one's failed/pending/all items.",
+        summary=(
+            "Create a NEW test run config by copying items from a source run "
+            "(mode=all|failed|pending). New run starts as active. If the source belongs "
+            "to a Test Run Set, the new run is attached to the same set. "
+            "Does not mutate the source run's status or items. Report new_config_id after confirm."
+        ),
         permission=PermissionType.WRITE,
         risk_level=HIGH_IMPACT,
         path_params=("config_id",),
@@ -163,7 +173,7 @@ TOOLS = [
         ),
         team_check="resolve",
         resource_team_resolver="test_run_config",
-        projection=("new_config_id", "created_count"),
+        projection=("success", "mode", "new_config_id", "created_count", "set_id"),
         confirmation_action_key="assistant.action.restart_test_run",
         warning_key="assistant.warning.high_impact",
         target_resolver="single",
@@ -172,7 +182,10 @@ TOOLS = [
         name="list_test_run_items",
         method="GET",
         path_template="/api/teams/{team_id}/test-run-configs/{config_id}/items/",
-        summary="List items (test cases) within a test run.",
+        summary=(
+            "List full items in a test run. Prefer list_test_run_item_refs for bulk assign/"
+            "result updates; keep limit small."
+        ),
         permission=PermissionType.READ,
         risk_level=READ,
         path_params=("config_id",),
@@ -188,6 +201,32 @@ TOOLS = [
         team_check="resolve",
         resource_team_resolver="test_run_config",
         projection=_ITEM_PROJECTION,
+        default_limit=50,
+        max_limit=100,
+    ),
+    AssistantTool(
+        name="list_test_run_item_refs",
+        method="GET",
+        path_template="/api/teams/{team_id}/test-run-configs/{config_id}/items/refs",
+        summary=(
+            "List slim item refs (id, test_case_number, test_result, assignee_name) for a run. "
+            "Prefer this before full list_test_run_items when batch-updating assignee/result."
+        ),
+        permission=PermissionType.READ,
+        risk_level=READ,
+        path_params=("config_id",),
+        query_params={
+            "search": s_str(),
+            "test_result_filter": s_str("use null/pending for unexecuted"),
+            "executed_only": s_bool(),
+            "skip": s_int(),
+            "limit": s_int("page size, max 500"),
+        },
+        team_check="resolve",
+        resource_team_resolver="test_run_config",
+        projection=("id", "test_case_number", "test_result", "assignee_name"),
+        default_limit=100,
+        max_limit=500,
     ),
     AssistantTool(
         name="add_test_run_items",
@@ -228,7 +267,11 @@ TOOLS = [
         name="batch_update_results",
         method="POST",
         path_template="/api/teams/{team_id}/test-run-configs/{config_id}/items/batch-update-results",
-        summary="Report test results for multiple run items at once.",
+        summary=(
+            "Batch-update multiple run items in one call: test_result and/or assignee_name and/or comment. "
+            "Prefer this over looping update_test_run_item. Assignee-only updates are allowed "
+            "(omit test_result when only reassigning)."
+        ),
         permission=PermissionType.WRITE,
         risk_level=HIGH_IMPACT,
         path_params=("config_id",),
@@ -239,6 +282,7 @@ TOOLS = [
                         {
                             "id": s_int(),
                             "test_result": s_str("pass|fail|blocked|skipped", enum=["pass", "fail", "blocked", "skipped"]),
+                            "assignee_name": s_str("assignee display name; omit test_result for assign-only updates"),
                             "comment": s_str(),
                         },
                         required=["id"],
@@ -253,6 +297,57 @@ TOOLS = [
         confirmation_action_key="assistant.action.batch_update_results",
         warning_key="assistant.warning.high_impact",
         target_resolver="batch",
+    ),
+    AssistantTool(
+        name="batch_update_test_run_items_by_filter",
+        method="POST",
+        path_template="/api/teams/{team_id}/test-run-configs/{config_id}/items/batch-update-by-filter",
+        summary=(
+            "Batch-update run items matching a server-side filter (assignee_unassigned, test_result, "
+            "search). Server resolves matches (max 500); prefer over full list + batch_update_results."
+        ),
+        permission=PermissionType.WRITE,
+        risk_level=HIGH_IMPACT,
+        path_params=("config_id",),
+        body_schema=body(
+            {
+                "filter": body(
+                    {
+                        "test_result": s_str(
+                            "pass|fail|blocked|skipped|null|pending (null/pending = unexecuted)",
+                            enum=["pass", "fail", "blocked", "skipped", "null", "pending"],
+                        ),
+                        "assignee_unassigned": s_bool("true = empty/null assignee only"),
+                        "assignee_name": s_str("exact assignee name; mutually exclusive with assignee_unassigned"),
+                        "search": s_str("title/number search"),
+                    }
+                ),
+                "patch": body(
+                    {
+                        "assignee_name": s_str(),
+                        "test_result": s_str(
+                            "pass|fail|blocked|skipped",
+                            enum=["pass", "fail", "blocked", "skipped"],
+                        ),
+                    }
+                ),
+            },
+            required=["patch"],
+        ),
+        team_check="resolve",
+        resource_team_resolver="test_run_config",
+        projection=(
+            "processed_count",
+            "success_count",
+            "success",
+            "error_count",
+            "error_messages",
+            "matched_count",
+            "matched_ids",
+        ),
+        confirmation_action_key="assistant.action.batch_update_test_run_items_by_filter",
+        warning_key="assistant.warning.high_impact",
+        target_resolver="filter_batch",
     ),
     AssistantTool(
         name="delete_test_run_item",
@@ -334,6 +429,7 @@ TOOLS = [
         permission=PermissionType.WRITE,
         risk_level=IDEMPOTENT_WRITE,  # DELETE 豁免：見 tool-matrix「DELETE 豁免」
         path_params=("config_id", "item_id", "ticket_number"),
+        path_param_schemas={"ticket_number": s_str("JIRA ticket number，例如 PRJ-123")},
         team_check="resolve",
         resource_team_resolver="test_run_item",
         projection=(),

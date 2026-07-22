@@ -441,6 +441,67 @@ async def get_test_cases(
         )
 
 
+@router.get("/refs", response_model=List[dict])
+async def list_test_case_refs(
+    team_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    search: Optional[str] = Query(None),
+    priority_filter: Optional[str] = Query(None),
+    test_result_filter: Optional[str] = Query(None),
+    assignee_filter: Optional[str] = Query(None),
+    set_id: Optional[int] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+):
+    """Slim test-case refs for assistant (no steps/precondition/test_data)."""
+    from app.auth.models import UserRole
+    from app.auth.permission_service import permission_service
+
+    if current_user.role != UserRole.SUPER_ADMIN:
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.READ, current_user.role
+        )
+        if not permission_check.has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="無權限存取此團隊的測試案例",
+            )
+
+    service = TestCaseRepoService(db)
+    items = await service.list(
+        team_id=team_id,
+        search=search,
+        priority_filter=priority_filter,
+        test_result_filter=test_result_filter,
+        assignee_filter=assignee_filter,
+        test_case_set_id=set_id,
+        sort_by="id",
+        sort_order="asc",
+        skip=skip,
+        limit=limit,
+    )
+    refs: List[dict] = []
+    for item in items:
+        if hasattr(item, "model_dump"):
+            data = item.model_dump()
+        elif isinstance(item, dict):
+            data = item
+        else:
+            data = dict(item)
+        record_id = data.get("record_id") or data.get("id") or data.get("lark_record_id")
+        refs.append(
+            {
+                "record_id": str(record_id) if record_id is not None else None,
+                "test_case_number": data.get("test_case_number"),
+                "title": data.get("title"),
+                "priority": data.get("priority"),
+                "test_case_set_id": data.get("test_case_set_id"),
+            }
+        )
+    return refs
+
+
 @router.get("/count", response_model=dict)
 async def get_test_cases_count(
     team_id: int,

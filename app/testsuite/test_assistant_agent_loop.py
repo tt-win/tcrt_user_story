@@ -321,12 +321,13 @@ async def test_llm_tool_call_id_is_server_normalized_and_unique_even_with_missin
 
 def test_exchange_group_trim_never_splits_a_tool_call_pair():
     class _Row:
-        def __init__(self, role, content=None, tool_calls_json=None, llm_tool_call_id=None, tool_name=None):
+        def __init__(self, role, content=None, tool_calls_json=None, llm_tool_call_id=None, tool_name=None, turn_id=None):
             self.role = role
             self.content = content
             self.tool_calls_json = tool_calls_json
             self.llm_tool_call_id = llm_tool_call_id
             self.tool_name = tool_name
+            self.turn_id = turn_id
 
     import json as _json
     rows = [
@@ -345,6 +346,49 @@ def test_exchange_group_trim_never_splits_a_tool_call_pair():
     roles = [m["role"] for m in trimmed]
     if "tool" in roles:
         assert "assistant" in roles, "tool result 存在時，配對的 assistant tool-call 訊息不得被獨立裁掉"
+
+
+def test_build_llm_messages_surfaces_attachments_only_for_owning_turn():
+    class _Row:
+        def __init__(self, role, content=None, tool_calls_json=None, llm_tool_call_id=None, tool_name=None, turn_id=None):
+            self.role = role
+            self.content = content
+            self.tool_calls_json = tool_calls_json
+            self.llm_tool_call_id = llm_tool_call_id
+            self.tool_name = tool_name
+            self.turn_id = turn_id
+
+    rows = [
+        _Row("user", content="這是我的檔案", turn_id=1),
+        _Row("assistant", content="收到", turn_id=1),
+        _Row("user", content="還有別的嗎", turn_id=2),
+    ]
+    attachments_by_turn = {
+        1: [{"attachment_index": 0, "original_name": "evidence.txt", "content_type": "text/plain"}],
+    }
+
+    messages = history_builder.build_llm_messages(rows, max_chars=100_000, attachments_by_turn=attachments_by_turn)
+    user_msgs = [m for m in messages if m["role"] == "user"]
+    assert len(user_msgs) == 2
+    assert "file_ref=0" in user_msgs[0]["content"]
+    assert "evidence.txt" in user_msgs[0]["content"]
+    assert user_msgs[0]["content"].startswith("這是我的檔案"), "使用者原文必須保留在最前面,不得被附件附註取代"
+    assert "file_ref" not in user_msgs[1]["content"], "沒有附件的 turn 不得被附加附件附註"
+
+
+def test_build_llm_messages_without_attachments_by_turn_is_unaffected():
+    class _Row:
+        def __init__(self, role, content=None, tool_calls_json=None, llm_tool_call_id=None, tool_name=None, turn_id=None):
+            self.role = role
+            self.content = content
+            self.tool_calls_json = tool_calls_json
+            self.llm_tool_call_id = llm_tool_call_id
+            self.tool_name = tool_name
+            self.turn_id = turn_id
+
+    rows = [_Row("user", content="hello", turn_id=1)]
+    messages = history_builder.build_llm_messages(rows, max_chars=100_000)
+    assert messages == [{"role": "user", "content": "hello"}]
 
 
 def test_drop_oldest_group_removes_one_whole_group_not_a_partial_message():

@@ -56,6 +56,7 @@ TOOLS = [
         permission=PermissionType.WRITE,
         risk_level=IDEMPOTENT_WRITE,  # DELETE 豁免：見 tool-matrix「DELETE 豁免」
         path_params=("entity_type", "entity_id"),
+        path_param_schemas={"entity_type": s_str("釘選項目類型", enum=["test_case_set", "test_run_set"])},
         team_check="resolve",
         resource_team_resolver="unpin_entity",
         projection=("success", "deleted"),

@@ -1,14 +1,14 @@
 # scheduled-service-management Specification
 
 ## Purpose
-定義 Super Admin 可在團隊管理 / 組織管理流程中查看與管理可排程服務的能力。
+定義 Super Admin 可在「組織與系統設定」頁面（`/organization-management`）查看與管理可排程服務的能力。
 
 ## Requirements
-### Requirement: Super Admin can manage scheduled services in organization modal
-系統 SHALL 僅允許 Super Admin 在組織管理 UI 管理 scheduled services。
+### Requirement: Super Admin can manage scheduled services in organization management page
+系統 SHALL 僅允許 Super Admin 在 `/organization-management` 頁面管理 scheduled services。
 
 #### Scenario: Super Admin sees service management tab
-- **WHEN** Super Admin 開啟組織管理介面
+- **WHEN** Super Admin 開啟 `/organization-management`
 - **THEN** 可見 scheduled service management 分頁
 
 #### Scenario: Non-Super-Admin cannot access service management tab

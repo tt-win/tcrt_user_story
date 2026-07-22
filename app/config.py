@@ -336,20 +336,25 @@ class AssistantConfig(BaseModel):
     ``enabled`` defaults to False (opt-in): deployments that already set an
     OpenRouter key for QA AI Helper must not gain the assistant on upgrade
     without explicitly setting ``TCRT_ASSISTANT_ENABLED=true``.
+
+    Context notes (DeepSeek V4 Flash / Pro): the model family advertises a
+    **1,000,000-token** context window. TCRT does **not** default to that full
+    window; working budgets use serialized **character** limits below (history
+    480k chars / tool_result 64k chars by default) plus request-view compact.
     """
 
     enabled: bool = False
     model: str = "google/gemini-3-flash-preview"
     temperature: float = 0.1
-    max_iterations: int = 8
+    max_iterations: int = 24
     llm_timeout_seconds: int = 60
     tool_timeout_seconds: int = 30
-    turn_timeout_seconds: int = 180
-    history_max_chars: int = 48000
-    tool_result_max_chars: int = 8000
+    turn_timeout_seconds: int = 300
+    history_max_chars: int = 480000
+    tool_result_max_chars: int = 64000
     max_message_chars: int = 4000
     max_messages_per_hour: int = 60
-    max_messages_per_conversation: int = 200
+    max_messages_per_conversation: int = 500
     max_active_turns_per_user: int = 3
     max_active_turns_global: int = 32
     max_active_turns_per_worker: int = 8
@@ -364,6 +369,10 @@ class AssistantConfig(BaseModel):
     payload_encryption_key: str = ""
     # 對話標題自動摘要（LLM 生成或 fallback 截斷）的最大字數。
     title_max_chars: int = 40
+    # Request-view history compact (does not rewrite assistant_messages).
+    history_compact_enabled: bool = True
+    history_compact_threshold_ratio: float = 0.75
+    history_compact_keep_recent_groups: int = 4
 
     @classmethod
     def from_env(cls, fallback: "AssistantConfig" = None) -> "AssistantConfig":
@@ -383,12 +392,18 @@ class AssistantConfig(BaseModel):
                 val = default
             return max(lo, min(hi, val))
 
+        def _bool(name: str, default: bool) -> bool:
+            raw = os.getenv(name)
+            if raw is None:
+                return default
+            return raw.lower() in ("1", "true", "yes")
+
         return cls(
             enabled=os.getenv("TCRT_ASSISTANT_ENABLED", str(current.enabled)).lower()
             in ("1", "true", "yes"),
             model=os.getenv("TCRT_ASSISTANT_MODEL", current.model),
             temperature=_float("TCRT_ASSISTANT_TEMPERATURE", current.temperature, 0.0, 2.0),
-            max_iterations=_int("TCRT_ASSISTANT_MAX_ITERATIONS", current.max_iterations, 1, 32),
+            max_iterations=_int("TCRT_ASSISTANT_MAX_ITERATIONS", current.max_iterations, 1, 64),
             llm_timeout_seconds=_int(
                 "TCRT_ASSISTANT_LLM_TIMEOUT_SECONDS", current.llm_timeout_seconds, 5, 300
             ),
@@ -399,10 +414,10 @@ class AssistantConfig(BaseModel):
                 "TCRT_ASSISTANT_TURN_TIMEOUT_SECONDS", current.turn_timeout_seconds, 10, 900
             ),
             history_max_chars=_int(
-                "TCRT_ASSISTANT_HISTORY_MAX_CHARS", current.history_max_chars, 4000, 400000
+                "TCRT_ASSISTANT_HISTORY_MAX_CHARS", current.history_max_chars, 4000, 1200000
             ),
             tool_result_max_chars=_int(
-                "TCRT_ASSISTANT_TOOL_RESULT_MAX_CHARS", current.tool_result_max_chars, 1000, 64000
+                "TCRT_ASSISTANT_TOOL_RESULT_MAX_CHARS", current.tool_result_max_chars, 1000, 200000
             ),
             max_message_chars=_int(
                 "TCRT_ASSISTANT_MAX_MESSAGE_CHARS", current.max_message_chars, 200, 40000
@@ -463,6 +478,21 @@ class AssistantConfig(BaseModel):
             ),
             title_max_chars=_int(
                 "TCRT_ASSISTANT_TITLE_MAX_CHARS", current.title_max_chars, 10, 200
+            ),
+            history_compact_enabled=_bool(
+                "TCRT_ASSISTANT_HISTORY_COMPACT_ENABLED", current.history_compact_enabled
+            ),
+            history_compact_threshold_ratio=_float(
+                "TCRT_ASSISTANT_HISTORY_COMPACT_THRESHOLD_RATIO",
+                current.history_compact_threshold_ratio,
+                0.5,
+                0.95,
+            ),
+            history_compact_keep_recent_groups=_int(
+                "TCRT_ASSISTANT_HISTORY_COMPACT_KEEP_RECENT_GROUPS",
+                current.history_compact_keep_recent_groups,
+                1,
+                20,
             ),
         )
 

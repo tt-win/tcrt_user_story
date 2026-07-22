@@ -23,27 +23,32 @@ from app.models.database_models import (
 )
 
 
-async def resolve_test_case_team(session: AsyncSession, record_id: int) -> Optional[int]:
-    return (
-        await session.execute(select(TestCaseLocal.team_id).where(TestCaseLocal.id == record_id))
-    ).scalar_one_or_none()
-
-
-async def resolve_test_case_ref_team(session: AsyncSession, source_record_id: str) -> Optional[int]:
-    """Bulk clone source 可使用本地整數 id 或 Lark record id，需與 API 解析語意一致。"""
+async def resolve_test_case_team(session: AsyncSession, record_id: int | str) -> Optional[int]:
+    """`record_id` 可能是本地整數 id 或 Lark record id 字串——`get_test_case`／`update_test_case`／
+    `delete_test_case`／`move_test_case_scope` 的 path 參數現在允許字串（見 tool_registry
+    `path_param_schemas`，紅隊發現：Lark 同步的 test case 其 `record_id` 是 `lark_record_id or
+    str(item.id)`,並非必為本地整數）。解析順序須與 `app/api/test_cases.py` 的
+    `GET/PUT/DELETE .../testcases/{record_id}` 一致：優先本地整數 id，查無才查 lark_record_id。"""
     try:
-        local_id = int(source_record_id)
+        local_id = int(record_id)
     except (TypeError, ValueError):
         local_id = None
     if local_id is not None:
-        team_id = await resolve_test_case_team(session, local_id)
+        team_id = (
+            await session.execute(select(TestCaseLocal.team_id).where(TestCaseLocal.id == local_id))
+        ).scalar_one_or_none()
         if team_id is not None:
             return team_id
     return (
         await session.execute(
-            select(TestCaseLocal.team_id).where(TestCaseLocal.lark_record_id == str(source_record_id))
+            select(TestCaseLocal.team_id).where(TestCaseLocal.lark_record_id == str(record_id))
         )
     ).scalar_one_or_none()
+
+
+async def resolve_test_case_ref_team(session: AsyncSession, source_record_id: str) -> Optional[int]:
+    """Bulk clone source：與 `resolve_test_case_team` 同一套本地整數 id／Lark record id 解析語意。"""
+    return await resolve_test_case_team(session, source_record_id)
 
 
 async def resolve_test_case_set_team(session: AsyncSession, set_id: int) -> Optional[int]:
@@ -149,12 +154,32 @@ async def resolve_user_pin_team(session: AsyncSession, user_id: int, entity_type
 # --------------------------------------------------------------------------- #
 
 
-async def resolve_test_case_identity(session: AsyncSession, record_id: int) -> Optional[tuple[str, int]]:
-    row = (
-        await session.execute(
-            select(TestCaseLocal.test_case_number, TestCaseLocal.local_version).where(TestCaseLocal.id == record_id)
-        )
-    ).one_or_none()
+async def resolve_test_case_identity(session: AsyncSession, record_id: int | str) -> Optional[tuple[str, int]]:
+    """`record_id` 可能是本地整數 id 或 Lark record id 字串，解析順序須與 `resolve_test_case_team`
+    一致（否則 confirmation summary 顯示的目標與 team 驗證認定的目標可能不是同一筆），
+    否則 Lark 同步的 test case 會在 confirmation summary 這關被判定 unresolvable（見紅隊發現：
+    只修 `resolve_test_case_team` 不夠，這顆姐妹函式是同一個 bug class）。"""
+    try:
+        local_id = int(record_id)
+    except (TypeError, ValueError):
+        local_id = None
+    row = None
+    if local_id is not None:
+        row = (
+            await session.execute(
+                select(TestCaseLocal.test_case_number, TestCaseLocal.local_version).where(
+                    TestCaseLocal.id == local_id
+                )
+            )
+        ).one_or_none()
+    if row is None:
+        row = (
+            await session.execute(
+                select(TestCaseLocal.test_case_number, TestCaseLocal.local_version).where(
+                    TestCaseLocal.lark_record_id == str(record_id)
+                )
+            )
+        ).one_or_none()
     return (row[0], row[1]) if row else None
 
 

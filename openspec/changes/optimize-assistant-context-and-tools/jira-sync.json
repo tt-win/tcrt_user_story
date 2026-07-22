@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 2,
+  "changeName": "optimize-assistant-context-and-tools",
+  "issueKey": "TCG-150405",
+  "issueId": "685446",
+  "issueUrl": "https://jira.tc-gaming.co/jira/browse/TCG-150405",
+  "summary": "TCRT 全域 AI 助手（可對話）",
+  "projectKey": "TCG",
+  "issueType": "Change Request",
+  "components": [
+    "ART"
+  ],
+  "fixVersions": [
+    "TP-4935 Auto QA Agent"
+  ],
+  "assigneeSource": "existing",
+  "assigneeStatus": "assigned",
+  "linkType": "Relates",
+  "linkedIssues": [],
+  "state": "active",
+  "lifecycleStage": "in_progress",
+  "targetJiraStatus": "In Progress",
+  "statusMappings": {
+    "proposed": "To Do",
+    "in_progress": "In Progress",
+    "completed": "Resolved",
+    "archived": "Scheduled"
+  },
+  "jiraStatus": "Open",
+  "transitionStatus": "pending",
+  "contentSha256": "4ed29a31978d9086f6aa3e0468ae7269e3d4f3a14ef8f6bcf77bfe56dbfb596e",
+  "lastCommentedSha256": "4ed29a31978d9086f6aa3e0468ae7269e3d4f3a14ef8f6bcf77bfe56dbfb596e",
+  "lastCommentedStage": "in_progress",
+  "lastCommentId": "782004",
+  "snapshotTruncated": false,
+  "createdAt": "2026-07-22T00:00:00.000Z",
+  "lastSyncedAt": "2026-07-22T10:51:17.205Z",
+  "archivedAt": null,
+  "transitionMessage": "No currently available Jira transition reaches In Progress",
+  "lastTransitionAttemptAt": "2026-07-22T10:51:18.361Z"
+}

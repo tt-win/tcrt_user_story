@@ -154,6 +154,48 @@ class TestResultStatus(str, Enum):
     SKIP = "Skip"
 
 
+# LLM / assistant aliases → canonical DB values (must match TestResultStatus.value).
+_TEST_RESULT_ALIASES: dict[str, TestResultStatus] = {
+    "passed": TestResultStatus.PASSED,
+    "pass": TestResultStatus.PASSED,
+    "failed": TestResultStatus.FAILED,
+    "fail": TestResultStatus.FAILED,
+    "retest": TestResultStatus.RETEST,
+    "not available": TestResultStatus.NOT_AVAILABLE,
+    "not_available": TestResultStatus.NOT_AVAILABLE,
+    "blocked": TestResultStatus.NOT_AVAILABLE,  # assistant short form
+    "pending": TestResultStatus.PENDING,
+    "not required": TestResultStatus.NOT_REQUIRED,
+    "not_required": TestResultStatus.NOT_REQUIRED,
+    "skip": TestResultStatus.SKIP,
+    "skipped": TestResultStatus.SKIP,
+}
+
+
+def coerce_test_result_status(value: object) -> TestResultStatus:
+    """Normalize API/assistant result tokens to ``TestResultStatus``.
+
+    Accepts canonical values (``Passed``) and common aliases (``pass``, ``fail``,
+    ``blocked``, ``skipped``). Raises ``ValueError`` on unknown tokens.
+    """
+    if isinstance(value, TestResultStatus):
+        return value
+    if value is None:
+        raise ValueError("test_result is required")
+    raw = str(value).strip()
+    if not raw:
+        raise ValueError("test_result is empty")
+    # Exact canonical first (case-sensitive match to stored DB values).
+    try:
+        return TestResultStatus(raw)
+    except ValueError:
+        pass
+    alias = _TEST_RESULT_ALIASES.get(raw.lower())
+    if alias is not None:
+        return alias
+    raise ValueError(f"invalid test_result: {value!r}")
+
+
 # 輔助函數
 def parse_lark_user(data: Union[List[Dict], Dict, None]) -> Optional[LarkUser]:
     """解析 Lark 人員欄位資料"""

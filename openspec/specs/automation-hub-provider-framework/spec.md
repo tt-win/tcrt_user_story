@@ -531,11 +531,11 @@ Bootstrap 啟動時「主資料庫缺重要表」檢查 SHALL 包含 `system_aut
 `POST /api/teams/{team_id}/automation-providers` 與 `PUT /api/teams/{team_id}/automation-providers/{id}` SHALL：
 
 1. 驗證 payload 的 `provider_slot` 與 `provider_type` 的 slot prefix 都是 `storage`
-2. 嘗試指定 `ci` / `result` slot SHALL 回 400 `WRONG_PROVIDER_SCOPE`，錯誤訊息 SHALL 指引至「同步組織架構」modal
+2. 嘗試指定 `ci` / `result` slot SHALL 回 400 `WRONG_PROVIDER_SCOPE`，錯誤訊息 SHALL 指引至「組織與系統設定」頁面（`/organization-management`）的 Org Automation Infra 分頁
 
 #### Scenario: Team admin posts ci provider rejected
 - **WHEN** team admin 對 `/api/teams/5/automation-providers` POST `{"provider_slot": "ci", "provider_type": "ci:jenkins", ...}`
-- **THEN** API SHALL 回 `400 WRONG_PROVIDER_SCOPE`，訊息 SHALL 包含「請 Super Admin 至『同步組織架構』設定」
+- **THEN** API SHALL 回 `400 WRONG_PROVIDER_SCOPE`，訊息 SHALL 包含「請 Super Admin 至『組織與系統設定』設定」
 
 #### Scenario: Team admin posts storage provider accepted
 - **WHEN** team admin 對 `/api/teams/5/automation-providers` POST `{"provider_slot": "storage", "provider_type": "storage:github", ...}`
@@ -558,8 +558,9 @@ Bootstrap 啟動時「主資料庫缺重要表」檢查 SHALL 包含 `system_aut
 - **WHEN** Super Admin 對 `/api/system/automation-providers` POST `{"provider_slot": "storage", ...}`
 - **THEN** API SHALL 回 400 `WRONG_PROVIDER_SCOPE`，訊息 SHALL 指引「Storage provider 請至 team 設定頁」
 
-### Requirement: Org-level provider UI MUST live in team management's org-sync modal
-`/team-management` 頁面既有的「同步組織架構」modal SHALL 新增一個 tab `tab-org-automation-infra`，顯示 Jenkins / Allure provider 管理表格與 Add Provider modal。整個 tab SHALL 沿用 modal 既有的 Super Admin 守門。
+### Requirement: Org-level provider UI MUST live in the organization management page
+
+`/organization-management` 頁面 SHALL 包含一個分頁 `tab-org-automation-infra`，顯示 Jenkins / Allure provider 管理表格與 Add Provider modal。整個分頁 SHALL 沿用既有 Super Admin 守門（透過 `ui_capabilities.yaml` 的 `pages.organization.components.tab-org-automation-infra` 宣告式設定，見 `organization-management-console`）。
 
 `/automation-provider-settings` 頁面 SHALL：
 
@@ -573,10 +574,10 @@ Bootstrap 啟動時「主資料庫缺重要表」檢查 SHALL 包含 `system_aut
 - **THEN** 頁面標題 SHALL 顯示「Git 來源設定」；Provider table SHALL 只列 `provider_slot = storage` 的 row
 
 #### Scenario: Org Automation Infra tab visible to Super Admin only
-- **WHEN** Super Admin 在 `/team-management` 開啟「同步組織架構」modal
-- **THEN** modal SHALL 包含 `tab-org-automation-infra` tab，展開後 SHALL 看到既有的 org-level CI / Result provider 列表 + Add Provider 按鈕
+- **WHEN** Super Admin 開啟 `/organization-management`
+- **THEN** 頁面 SHALL 包含 `tab-org-automation-infra` 分頁，展開後 SHALL 看到既有的 org-level CI / Result provider 列表 + Add Provider 按鈕
 - **WHEN** 非 Super Admin user 進入同一頁
-- **THEN** 整個「同步組織架構」按鈕 SHALL 不可見（既有行為）
+- **THEN** `tab-org-automation-infra` 分頁 SHALL 不可見（既有行為，僅入口位置從 team_management modal 改為 organization-management 頁面）
 
 ### Requirement: Provider audit log MUST identify scope
 provider CRUD 的 audit log SHALL 透過獨立的 `ResourceType.SYSTEM_AUTOMATION_PROVIDER` 與既有 `ResourceType.AUTOMATION_PROVIDER` 區分；team-scoped 紀錄保留 `team_id`，org-scoped 紀錄 `team_id` 欄位為 NULL。

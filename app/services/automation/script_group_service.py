@@ -91,7 +91,7 @@ def _wrap_ci_http_error(exc: httpx.HTTPStatusError, action: str) -> AutomationSc
     except Exception:  # noqa: BLE001
         body_excerpt = ""
     hint = {
-        401: "credentials rejected — verify the CI provider username + API token in 同步組織架構 → Org Automation Infra",
+        401: "credentials rejected — verify the CI provider username + API token in 組織與系統設定 → Org Automation Infra",
         403: (
             "CI server refused the request — usually the API-token user lacks Job/Create permission, "
             "or Jenkins CSRF protection rejected the request. Check the Jenkins user's role and the "

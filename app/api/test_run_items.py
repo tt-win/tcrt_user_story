@@ -29,7 +29,7 @@ from app.models.database_models import (
     TestCaseSection,
     User,
 )
-from app.models.lark_types import Priority, TestResultStatus
+from app.models.lark_types import Priority, TestResultStatus, coerce_test_result_status
 from app.auth.dependencies import get_current_user
 from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
 from app.services.attachment_storage import (
@@ -342,6 +342,34 @@ class BatchUpdateResultRequest(BaseModel):
     change_source: Optional[str] = None  # batch
 
 
+class BatchUpdateByFilterFilter(BaseModel):
+    """Closed filter schema for assistant-oriented batch updates."""
+
+    test_result: Optional[str] = Field(
+        None,
+        description="Match test_result; use literal 'null' for unexecuted (NULL result)",
+    )
+    assignee_unassigned: Optional[bool] = Field(
+        None, description="When true, match items with empty/null assignee_name"
+    )
+    assignee_name: Optional[str] = Field(None, description="Exact assignee_name match")
+    search: Optional[str] = Field(None, description="Title/number fuzzy search (same as list)")
+
+
+class BatchUpdateByFilterPatch(BaseModel):
+    assignee_name: Optional[str] = None
+    test_result: Optional[str] = Field(None, description="pass|fail|blocked|skipped")
+
+
+class BatchUpdateByFilterRequest(BaseModel):
+    filter: BatchUpdateByFilterFilter = Field(default_factory=BatchUpdateByFilterFilter)
+    patch: BatchUpdateByFilterPatch
+    change_source: Optional[str] = None
+
+
+FILTER_BATCH_MATCHED_CAP = 500
+
+
 class BugTicketRequest(BaseModel):
     ticket_number: str = Field(..., description="JIRA ticket number (e.g., PRJ-123)")
 
@@ -615,6 +643,83 @@ def _add_result_history(
     db.add(rec)
 
 
+def _apply_item_list_filters(
+    q,
+    *,
+    search: Optional[str] = None,
+    priority_filter: Optional[str] = None,
+    test_result_filter: Optional[str] = None,
+    executed_only: Optional[bool] = None,
+):
+    if search:
+        s = f"%{search}%"
+        q = q.filter(or_(TestRunItemDB.test_case_number.like(s), TestCaseLocalDB.title.like(s)))
+
+    if priority_filter:
+        priority_lookup = {p.value.lower(): p for p in Priority}
+        priority_value = priority_lookup.get(priority_filter.lower()) if isinstance(priority_filter, str) else None
+        if priority_value is not None:
+            q = q.filter(TestCaseLocalDB.priority == priority_value)
+    if test_result_filter is not None:
+        if str(test_result_filter).lower() in ("null", "none", "unexecuted", "pending"):
+            q = q.filter(TestRunItemDB.test_result.is_(None))
+        else:
+            try:
+                q = q.filter(TestRunItemDB.test_result == coerce_test_result_status(test_result_filter))
+            except ValueError:
+                # Unknown token: match nothing rather than raw-string compare that never hits enum rows.
+                q = q.filter(False)
+    if executed_only:
+        q = q.filter(TestRunItemDB.test_result.isnot(None))
+    return q
+
+
+def resolve_filter_batch_matches_sync(
+    sync_db: Session,
+    *,
+    team_id: int,
+    config_id: int,
+    filt: BatchUpdateByFilterFilter,
+    cap: int = FILTER_BATCH_MATCHED_CAP,
+) -> List[TestRunItemDB]:
+    """Resolve items matching a closed filter; returns ordered rows (id asc). Caller enforces 0/>cap."""
+    if filt.assignee_unassigned and (filt.assignee_name or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="assignee_unassigned cannot be combined with assignee_name",
+        )
+
+    q = sync_db.query(TestRunItemDB).filter(
+        TestRunItemDB.team_id == team_id,
+        TestRunItemDB.config_id == config_id,
+    )
+    if filt.search:
+        s = f"%{filt.search}%"
+        q = q.outerjoin(TestRunItemDB.test_case).filter(
+            or_(TestRunItemDB.test_case_number.like(s), TestCaseLocalDB.title.like(s))
+        )
+    if filt.test_result is not None:
+        # Assistant filter uses pending/null for *unexecuted* (SQL NULL), not Pending status.
+        if str(filt.test_result).lower() in ("null", "none", "unexecuted", "pending"):
+            q = q.filter(TestRunItemDB.test_result.is_(None))
+        else:
+            try:
+                canonical = coerce_test_result_status(filt.test_result)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=str(exc),
+                ) from exc
+            q = q.filter(TestRunItemDB.test_result == canonical)
+    if filt.assignee_unassigned:
+        q = q.filter(or_(TestRunItemDB.assignee_name.is_(None), TestRunItemDB.assignee_name == ""))
+    elif filt.assignee_name is not None:
+        q = q.filter(TestRunItemDB.assignee_name == filt.assignee_name)
+
+    # Fetch cap+1 to detect overflow without loading unbounded rows.
+    return q.order_by(TestRunItemDB.id.asc()).limit(cap + 1).all()
+
+
 @router.get("/", response_model=List[TestRunItemResponse])
 async def list_items(
     team_id: int,
@@ -650,19 +755,13 @@ async def list_items(
             )
         )
 
-        if search:
-            s = f"%{search}%"
-            q = q.filter(or_(TestRunItemDB.test_case_number.like(s), TestCaseLocalDB.title.like(s)))
-
-        if priority_filter:
-            priority_lookup = {p.value.lower(): p for p in Priority}
-            priority_value = priority_lookup.get(priority_filter.lower()) if isinstance(priority_filter, str) else None
-            if priority_value is not None:
-                q = q.filter(TestCaseLocalDB.priority == priority_value)
-        if test_result_filter:
-            q = q.filter(TestRunItemDB.test_result == test_result_filter)
-        if executed_only:
-            q = q.filter(TestRunItemDB.test_result.isnot(None))
+        q = _apply_item_list_filters(
+            q,
+            search=search,
+            priority_filter=priority_filter,
+            test_result_filter=test_result_filter,
+            executed_only=executed_only,
+        )
 
         # Sorting
         sort_map = {
@@ -674,12 +773,58 @@ async def list_items(
         }
         sort_col = sort_map.get(sort_by, TestRunItemDB.created_at)
         if sort_order.lower() == "asc":
-            q = q.order_by(sort_col.asc())
+            q = q.order_by(sort_col.asc(), TestRunItemDB.id.asc())
         else:
-            q = q.order_by(sort_col.desc())
+            q = q.order_by(sort_col.desc(), TestRunItemDB.id.asc())
 
         items = q.offset(skip).limit(limit).all()
         return [_db_to_response(i, getattr(i, "test_case", None), sync_db) for i in items]
+
+    return await main_boundary.run_sync_read(_list)
+
+
+@router.get("/refs", response_model=List[Dict[str, Any]])
+async def list_item_refs(
+    team_id: int,
+    config_id: int,
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
+    search: Optional[str] = Query(None),
+    test_result_filter: Optional[str] = Query(None),
+    executed_only: Optional[bool] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+):
+    """Slim ref list for assistant-oriented workflows (id + number + result + assignee)."""
+
+    def _list(sync_db: Session) -> List[Dict[str, Any]]:
+        _verify_team_and_config(team_id, config_id, sync_db)
+        q = (
+            sync_db.query(TestRunItemDB)
+            .outerjoin(TestRunItemDB.test_case)
+            .filter(
+                TestRunItemDB.team_id == team_id,
+                TestRunItemDB.config_id == config_id,
+            )
+        )
+        q = _apply_item_list_filters(
+            q,
+            search=search,
+            test_result_filter=test_result_filter,
+            executed_only=executed_only,
+        )
+        rows = q.order_by(TestRunItemDB.id.asc()).offset(skip).limit(limit).all()
+        out: List[Dict[str, Any]] = []
+        for item in rows:
+            result = item.test_result.value if hasattr(item.test_result, "value") else item.test_result
+            out.append(
+                {
+                    "id": item.id,
+                    "test_case_number": item.test_case_number,
+                    "test_result": result,
+                    "assignee_name": item.assignee_name,
+                }
+            )
+        return out
 
     return await main_boundary.run_sync_read(_list)
 
@@ -865,7 +1010,13 @@ async def update_item(
                 setattr(item, key, data[key])
 
         if "test_result" in data and data["test_result"] is not None:
-            item.test_result = data["test_result"]
+            try:
+                item.test_result = coerce_test_result_status(data["test_result"])
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=str(exc),
+                ) from exc
         if "executed_at" in data:
             item.executed_at = data["executed_at"]
 
@@ -1012,9 +1163,12 @@ def apply_batch_item_update_sync(
     prev_result = item.test_result
     prev_executed_at = item.executed_at
 
-    # 更新測試結果
+    # 更新測試結果（coerce assistant aliases pass/fail/… → Passed/Failed/…）
     if "test_result" in upd and upd["test_result"] is not None:
-        item.test_result = upd["test_result"]
+        try:
+            item.test_result = coerce_test_result_status(upd["test_result"])
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
 
     # 更新執行時間
     if "executed_at" in upd:
@@ -1180,6 +1334,123 @@ async def batch_update_results(
         "success_count": result["success"],
         "error_count": len(result["errors"]),
         "error_messages": result["errors"],
+    }
+
+
+@router.post("/batch-update-by-filter", response_model=Dict[str, Any])
+async def batch_update_by_filter(
+    team_id: int,
+    config_id: int,
+    payload: BatchUpdateByFilterRequest,
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
+    current_user: User = Depends(get_current_user),
+):
+    """Batch-update items matching a closed server-side filter (assistant-oriented)."""
+    patch = payload.patch
+    if patch.assignee_name is None and patch.test_result is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="patch requires assignee_name and/or test_result",
+        )
+    if patch.test_result is not None:
+        try:
+            # Validate + normalize once; store canonical enum for apply path.
+            patch.test_result = coerce_test_result_status(patch.test_result).value
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+
+    source = payload.change_source or "batch_filter"
+
+    def _batch(sync_db: Session) -> Dict[str, Any]:
+        _verify_team_and_config(team_id, config_id, sync_db)
+        matches = resolve_filter_batch_matches_sync(
+            sync_db, team_id=team_id, config_id=config_id, filt=payload.filter
+        )
+        if not matches:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="filter matched 0 items",
+            )
+        if len(matches) > FILTER_BATCH_MATCHED_CAP:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"filter matched more than {FILTER_BATCH_MATCHED_CAP} items; narrow the filter",
+            )
+
+        success = 0
+        errors: List[str] = []
+        success_items: List[Dict[str, Any]] = []
+        matched_ids = [m.id for m in matches]
+        upd: Dict[str, Any] = {}
+        if patch.assignee_name is not None:
+            upd["assignee_name"] = patch.assignee_name
+        if patch.test_result is not None:
+            upd["test_result"] = patch.test_result
+
+        for item in matches:
+            try:
+                apply_batch_item_update_sync(
+                    sync_db,
+                    item,
+                    upd,
+                    source=source,
+                    changed_by_id=str(current_user.id) if current_user else None,
+                    changed_by_name=(current_user.full_name or current_user.username)
+                    if current_user
+                    else None,
+                )
+                success += 1
+                success_items.append(
+                    {
+                        "item_id": item.id,
+                        "test_case_number": item.test_case_number,
+                        "test_result": item.test_result.value
+                        if hasattr(item.test_result, "value")
+                        else item.test_result,
+                    }
+                )
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"項目 {item.id} 更新失敗: {str(e)}")
+
+        return {
+            "success": success,
+            "errors": errors,
+            "success_items": success_items,
+            "matched_ids": matched_ids,
+            "matched_count": len(matched_ids),
+        }
+
+    result = await main_boundary.run_sync_write(_batch)
+
+    if result["success"] > 0:
+        await log_test_run_item_action(
+            action_type=ActionType.UPDATE,
+            current_user=current_user,
+            team_id=team_id,
+            resource_id=f"batch_filter_{result['success']}_items",
+            action_brief=(
+                f"{current_user.username} filter-batch updated {result['success']} Test Run Items"
+            ),
+            details={
+                "operation": "batch_update_by_filter",
+                "config_id": config_id,
+                "success_count": result["success"],
+                "matched_count": result["matched_count"],
+                "filter": payload.filter.model_dump(exclude_none=True),
+            },
+        )
+
+    return {
+        "success": len(result["errors"]) == 0,
+        "processed_count": result["matched_count"],
+        "success_count": result["success"],
+        "error_count": len(result["errors"]),
+        "error_messages": result["errors"],
+        "matched_count": result["matched_count"],
+        "matched_ids": result["matched_ids"],
     }
 
 

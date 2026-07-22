@@ -35,6 +35,7 @@ from app.models.database_models import (
     TestCaseSection,
 )
 import app.services.assistant.assistant_llm_service as llm_mod
+from app.services.assistant import conversation_service as conversation_service_module
 from app.testsuite.db_test_helpers import (
     create_managed_test_database,
     dispose_managed_test_database,
@@ -85,6 +86,11 @@ def confirm_db(tmp_path, monkeypatch):
 
     fake_llm = _FakeLLM()
     monkeypatch.setattr(llm_mod, "_service_singleton", fake_llm)
+    # 對話標題自動摘要在首個 turn 結束後背景觸發，也會經同一個共用 fake 呼叫 LLM，
+    # 與這個檔案逐一比對 fake.calls／fake 回傳序列的測試互相干擾（見
+    # test_assistant_conversation_title.py 的紅隊發現）；此檔案的測試目的與標題摘要無關，
+    # 統一關閉背景觸發。
+    monkeypatch.setattr(conversation_service_module, "_fire_and_forget_title_generation", lambda *a, **k: None)
 
     with bundle["sync_session_factory"]() as session:
         session.add(Team(id=1, name="ART", description="", wiki_token="wt", test_case_table_id="tbl1"))
@@ -133,7 +139,8 @@ def test_confirm_executes_the_write_exactly_once_and_clears_execution_payload(co
     assert "confirmation_required" in r.text
 
     action_id = _find_pending_action_id(client, conv_id)
-    _push_text(fake, "done")
+    summary = "路徑總結：已建立 Test Run「Confirm Flow Run」。"
+    _push_text(fake, summary)
     r2 = client.post(f"/api/assistant/conversations/{conv_id}/actions/{action_id}/confirm", headers=HEADERS)
     assert r2.status_code == 200, r2.text
     assert "tool_started" in r2.text
@@ -142,15 +149,16 @@ def test_confirm_executes_the_write_exactly_once_and_clears_execution_payload(co
     assert '"outcome": "succeeded"' in r2.text
     assert r2.text.index("tool_started") < r2.text.index("tool_finished")
     assert '"name": "Confirm Flow Run"' in r2.text
-    assert '"content": "done"' not in r2.text
-    assert "text_delta" not in r2.text, "confirmed result must not be followed by terminal LLM prose"
+    # Completion path summary is user-visible after all writes succeed.
+    assert "text_delta" in r2.text
+    assert "Confirm Flow Run" in r2.text
 
     history = client.get(f"/api/assistant/conversations/{conv_id}/messages", headers=HEADERS).json()["messages"]
     tool_messages = [m for m in history if m["role"] == "tool" and m["tool_name"] == "create_test_run_config"]
     assert len(tool_messages) == 1
     assert tool_messages[0]["tool_result"]["name"] == "Confirm Flow Run"
     assert tool_messages[0]["tool_outcome"] == "succeeded"
-    assert not any(m["role"] == "assistant" and m.get("content") == "done" for m in history)
+    assert any(m["role"] == "assistant" and m.get("content") == summary for m in history)
 
     async def _get_action(session):
         return await session.get(AssistantPendingAction, action_id)
@@ -205,14 +213,15 @@ def test_batch_execute_actions_uses_one_confirmation_for_all_independent_writes(
     assert proposed.text.count("confirmation_required") == 1
     action_id = _find_pending_action_id(client, conv_id)
 
-    _push_text(fake, "both done")
+    batch_summary = "路徑總結：已建立 Batch Set A 與 Batch Set B。"
+    _push_text(fake, batch_summary)
     confirmed = client.post(
         f"/api/assistant/conversations/{conv_id}/actions/{action_id}/confirm", headers=HEADERS
     )
     assert confirmed.status_code == 200, confirmed.text
     assert '"succeeded_count": 2' in confirmed.text
-    assert "both done" not in confirmed.text
-    assert "text_delta" not in confirmed.text
+    assert "text_delta" in confirmed.text
+    assert "Batch Set A" in confirmed.text
 
     with confirm_db["bundle"]["sync_session_factory"]() as session:
         names = {row[0] for row in session.query(TestCaseSet.name).filter(TestCaseSet.name.in_(["Batch Set A", "Batch Set B"])).all()}
@@ -233,7 +242,7 @@ def test_confirm_continuation_can_still_create_a_new_pending_without_terminal_te
     first_action_id = _find_pending_action_id(client, conv_id)
 
     # Fresh fixture 的 default set 是 1，因此第一個 create 會產生 set id 2；continuation 的新
-    # tool call 必須照常建立第二張確認卡，而不是被 terminal-text suppression 吃掉。
+    # tool call 必須照常建立第二張確認卡。伴隨的「準備」散文不得成為 text_delta。
     fake.script.append(llm_mod.AssistantLLMResult(
         content="我已經準備好建立 section，請確認",
         tool_calls=[llm_mod.ParsedToolCall(
@@ -254,6 +263,27 @@ def test_confirm_continuation_can_still_create_a_new_pending_without_terminal_te
     assert "text_delta" not in continued.text
     second_action_id = _find_pending_action_id(client, conv_id)
     assert second_action_id != first_action_id
+
+
+def test_confirm_completion_drops_stale_preconfirm_prose(confirm_db):
+    """Pure 'please confirm' after success must stay silent; real path summary must show."""
+    client = _client()
+    conv_id = _create_conversation(client)
+    fake = confirm_db["llm"]
+    _push_tool_call(fake, "create_test_run_config", {
+        "name": "Stale Prose Run", "test_case_set_ids": [confirm_db["set_id"]],
+    })
+    client.post(
+        f"/api/assistant/conversations/{conv_id}/messages", headers=HEADERS,
+        data={"text": "create a run", "client_message_id": "stale-prose"},
+    )
+    action_id = _find_pending_action_id(client, conv_id)
+    _push_text(fake, "我已經準備好，請確認操作。")
+    silent = client.post(f"/api/assistant/conversations/{conv_id}/actions/{action_id}/confirm", headers=HEADERS)
+    assert silent.status_code == 200, silent.text
+    assert '"outcome": "succeeded"' in silent.text
+    assert "text_delta" not in silent.text
+    assert "請確認" not in silent.text
 
 
 @pytest.mark.parametrize("outcome", ["failed", "unknown"])
@@ -401,7 +431,7 @@ def test_confirmation_stale_when_target_changes_before_confirm(confirm_db):
     client = _client()
     conv_id = _create_conversation(client)
     fake = confirm_db["llm"]
-    _push_tool_call(fake, "update_test_case", {"record_id": case_id, "title": "new title"})
+    _push_tool_call(fake, "update_test_case", {"record_id": str(case_id), "title": "new title"})
     client.post(
         f"/api/assistant/conversations/{conv_id}/messages", headers=HEADERS,
         data={"text": "rename it", "client_message_id": "m1"},

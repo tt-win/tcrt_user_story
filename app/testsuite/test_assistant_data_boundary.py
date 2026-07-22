@@ -31,7 +31,7 @@ from app.models.database_models import (
 )
 from app.services.assistant.conversation_service import ConversationService
 from app.services.assistant.projection import project_and_redact
-from app.services.assistant.tool_executor import RejectionResult, ToolExecutor
+from app.services.assistant.tool_executor import PendingCreationRequest, RejectionResult, ToolExecutor
 from app.services.assistant.tool_registry import get_tool_registry
 from app.testsuite.db_test_helpers import (
     create_managed_test_database,
@@ -182,12 +182,108 @@ async def test_update_overwriting_existing_credential_is_rejected(boundary_db):
         case_id = case.id
 
     tool = registry.get("update_test_case")
-    args = {"record_id": case_id, "test_data": [{"name": "note2", "category": "text", "value": "harmless update"}]}
+    args = {"record_id": str(case_id), "test_data": [{"name": "note2", "category": "text", "value": "harmless update"}]}
     result = await executor.prepare_write_tool(
         tool, args, conversation=_FakeConversation(), user_id=1, role=UserRole.USER, execution_key="d" * 32
     )
     assert isinstance(result, RejectionResult)
     assert result.code == "credential_write_rejected"
+
+
+async def test_update_overwriting_existing_credential_is_rejected_for_lark_synced_case(boundary_db):
+    """第三輪紅隊發現的 fail-open bug（比前兩輪更嚴重）：`check_update_overwrites_existing_credential`
+    原本只查 `TestCaseLocal.id == record_id`,對 Lark 同步的 case（`record_id` 是非數字 lark_record_id
+    字串)會查無此列、靜默回傳 False——等同在使用者不知情下允許覆寫既有 credential test_data,而非
+    預期的 fail-closed 拒絕。這裡用真正的 lark_record_id（非 `str(int)`）驗證仍會被正確拒絕。"""
+    executor, conv_svc, registry = _make_services()
+    lark_record_id = "recABCDEFG9999"
+    with boundary_db["bundle"]["sync_session_factory"]() as session:
+        case = TestCaseLocal(
+            team_id=1, test_case_set_id=boundary_db["ids"]["set_id"], test_case_number="TC-CRED-LARK-001",
+            title="existing", test_data_json=json.dumps(CREDENTIAL_TEST_DATA, ensure_ascii=False),
+            lark_record_id=lark_record_id,
+        )
+        session.add(case)
+        session.commit()
+
+    tool = registry.get("update_test_case")
+    args = {
+        "record_id": lark_record_id,
+        "test_data": [{"name": "note2", "category": "text", "value": "harmless update"}],
+    }
+    result = await executor.prepare_write_tool(
+        tool, args, conversation=_FakeConversation(), user_id=1, role=UserRole.USER, execution_key="g" * 32
+    )
+    assert isinstance(result, RejectionResult), (
+        f"Lark 同步案例的既有 credential 保護不得被 record_id 型別繞過,got {result!r}"
+    )
+    assert result.code == "credential_write_rejected"
+
+
+async def test_delete_test_case_attachment_accepts_a_real_string_target(boundary_db):
+    """紅隊發現的 bug：`target`（附件檔名）曾被 schema 強制宣告成 integer，逼 LLM 只能捏造假整數，
+    確認卡建立後實際刪除必然因值不對而失敗（後端回 404,執行結果顯示 unknown/黃色)。修好後,一個
+    真實的字串檔名必須能直接通過 schema 驗證並成功建立 pending（不再是 schema_invalid）。"""
+    executor, conv_svc, registry = _make_services()
+    with boundary_db["bundle"]["sync_session_factory"]() as session:
+        case = TestCaseLocal(
+            team_id=1, test_case_set_id=boundary_db["ids"]["set_id"], test_case_number="TC-ATTACH-001",
+            title="has an attachment",
+        )
+        session.add(case)
+        session.commit()
+        case_id = case.id
+
+    tool = registry.get("delete_test_case_attachment")
+    args = {"test_case_id": case_id, "target": "evidence.txt"}
+    result = await executor.prepare_write_tool(
+        tool, args, conversation=_FakeConversation(), user_id=1, role=UserRole.USER, execution_key="e" * 32
+    )
+    assert isinstance(result, PendingCreationRequest), (
+        f"expected a valid pending request for a real string target, got {result!r}"
+    )
+    assert result.confirmation_summary["risk_level"] == "irreversible"
+
+
+@pytest.mark.parametrize("tool_name,extra_args", [
+    ("update_test_case", {"title": "renamed via lark record id"}),
+    ("delete_test_case", {}),
+    ("move_test_case_scope", {}),
+])
+async def test_lark_synced_test_case_record_id_resolves_team_correctly(boundary_db, tool_name, extra_args):
+    """第二輪紅隊發現的 P1（兩層）：把 `record_id` 的 schema 型別改成字串後,`resolve_test_case_team`
+    （team 驗證）與 `resolve_test_case_identity`（confirmation summary）兩顆姐妹函式都必須有
+    `lark_record_id` fallback,否則 Lark 同步的 test case（`record_id` 是非數字字串)要嘛在 team
+    解析被誤判 team_mismatch,要嘛過了 team 關卡卻在 confirmation summary 這關被判定
+    unresolvable/退化成 unknown——兩者都會讓「助手可操作 Lark 同步案例」這個修復目標實質沒有生效。
+    斷言必須是「真的成功建立可用的 pending」，而非只檢查「不是 team_mismatch」（後者無法排除
+    在另一關卡失敗的情況，紅隊已證實這個較弱斷言曾經在此案例上產生誤判）。"""
+    executor, conv_svc, registry = _make_services()
+    lark_record_id = "recABCDEFG1234"
+    with boundary_db["bundle"]["sync_session_factory"]() as session:
+        case = TestCaseLocal(
+            team_id=1, test_case_set_id=boundary_db["ids"]["set_id"], test_case_number="TC-LARK-001",
+            title="synced from lark", lark_record_id=lark_record_id,
+        )
+        session.add(case)
+        session.commit()
+
+    tool = registry.get(tool_name)
+    args = {"record_id": lark_record_id, **extra_args}
+    if tool_name == "move_test_case_scope":
+        args["test_case_set_id"] = boundary_db["ids"]["set_id"]
+    result = await executor.prepare_write_tool(
+        tool, args, conversation=_FakeConversation(), user_id=1, role=UserRole.USER, execution_key="f" * 32
+    )
+    assert isinstance(result, PendingCreationRequest), (
+        f"{tool_name}: 非數字 lark_record_id 必須能成功建立 pending,got {result!r}"
+    )
+    assert result.confirmation_summary["target_type"] != "unknown", (
+        f"{tool_name}: confirmation summary 必須能解析出真實目標,不得退化成 unknown"
+    )
+    assert result.confirmation_summary["target_label"].startswith("TC-LARK-001"), (
+        f"{tool_name}: confirmation summary 必須顯示真實 test_case_number,而非佔位文字"
+    )
 
 
 async def test_confirmation_summary_ignores_injection_like_db_content(boundary_db):

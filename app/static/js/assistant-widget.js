@@ -11,7 +11,11 @@
  * 純函式（可獨立測試）
  * ==================================================================== */
 
-/** HTML escape；確認卡的 target_label 等不可信字串一律先經此再嵌入樣板字串。 */
+/**
+ * HTML escape；確認卡的 target_label / target_id 等一律先經此再嵌入樣板字串。
+ * 使用固定函式參考（非可被覆寫的全域綁定）：team-management/main.js 等後載入腳本
+ * 會重新宣告全域 escapeHtml，且舊實作對 number 會炸（text.replace is not a function）。
+ */
 function escapeHtml(value) {
   return String(value == null ? '' : value)
     .replace(/&/g, '&amp;')
@@ -20,6 +24,8 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+const _assistantEscapeHtml = escapeHtml;
+
 
 /** 工具名稱只用來選擇既有翻譯 key；未知／異常 identifier 不得直接顯示給使用者。 */
 function toolActionI18nKey(toolName) {
@@ -35,7 +41,7 @@ function confirmationActionLabelMarkup(actionKey, t) {
     : 'assistant.unknownAction';
   const genericAction = t('assistant.unknownAction', {}, 'System action');
   const actionLabel = t(safeKey, {}, genericAction);
-  return `<span data-i18n="${escapeHtml(safeKey)}">${escapeHtml(actionLabel)}</span>`;
+  return `<span data-i18n="${_assistantEscapeHtml(safeKey)}">${_assistantEscapeHtml(actionLabel)}</span>`;
 }
 
 /**
@@ -107,13 +113,25 @@ function formatConfirmTargetLine(summary, t) {
   if (!summary || typeof summary !== 'object') return '';
   const targetType = summary.target_type;
   if (targetType === 'new') {
-    return t('assistant.confirmTargetNew', { label: escapeHtml(summary.target_label || '') }, 'Target: {label}');
+    const label = String(summary.target_label || '').trim();
+    if (!label) {
+      return t('assistant.confirmTargetUnresolvable', {}, 'Impact scope could not be resolved');
+    }
+    return t('assistant.confirmTargetNew', { label: _assistantEscapeHtml(label) }, 'Target: {label}');
   }
   if (targetType === 'batch') {
     return t('assistant.confirmTargetBatch', { count: summary.affected_count || 0 }, '{count} item(s) affected');
   }
   if (targetType === 'batch_actions') {
     return t('assistant.confirmTargetBatch', { count: summary.affected_count || 0 }, '{count} item(s) affected');
+  }
+  if (targetType === 'filter_batch') {
+    const count = summary.matched_count != null ? summary.matched_count : (summary.affected_count || 0);
+    return t(
+      'assistant.confirmTargetFilterBatch',
+      { count },
+      '{count} item(s) match the filter'
+    );
   }
   if (targetType === 'membership') {
     return t('assistant.confirmTargetMembership', { count: summary.affected_count || 0 }, '{count} member(s) affected');
@@ -122,11 +140,54 @@ function formatConfirmTargetLine(summary, t) {
     return t('assistant.confirmTargetUnresolvable', {}, 'Impact scope could not be resolved');
   }
   // 其餘皆為 target_resolver="single" 產生（resource_team_resolver 名稱，如 test_case/test_run_config）
+  const label = String(summary.target_label || '').trim();
+  const hasId = summary.target_id != null && String(summary.target_id).trim() !== '';
+  if (!label && !hasId) {
+    // 避免「目標：（#）」空殼——filter_batch 誤落 single 等路徑也會走到這裡
+    return t('assistant.confirmTargetUnresolvable', {}, 'Impact scope could not be resolved');
+  }
+  if (!label && hasId) {
+    return t(
+      'assistant.confirmTargetIdOnly',
+      { id: _assistantEscapeHtml(summary.target_id) },
+      'Target: #{id}'
+    );
+  }
+  if (label && !hasId) {
+    return t('assistant.confirmTargetNew', { label: _assistantEscapeHtml(label) }, 'Target: {label}');
+  }
   return t(
     'assistant.confirmTargetSingle',
-    { label: escapeHtml(summary.target_label || ''), id: summary.target_id != null ? summary.target_id : '' },
+    { label: _assistantEscapeHtml(label), id: _assistantEscapeHtml(summary.target_id) },
     'Target: {label} (#{id})'
   );
+}
+
+/**
+ * 依 agent 相位產生忙碌狀態文案（純函式、可測；不是輪播）。
+ * phase:
+ *   - starting  — turn 開始、等待首次 LLM
+ *   - planning  — 工具已結束，等待下一輪 LLM 規劃
+ *   - reviewing — 剛收到工具結果、整理中（可選）
+ *   - running_tool — 正在執行具名工具（通常改由 tool-step 列顯示）
+ * context: { toolLabel?: string }
+ */
+function formatAgentBusyStatus(phase, context, t) {
+  const ctx = context && typeof context === 'object' ? context : {};
+  const toolLabel = ctx.toolLabel != null ? String(ctx.toolLabel) : '';
+  if (phase === 'running_tool' && toolLabel) {
+    return t('assistant.thinkingRunningTool', { tool: toolLabel }, 'Running: {tool}');
+  }
+  if (phase === 'planning') {
+    return t('assistant.thinkingPlanning', {}, 'Planning next step…');
+  }
+  if (phase === 'reviewing') {
+    return t('assistant.thinkingReviewing', {}, 'Reviewing results…');
+  }
+  if (phase === 'starting') {
+    return t('assistant.thinkingStarting', {}, 'Thinking…');
+  }
+  return t('assistant.thinkingWorking', {}, 'Working…');
 }
 
 function formatConfirmTargetList(summary, t) {
@@ -149,9 +210,9 @@ function formatConfirmBatchTargetList(summary) {
       || !summary.targets.length || summary.targets.length !== summary.affected_count) return '';
   const rows = summary.targets.map((target) => {
     if (!target || !target.target_label) return '';
-    const identity = target.target_id != null ? `#${escapeHtml(target.target_id)} — `
-      : target.target_key != null ? `${escapeHtml(target.target_key)} — ` : '';
-    return `<li>${identity}${escapeHtml(target.target_label)}</li>`;
+    const identity = target.target_id != null ? `#${_assistantEscapeHtml(target.target_id)} — `
+      : target.target_key != null ? `${_assistantEscapeHtml(target.target_key)} — ` : '';
+    return `<li>${identity}${_assistantEscapeHtml(target.target_label)}</li>`;
   });
   if (rows.some((row) => !row)) return '';
   return `<ul class="tcrt-assistant-cc-targets">${rows.join('')}</ul>`;
@@ -217,7 +278,7 @@ function confirmStatusOutcome(status) {
 }
 
 function toolActivitySummaryMarkup(label) {
-  return `<summary><span class="tcrt-assistant-tool-heading" data-i18n="assistant.activity">${escapeHtml(label)}</span><span class="tcrt-assistant-tool-status"></span></summary>`;
+  return `<summary><span class="tcrt-assistant-tool-heading" data-i18n="assistant.activity">${_assistantEscapeHtml(label)}</span><span class="tcrt-assistant-tool-status"></span></summary>`;
 }
 
 /** Confirmed writes use icon-only events; ordinary read tools retain the activity list. */
@@ -241,8 +302,8 @@ function toolStatusIconMarkup(outcome, actionId, label) {
           : view.kind === 'expired'
             ? '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'
             : '<path d="M9.8 9a2.4 2.4 0 1 1 3.1 2.3c-.7.3-.9.8-.9 1.7M12 17h.01"/><circle cx="12" cy="12" r="9"/>';
-  const actionAttr = actionId == null ? '' : ` data-action-id="${escapeHtml(actionId)}"`;
-  return `<span class="tcrt-assistant-tool-result tcrt-assistant-result-${view.kind}" role="status" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" data-i18n-aria-label="${view.labelKey}" data-i18n-title="${view.labelKey}"${actionAttr}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">${path}</svg></span>`;
+  const actionAttr = actionId == null ? '' : ` data-action-id="${_assistantEscapeHtml(actionId)}"`;
+  return `<span class="tcrt-assistant-tool-result tcrt-assistant-result-${view.kind}" role="status" aria-label="${_assistantEscapeHtml(label)}" title="${_assistantEscapeHtml(label)}" data-i18n-aria-label="${view.labelKey}" data-i18n-title="${view.labelKey}"${actionAttr}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">${path}</svg></span>`;
 }
 
 /** Confirm UI state only settles after an authoritative tool outcome. */
@@ -264,6 +325,16 @@ function confirmComposerShouldLock(actionableCardCount) {
 function authoritativeInflightKey(storedKey, activeTurn) {
   if (activeTurn && activeTurn.turn_key) return activeTurn.turn_key;
   return null;
+}
+
+/**
+ * Whether an assistant bubble still has user-visible content after a turn ends.
+ * Used to drop shells left by confirm continuation (message_start + suppress_terminal_text)
+ * that never received text_delta / tool activity / confirm cards.
+ */
+function assistantBubbleShouldKeep(flags) {
+  const f = flags || {};
+  return !!(f.hasText || f.hasToolActivity || f.hasConfirmCard);
 }
 
 /* ======================================================================
@@ -413,7 +484,7 @@ const AssistantWidget = (() => {
         return window.DOMPurify.sanitize(window.marked.parse(rawText || ''));
       } catch (e) { /* fall through to plain text */ }
     }
-    return `<p>${escapeHtml(rawText || '').replace(/\n/g, '<br>')}</p>`;
+    return `<p>${_assistantEscapeHtml(rawText || '').replace(/\n/g, '<br>')}</p>`;
   }
 
   /* ---------------- DOM 建構 ---------------- */
@@ -426,7 +497,7 @@ const AssistantWidget = (() => {
     if (mounted) return;
     root = el(`<div id="tcrt-assistant-root"></div>`);
     root.appendChild(el(`
-      <button class="tcrt-assistant-fab" id="tcrt-assistant-fab" type="button" data-i18n-aria-label="assistant.fabLabel" aria-label="${escapeHtml(t('assistant.fabLabel', {}, 'Open TCRT Assistant'))}">
+      <button class="tcrt-assistant-fab" id="tcrt-assistant-fab" type="button" data-i18n-aria-label="assistant.fabLabel" aria-label="${_assistantEscapeHtml(t('assistant.fabLabel', {}, 'Open TCRT Assistant'))}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
           <path d="M21 12c0 4.1-4 7.4-9 7.4-1 0-2-.13-2.9-.38L4 21l1.2-3.6C3.8 16 3 14.1 3 12c0-4.1 4-7.4 9-7.4s9 3.3 9 7.4Z" stroke-linejoin="round"/>
           <circle cx="8.6" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="15.4" cy="12" r="1" fill="currentColor" stroke="none"/>
@@ -434,24 +505,24 @@ const AssistantWidget = (() => {
       </button>
     `));
     root.appendChild(el(`
-      <section class="tcrt-assistant-panel" id="tcrt-assistant-panel" role="dialog" aria-modal="false" data-i18n-aria-label="assistant.title" aria-label="${escapeHtml(t('assistant.title', {}, 'TCRT Assistant'))}">
+      <section class="tcrt-assistant-panel" id="tcrt-assistant-panel" role="dialog" aria-modal="false" data-i18n-aria-label="assistant.title" aria-label="${_assistantEscapeHtml(t('assistant.title', {}, 'TCRT Assistant'))}">
         <header class="tcrt-assistant-head">
-          <span class="tcrt-assistant-title" data-i18n="assistant.title">${escapeHtml(t('assistant.title', {}, 'TCRT Assistant'))}</span>
+          <span class="tcrt-assistant-title" data-i18n="assistant.title">${_assistantEscapeHtml(t('assistant.title', {}, 'TCRT Assistant'))}</span>
           <span class="tcrt-assistant-team-badge" id="tcrt-assistant-team-badge"></span>
           <span class="tcrt-assistant-spacer"></span>
-          <button class="tcrt-assistant-icon-btn" type="button" id="tcrt-assistant-history-btn" data-i18n-title="assistant.historyTitle" data-i18n-aria-label="assistant.historyTitle" title="${escapeHtml(t('assistant.historyTitle', { team: '' }, 'Recent conversations'))}" aria-label="${escapeHtml(t('assistant.historyTitle', { team: '' }, 'Recent conversations'))}">
+          <button class="tcrt-assistant-icon-btn" type="button" id="tcrt-assistant-history-btn" data-i18n-title="assistant.historyTitleGlobal" data-i18n-aria-label="assistant.historyTitleGlobal" title="${_assistantEscapeHtml(t('assistant.historyTitleGlobal', {}, 'Recent conversations'))}" aria-label="${_assistantEscapeHtml(t('assistant.historyTitleGlobal', {}, 'Recent conversations'))}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-9-9 9 9 0 0 1 9 9Z"/></svg>
           </button>
-          <button class="tcrt-assistant-icon-btn" type="button" id="tcrt-assistant-new-btn" data-i18n-title="assistant.newConversation" data-i18n-aria-label="assistant.newConversation" title="${escapeHtml(t('assistant.newConversation', {}, 'New conversation'))}" aria-label="${escapeHtml(t('assistant.newConversation', {}, 'New conversation'))}">
+          <button class="tcrt-assistant-icon-btn" type="button" id="tcrt-assistant-new-btn" data-i18n-title="assistant.newConversation" data-i18n-aria-label="assistant.newConversation" title="${_assistantEscapeHtml(t('assistant.newConversation', {}, 'New conversation'))}" aria-label="${_assistantEscapeHtml(t('assistant.newConversation', {}, 'New conversation'))}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
           </button>
-          <button class="tcrt-assistant-icon-btn" type="button" id="tcrt-assistant-close-btn" data-i18n-title="assistant.close" data-i18n-aria-label="assistant.close" title="${escapeHtml(t('assistant.close', {}, 'Close'))}" aria-label="${escapeHtml(t('assistant.close', {}, 'Close'))}">
+          <button class="tcrt-assistant-icon-btn" type="button" id="tcrt-assistant-close-btn" data-i18n-title="assistant.close" data-i18n-aria-label="assistant.close" title="${_assistantEscapeHtml(t('assistant.close', {}, 'Close'))}" aria-label="${_assistantEscapeHtml(t('assistant.close', {}, 'Close'))}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
           </button>
           <div class="tcrt-assistant-history-menu" id="tcrt-assistant-history-menu">
-            <div class="tcrt-assistant-hm-title" id="tcrt-assistant-hm-title" data-i18n="assistant.historyTitle" data-i18n-params='{"team":""}'></div>
+            <div class="tcrt-assistant-hm-title" id="tcrt-assistant-hm-title" data-i18n="assistant.historyTitleGlobal"></div>
             <div id="tcrt-assistant-hm-list"></div>
-            <button class="tcrt-assistant-hm-new" type="button" id="tcrt-assistant-hm-new-btn" data-i18n="assistant.newConversation">${escapeHtml(t('assistant.newConversation', {}, 'New conversation'))}</button>
+            <button class="tcrt-assistant-hm-new" type="button" id="tcrt-assistant-hm-new-btn" data-i18n="assistant.newConversation">${_assistantEscapeHtml(t('assistant.newConversation', {}, 'New conversation'))}</button>
           </div>
         </header>
         <div class="tcrt-assistant-messages" id="tcrt-assistant-messages" aria-live="polite"></div>
@@ -459,16 +530,16 @@ const AssistantWidget = (() => {
           <div class="tcrt-assistant-attach-chip" id="tcrt-assistant-attach-chip"></div>
           <div class="tcrt-assistant-row">
             <input type="file" id="tcrt-assistant-file-input" multiple style="display:none">
-            <button class="tcrt-assistant-composer-btn tcrt-assistant-attach-btn" type="button" id="tcrt-assistant-attach-btn" data-i18n-title="assistant.attachFile" data-i18n-aria-label="assistant.attachFile" title="${escapeHtml(t('assistant.attachFile', {}, 'Attach a file'))}" aria-label="${escapeHtml(t('assistant.attachFile', {}, 'Attach a file'))}">
+            <button class="tcrt-assistant-composer-btn tcrt-assistant-attach-btn" type="button" id="tcrt-assistant-attach-btn" data-i18n-title="assistant.attachFile" data-i18n-aria-label="assistant.attachFile" title="${_assistantEscapeHtml(t('assistant.attachFile', {}, 'Attach a file'))}" aria-label="${_assistantEscapeHtml(t('assistant.attachFile', {}, 'Attach a file'))}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.5 12.6 21a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2l-8.5 8.5a1.8 1.8 0 0 1-2.6-2.6l7.8-7.8"/></svg>
             </button>
-            <textarea id="tcrt-assistant-input" rows="1" data-i18n-placeholder="assistant.inputPlaceholder" placeholder="${escapeHtml(t('assistant.inputPlaceholder', {}, 'Ask or act on test cases / test runs…'))}" data-i18n-aria-label="assistant.inputPlaceholder" aria-label="${escapeHtml(t('assistant.inputPlaceholder', {}, 'Ask or act on test cases / test runs…'))}"></textarea>
-            <button class="tcrt-assistant-composer-btn tcrt-assistant-send-btn" id="tcrt-assistant-send-btn" type="button" data-i18n-aria-label="assistant.send" aria-label="${escapeHtml(t('assistant.send', {}, 'Send'))}">
+            <textarea id="tcrt-assistant-input" rows="1" data-i18n-placeholder="assistant.inputPlaceholder" placeholder="${_assistantEscapeHtml(t('assistant.inputPlaceholder', {}, 'Ask or act on test cases / test runs…'))}" data-i18n-aria-label="assistant.inputPlaceholder" aria-label="${_assistantEscapeHtml(t('assistant.inputPlaceholder', {}, 'Ask or act on test cases / test runs…'))}"></textarea>
+            <button class="tcrt-assistant-composer-btn tcrt-assistant-send-btn" id="tcrt-assistant-send-btn" type="button" data-i18n-aria-label="assistant.send" aria-label="${_assistantEscapeHtml(t('assistant.send', {}, 'Send'))}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z" stroke-linejoin="round"/></svg>
             </button>
           </div>
           <div class="tcrt-assistant-composer-hint">
-            <span data-i18n="assistant.enterHint">${escapeHtml(t('assistant.enterHint', {}, 'Enter to send · Shift+Enter for new line'))}</span>
+            <span data-i18n="assistant.enterHint">${_assistantEscapeHtml(t('assistant.enterHint', {}, 'Enter to send · Shift+Enter for new line'))}</span>
             <span class="tcrt-assistant-lock" id="tcrt-assistant-lock-hint"></span>
           </div>
         </footer>
@@ -570,12 +641,73 @@ const AssistantWidget = (() => {
 
   /* ---------------- 訊息渲染 ---------------- */
 
-  function addUserBubble(text) {
+  const _ATTACH_STATUS_KEYS = {
+    pending: 'assistant.attachmentUploading',
+    done: 'assistant.attachmentUploaded',
+    failed: 'assistant.attachmentUploadFailed',
+  };
+  const _ATTACH_STATUS_FALLBACK = { pending: 'Uploading', done: 'Uploaded', failed: 'Upload failed' };
+  const _ATTACH_STATUS_ICON = { pending: '⏳', done: '✓', failed: '✕' };
+
+  function _setAttachmentPillStatus(pill, status) {
+    pill.dataset.status = status;
+    const labelKey = _ATTACH_STATUS_KEYS[status];
+    const label = t(labelKey, {}, _ATTACH_STATUS_FALLBACK[status]);
+    const statusEl = pill.querySelector('.tcrt-assistant-attach-status');
+    statusEl.textContent = _ATTACH_STATUS_ICON[status];
+    statusEl.setAttribute('aria-label', label);
+    statusEl.setAttribute('title', label);
+    statusEl.setAttribute('data-i18n-aria-label', labelKey);
+    statusEl.setAttribute('data-i18n-title', labelKey);
+    if (status === 'done' && pill.dataset.href) {
+      pill.setAttribute('href', pill.dataset.href);
+      pill.removeAttribute('aria-disabled');
+    } else {
+      pill.removeAttribute('href');
+      pill.setAttribute('aria-disabled', 'true');
+    }
+  }
+
+  function _setAttachmentPillHref(pill, href) {
+    pill.dataset.href = href;
+    if (pill.dataset.status === 'done') pill.setAttribute('href', href);
+  }
+
+  function _attachmentPillNode(descriptor) {
+    const pill = el(`
+      <a class="tcrt-assistant-attach-pill" target="_blank" rel="noopener">
+        <span class="tcrt-assistant-attach-icon" aria-hidden="true">📎</span>
+        <span class="tcrt-assistant-attach-name"></span>
+        <span class="tcrt-assistant-attach-status" role="status"></span>
+      </a>
+    `);
+    pill.querySelector('.tcrt-assistant-attach-name').textContent = descriptor.name;
+    if (descriptor.href) _setAttachmentPillHref(pill, descriptor.href);
+    _setAttachmentPillStatus(pill, descriptor.status || 'pending');
+    return pill;
+  }
+
+  function addUserBubble(text, attachments) {
     const node = el('<div class="tcrt-assistant-msg tcrt-assistant-user"><div class="tcrt-assistant-bubble"></div></div>');
-    node.querySelector('.tcrt-assistant-bubble').textContent = text;
+    const bubble = node.querySelector('.tcrt-assistant-bubble');
+    if (text) {
+      const textEl = el('<div class="tcrt-assistant-user-text"></div>');
+      textEl.textContent = text;
+      bubble.appendChild(textEl);
+    }
+    const attachmentPills = [];
+    if (attachments && attachments.length) {
+      const wrap = el('<div class="tcrt-assistant-msg-attachments"></div>');
+      attachments.forEach((descriptor) => {
+        const pill = _attachmentPillNode(descriptor);
+        wrap.appendChild(pill);
+        attachmentPills.push(pill);
+      });
+      bubble.appendChild(wrap);
+    }
     messagesEl.appendChild(node);
     scrollToBottom();
-    return node;
+    return { node, attachmentPills };
   }
 
   function addAssistantShell() {
@@ -596,7 +728,7 @@ const AssistantWidget = (() => {
     const node = el(`
       <div class="tcrt-assistant-scope-toast" role="status">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
-        <span><span data-i18n="assistant.scopeNotice">${escapeHtml(t('assistant.scopeNotice', {}, ''))}</span> <span class="tcrt-assistant-warn" data-i18n="assistant.scopeDataEgress">${escapeHtml(t('assistant.scopeDataEgress', {}, ''))}</span></span>
+        <span><span data-i18n="assistant.scopeNotice">${_assistantEscapeHtml(t('assistant.scopeNotice', {}, ''))}</span> <span class="tcrt-assistant-warn" data-i18n="assistant.scopeDataEgress">${_assistantEscapeHtml(t('assistant.scopeDataEgress', {}, ''))}</span></span>
       </div>
     `);
     messagesEl.appendChild(node);
@@ -620,28 +752,110 @@ const AssistantWidget = (() => {
     return act;
   }
 
-  function addToolStep(assistantNode, toolName) {
+  function hideAgentThinking(assistantNode) {
+    if (!assistantNode) return;
+    const bubble = assistantNode.querySelector('.tcrt-assistant-bubble');
+    if (!bubble) return;
+    const node = bubble.querySelector('.tcrt-assistant-thinking');
+    if (node) node.remove();
+  }
+
+  /**
+   * Remove transient busy indicators; if the bubble has no lasting content, drop
+   * the whole assistant shell (avoids empty bubbles after confirm / suppress_terminal_text).
+   */
+  function pruneEmptyAssistantShell(assistantNode) {
+    if (!assistantNode || !assistantNode.isConnected) return;
+    hideAgentThinking(assistantNode);
+    const bubble = assistantNode.querySelector('.tcrt-assistant-bubble');
+    if (!bubble) {
+      assistantNode.remove();
+      return;
+    }
+    const typing = bubble.querySelector('.tcrt-assistant-typing');
+    if (typing) typing.remove();
+    const keep = assistantBubbleShouldKeep({
+      hasText: !!bubble.querySelector('.tcrt-assistant-text'),
+      hasToolActivity: !!bubble.querySelector('.tcrt-assistant-tool-activity'),
+      hasConfirmCard: !!bubble.querySelector('.tcrt-assistant-confirm-card'),
+    });
+    if (!keep) assistantNode.remove();
+  }
+
+  /**
+   * 依 agent 相位顯示忙碌狀態（點點動畫 + 固定相位文案，非輪播）。
+   * phase 對應 SSE 生命週期：starting / planning / reviewing / running_tool。
+   */
+  function showAgentThinking(assistantNode, phase, context) {
+    if (!assistantNode) return;
+    const bubble = assistantNode.querySelector('.tcrt-assistant-bubble');
+    if (!bubble) return;
+    // 可操作確認卡或最終文字時不顯示「還在忙」
+    if (bubble.querySelector('.tcrt-assistant-confirm-card .tcrt-assistant-acts')
+        || bubble.querySelector('.tcrt-assistant-text')) {
+      hideAgentThinking(assistantNode);
+      return;
+    }
+    const typing = bubble.querySelector('.tcrt-assistant-typing');
+    if (typing) typing.remove();
+
+    let node = bubble.querySelector('.tcrt-assistant-thinking');
+    if (!node) {
+      node = el(`
+        <div class="tcrt-assistant-thinking" role="status" aria-live="polite" data-phase="">
+          <span class="tcrt-assistant-thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="tcrt-assistant-thinking-phrase"></span>
+        </div>
+      `);
+      bubble.appendChild(node);
+    }
+    const resolvedPhase = phase || 'working';
+    node.dataset.phase = resolvedPhase;
+    const phraseEl = node.querySelector('.tcrt-assistant-thinking-phrase');
+    if (phraseEl) {
+      phraseEl.textContent = formatAgentBusyStatus(resolvedPhase, context || {}, t);
+    }
+    scrollToBottom();
+  }
+
+  /**
+   * @param {{ live?: boolean }} [options]
+   * live=true（預設）：串流中的即時步驟，會顯示 spinner／running 狀態。
+   * live=false：history 重播，不得進入「規劃中」忙碌態。
+   */
+  function addToolStep(assistantNode, toolName, options) {
+    const live = !options || options.live !== false;
+    if (live) hideAgentThinking(assistantNode);
     const act = ensureToolActivity(assistantNode);
     const actionKey = toolActionI18nKey(toolName);
     const genericAction = t('assistant.unknownAction', {}, 'System action');
     const actionName = t(actionKey, {}, genericAction);
     const executingPrefix = t('assistant.executingPrefix', {}, 'Running:');
-    const row = el(`<div class="tcrt-assistant-tool-step" data-tool="${escapeHtml(toolName)}"><span class="tcrt-assistant-st"><span class="tcrt-assistant-spinner"></span></span><span class="tcrt-assistant-desc"><span data-i18n="assistant.executingPrefix">${escapeHtml(executingPrefix)}</span> <span data-i18n="${escapeHtml(actionKey)}">${escapeHtml(actionName)}</span></span></div>`);
+    const row = el(`<div class="tcrt-assistant-tool-step" data-tool="${_assistantEscapeHtml(toolName)}"><span class="tcrt-assistant-st"><span class="tcrt-assistant-spinner"></span></span><span class="tcrt-assistant-desc"><span data-i18n="assistant.executingPrefix">${_assistantEscapeHtml(executingPrefix)}</span> <span data-i18n="${_assistantEscapeHtml(actionKey)}">${_assistantEscapeHtml(actionName)}</span></span></div>`);
     act.appendChild(row);
     if (window.i18n && typeof window.i18n.retranslate === 'function') window.i18n.retranslate(row);
-    renderToolResult(act, 'running');
+    if (live) renderToolResult(act, 'running');
     scrollToBottom();
     return row;
   }
 
-  function resolveToolStep(assistantNode, toolName, ok) {
+  /**
+   * @param {{ live?: boolean }} [options]
+   * live=true（預設）：成功後顯示 planning 忙碌指示（等待下一輪 LLM）。
+   * live=false：history 重播，只結算步驟，不顯示工作中。
+   */
+  function resolveToolStep(assistantNode, toolName, ok, options) {
+    const live = !options || options.live !== false;
     const act = ensureToolActivity(assistantNode);
     const rows = act.querySelectorAll(`.tcrt-assistant-tool-step[data-tool="${CSS.escape(toolName)}"]`);
-    const row = rows[rows.length - 1] || addToolStep(assistantNode, toolName);
+    const row = rows[rows.length - 1] || addToolStep(assistantNode, toolName, { live });
     if (!row || row.classList.contains('tcrt-assistant-ok') || row.classList.contains('tcrt-assistant-fail')) return;
     row.classList.add(ok ? 'tcrt-assistant-ok' : 'tcrt-assistant-fail');
     row.querySelector('.tcrt-assistant-st').textContent = ok ? '✓' : '✕';
     renderToolResult(act, ok ? 'succeeded' : 'failed');
+    // 僅 live 串流：工具結束後等待下一輪 LLM 規劃
+    if (ok && live) showAgentThinking(assistantNode, 'planning');
+    else if (!live) hideAgentThinking(assistantNode);
   }
 
   function discardPendingToolStep(assistantNode) {
@@ -672,6 +886,7 @@ const AssistantWidget = (() => {
 
   function setAssistantText(assistantNode, text) {
     const bubble = assistantNode.querySelector('.tcrt-assistant-bubble');
+    hideAgentThinking(assistantNode);
     const typing = bubble.querySelector('.tcrt-assistant-typing');
     if (typing) typing.remove();
     const textWrap = el('<div class="tcrt-assistant-text"></div>');
@@ -684,7 +899,7 @@ const AssistantWidget = (() => {
   }
 
   function addErrorBubble(message, retryFn) {
-    const node = el(`<div class="tcrt-assistant-error-bubble"><span></span><button type="button" data-i18n="assistant.retry">${escapeHtml(t('assistant.retry', {}, 'Retry'))}</button></div>`);
+    const node = el(`<div class="tcrt-assistant-error-bubble"><span></span><button type="button" data-i18n="assistant.retry">${_assistantEscapeHtml(t('assistant.retry', {}, 'Retry'))}</button></div>`);
     node.querySelector('span').textContent = message || t('assistant.errorGeneric', {}, 'Something went wrong');
     node.querySelector('button').addEventListener('click', () => { node.remove(); retryFn && retryFn(); });
     messagesEl.appendChild(node);
@@ -703,20 +918,20 @@ const AssistantWidget = (() => {
       // confirmation_summary 不攜帶 warning_key（那是 registry 端工具定義的屬性，不在送往前端的
       // summary payload 內）；risk_level 本身已能區分 high_impact/irreversible，故直接由它決定文案。
       const warningKey = summary.risk_level === 'irreversible' ? 'assistant.warning.irreversible' : 'assistant.warning.high_impact';
-      const warningText = escapeHtml(t(warningKey, {}, ''));
+      const warningText = _assistantEscapeHtml(t(warningKey, {}, ''));
       const confirmKey = summary.risk_level === 'irreversible' ? 'assistant.confirmDelete' : 'assistant.confirm';
       const confirmText = summary.risk_level === 'irreversible' ? 'Confirm delete' : 'Confirm';
       return el(`
         <div class="tcrt-assistant-confirm-card tcrt-assistant-warning" role="group">
           <div class="tcrt-assistant-cc-title">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17v.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
-            <span data-i18n="assistant.confirmTitle">${escapeHtml(t('assistant.confirmTitle', {}, 'Your confirmation is required'))}</span>
+            <span data-i18n="assistant.confirmTitle">${_assistantEscapeHtml(t('assistant.confirmTitle', {}, 'Your confirmation is required'))}</span>
           </div>
           <div class="tcrt-assistant-cc-desc"><strong>${actionLabel}</strong></div>
           <div class="tcrt-assistant-cc-target">${targetLine}${warningText ? ' — ' + warningText : ''}${batchTargetList}</div>
           <div class="tcrt-assistant-acts">
-            ${batchInvalid ? '' : `<button class="tcrt-assistant-btn tcrt-assistant-btn-sm tcrt-assistant-btn-danger" type="button" data-act="confirm" data-i18n="${confirmKey}">${escapeHtml(t(confirmKey, {}, confirmText))}</button>`}
-            <button class="tcrt-assistant-btn tcrt-assistant-btn-sm tcrt-assistant-btn-outline" type="button" data-act="cancel" data-i18n="assistant.cancel">${escapeHtml(t('assistant.cancel', {}, 'Cancel'))}</button>
+            ${batchInvalid ? '' : `<button class="tcrt-assistant-btn tcrt-assistant-btn-sm tcrt-assistant-btn-danger" type="button" data-act="confirm" data-i18n="${confirmKey}">${_assistantEscapeHtml(t(confirmKey, {}, confirmText))}</button>`}
+            <button class="tcrt-assistant-btn tcrt-assistant-btn-sm tcrt-assistant-btn-outline" type="button" data-act="cancel" data-i18n="assistant.cancel">${_assistantEscapeHtml(t('assistant.cancel', {}, 'Cancel'))}</button>
           </div>
         </div>
       `);
@@ -726,8 +941,8 @@ const AssistantWidget = (() => {
         <div class="tcrt-assistant-cc-desc">${actionLabel}</div>
         <div class="tcrt-assistant-cc-target">${targetLine}${batchTargetList}</div>
         <div class="tcrt-assistant-acts">
-          ${batchInvalid ? '' : `<button class="tcrt-assistant-btn tcrt-assistant-btn-sm tcrt-assistant-btn-primary" type="button" data-act="confirm" data-i18n="assistant.confirm">${escapeHtml(t('assistant.confirm', {}, 'Confirm'))}</button>`}
-          <button class="tcrt-assistant-btn-text" type="button" data-act="cancel" data-i18n="assistant.cancel">${escapeHtml(t('assistant.cancel', {}, 'Cancel'))}</button>
+          ${batchInvalid ? '' : `<button class="tcrt-assistant-btn tcrt-assistant-btn-sm tcrt-assistant-btn-primary" type="button" data-act="confirm" data-i18n="assistant.confirm">${_assistantEscapeHtml(t('assistant.confirm', {}, 'Confirm'))}</button>`}
+          <button class="tcrt-assistant-btn-text" type="button" data-act="cancel" data-i18n="assistant.cancel">${_assistantEscapeHtml(t('assistant.cancel', {}, 'Cancel'))}</button>
         </div>
       </div>
     `);
@@ -874,6 +1089,7 @@ const AssistantWidget = (() => {
     const map = {
       MESSAGE_TOO_LONG: 'assistant.errorMessageTooLong',
       TOO_MANY_ATTACHMENTS: 'assistant.errorTooManyAttachments',
+      UPLOAD_TOO_LARGE: 'assistant.errorUploadTooLarge',
       ADMISSION_DENIED: 'assistant.errorAdmissionDenied',
       CONFIRMATION_STALE: 'assistant.errorConfirmationStale',
       CONVERSATION_NOT_FOUND: 'assistant.errorNotFound',
@@ -934,9 +1150,19 @@ const AssistantWidget = (() => {
       currentEventSeq = parsedId.seq;
     }
 
+    if (evt.type === 'attachments_saved') {
+      const confirmed = (evt.payload && evt.payload.attachments) || [];
+      const confirmedIndices = new Set(confirmed.map((a) => a.attachment_index));
+      (assistantNodeRef.userAttachmentPills || []).forEach((pill, idx) => {
+        _setAttachmentPillStatus(pill, confirmedIndices.has(idx) ? 'done' : 'failed');
+      });
+      return false;
+    }
     if (evt.type === 'message_start') {
       turnState = turnStateReducer(turnState, { type: 'start' });
       setStreamingUI(true);
+      // turn 開始：等待首次 LLM（比純 typing 點更明確）
+      showAgentThinking(ensureAssistantNode(assistantNodeRef), 'starting');
       return false;
     }
     if (evt.type === 'text_delta') {
@@ -952,6 +1178,7 @@ const AssistantWidget = (() => {
           renderToolResult(sourceCard, 'running', p.action_id);
         } else {
           const node = ensureAssistantNode(assistantNodeRef);
+          hideAgentThinking(node);
           renderToolResult(ensureToolActivity(node), 'running', p.action_id);
         }
       } else if (p.tool_name) {
@@ -965,7 +1192,12 @@ const AssistantWidget = (() => {
         assistantNodeRef.lastToolOutcome = p.outcome;
         const sourceCard = findConfirmCard(p.action_id);
         if (sourceCard) settleConfirmCard(sourceCard, p.outcome === 'succeeded' ? 'confirmed' : p.outcome);
-        else renderToolResult(ensureToolActivity(ensureAssistantNode(assistantNodeRef)), p.outcome, p.action_id);
+        else {
+          const node = ensureAssistantNode(assistantNodeRef);
+          renderToolResult(ensureToolActivity(node), p.outcome, p.action_id);
+          // confirm write 完成後若還有 continuation，同樣進入 planning
+          if (p.outcome === 'succeeded') showAgentThinking(node, 'planning');
+        }
       } else if (p.tool_name) {
         resolveToolStep(ensureAssistantNode(assistantNodeRef), p.tool_name, p.ok !== false);
       }
@@ -975,6 +1207,7 @@ const AssistantWidget = (() => {
       const p = evt.payload || {};
       if (p.summary) {
         const node = ensureAssistantNode(assistantNodeRef);
+        hideAgentThinking(node);
         discardPendingToolStep(node);
         renderLiveConfirmCard(node, p.action_id, p.summary);
       }
@@ -983,20 +1216,33 @@ const AssistantWidget = (() => {
     if (evt.type === 'error') {
       turnState = turnStateReducer(turnState, { type: 'event', eventType: 'error' });
       if (assistantNodeRef.node) {
+        hideAgentThinking(assistantNodeRef.node);
         failUnresolvedToolSteps(assistantNodeRef.node);
         closeToolActivity(assistantNodeRef.node);
+        pruneEmptyAssistantShell(assistantNodeRef.node);
+        if (!assistantNodeRef.node.isConnected) assistantNodeRef.node = null;
       }
       addErrorBubble((evt.payload && evt.payload.message) || null, null);
       return true;
     }
     if (evt.type === 'done') {
       turnState = turnStateReducer(turnState, { type: 'event', eventType: 'done' });
-      if (assistantNodeRef.node) closeToolActivity(assistantNodeRef.node);
+      if (assistantNodeRef.node) {
+        hideAgentThinking(assistantNodeRef.node);
+        closeToolActivity(assistantNodeRef.node);
+        pruneEmptyAssistantShell(assistantNodeRef.node);
+        if (!assistantNodeRef.node.isConnected) assistantNodeRef.node = null;
+      }
       return true;
     }
     if (evt.type === 'cancelled') {
       turnState = turnStateReducer(turnState, { type: 'event', eventType: 'cancelled' });
-      if (assistantNodeRef.node) closeToolActivity(assistantNodeRef.node);
+      if (assistantNodeRef.node) {
+        hideAgentThinking(assistantNodeRef.node);
+        closeToolActivity(assistantNodeRef.node);
+        pruneEmptyAssistantShell(assistantNodeRef.node);
+        if (!assistantNodeRef.node.isConnected) assistantNodeRef.node = null;
+      }
       composerEl.classList.remove('tcrt-assistant-stopping');
       addSysNote(t('assistant.cancelledNote', {}, 'Cancelled — the action already in progress finished normally; no further steps were started'));
       return true;
@@ -1065,6 +1311,11 @@ const AssistantWidget = (() => {
       hasUnresolvedConfirm = !!(messagesEl && messagesEl.querySelector('.tcrt-assistant-acts'));
       refreshLockState();
       setInflightMarker(null, conversationId);
+      // Stream may end without a terminal event after reconnect exhaustion; still drop empty shells.
+      if (assistantNodeRef.node) {
+        pruneEmptyAssistantShell(assistantNodeRef.node);
+        if (!assistantNodeRef.node.isConnected) assistantNodeRef.node = null;
+      }
     }
     return {
       terminal: turnState === 'idle',
@@ -1120,9 +1371,11 @@ const AssistantWidget = (() => {
     if (turnState === 'streaming' || turnState === 'stopping') return;
 
     const clientMessageId = randomId();
+    const conversationIdAtSend = currentConversation.id;
+    const pendingAttachments = selectedFiles.map((f) => ({ name: f.name, status: 'pending' }));
     inputEl.value = '';
     inputEl.style.height = '';
-    addUserBubble(text);
+    const userBubble = addUserBubble(text, pendingAttachments);
 
     const form = new FormData();
     form.append('text', text);
@@ -1136,6 +1389,7 @@ const AssistantWidget = (() => {
       generation: ++streamGeneration,
       turnKey: null,
       eventSeq: -1,
+      userAttachmentPills: userBubble.attachmentPills,
     };
     const controller = new AbortController();
     activeAbortController = controller;
@@ -1147,6 +1401,7 @@ const AssistantWidget = (() => {
         { method: 'POST', body: form, signal: controller.signal }
       );
       if (!resp.ok || !resp.body) {
+        userBubble.attachmentPills.forEach((pill) => _setAttachmentPillStatus(pill, 'failed'));
         await showApiError(resp);
         lockComposer(false);
         return;
@@ -1161,10 +1416,21 @@ const AssistantWidget = (() => {
       currentTurnKey = assistantNodeRef.turnKey;
       currentEventSeq = -1;
       if (currentTurnKey) setInflightMarker(currentTurnKey);
+      if (userBubble.attachmentPills.length && assistantNodeRef.turnKey) {
+        userBubble.attachmentPills.forEach((pill, idx) => {
+          _setAttachmentPillHref(
+            pill,
+            `/api/assistant/conversations/${conversationIdAtSend}/turns/${assistantNodeRef.turnKey}/attachments/${idx}`
+          );
+        });
+      }
       assistantNodeRef.node = addAssistantShell();
       await streamWithReconnect(resp, assistantNodeRef, controller.signal);
     } catch (e) {
-      if (e.name !== 'AbortError') await showApiError(null, e);
+      if (e.name !== 'AbortError') {
+        userBubble.attachmentPills.forEach((pill) => _setAttachmentPillStatus(pill, 'failed'));
+        await showApiError(null, e);
+      }
       lockComposer(false);
     } finally {
       if (activeAbortController === controller) activeAbortController = null;
@@ -1196,7 +1462,7 @@ const AssistantWidget = (() => {
     attachChipEl.innerHTML = '';
     attachChipEl.classList.toggle('tcrt-assistant-show', selectedFiles.length > 0);
     selectedFiles.forEach((f, idx) => {
-      const chip = el(`<span style="display:inline-flex;align-items:center;gap:6px;"><span></span><button type="button" data-i18n-aria-label="assistant.removeAttachment" aria-label="${escapeHtml(t('assistant.removeAttachment', {}, 'Remove attachment'))}">✕</button></span>`);
+      const chip = el(`<span style="display:inline-flex;align-items:center;gap:6px;"><span></span><button type="button" data-i18n-aria-label="assistant.removeAttachment" aria-label="${_assistantEscapeHtml(t('assistant.removeAttachment', {}, 'Remove attachment'))}">✕</button></span>`);
       chip.querySelector('span').textContent = `📎 ${f.name}`;
       chip.querySelector('button').addEventListener('click', () => { selectedFiles.splice(idx, 1); renderAttachChips(); });
       attachChipEl.appendChild(chip);
@@ -1252,12 +1518,39 @@ const AssistantWidget = (() => {
     const teamId = getCurrentTeamId() ? parseInt(getCurrentTeamId(), 10) : null;
     const list = root.querySelector('#tcrt-assistant-hm-list');
     const titleEl = root.querySelector('#tcrt-assistant-hm-title');
+    const historyBtn = root.querySelector('#tcrt-assistant-history-btn');
     const team = window.AppUtils && window.AppUtils.getCurrentTeam && window.AppUtils.getCurrentTeam();
-    titleEl.textContent = t('assistant.historyTitle', { team: team ? team.name : '' }, 'Recent conversations');
+    if (team && team.name) {
+      const historyTitleStr = t('assistant.historyTitle', { team: team.name }, `Recent conversations (${team.name})`);
+      titleEl.textContent = historyTitleStr;
+      titleEl.setAttribute('data-i18n', 'assistant.historyTitle');
+      titleEl.setAttribute('data-i18n-params', JSON.stringify({ team: team.name }));
+      if (historyBtn) {
+        historyBtn.setAttribute('title', historyTitleStr);
+        historyBtn.setAttribute('aria-label', historyTitleStr);
+        historyBtn.setAttribute('data-i18n-title', 'assistant.historyTitle');
+        historyBtn.setAttribute('data-i18n-aria-label', 'assistant.historyTitle');
+        historyBtn.setAttribute('data-i18n-params', JSON.stringify({ team: team.name }));
+      }
+    } else {
+      const historyTitleStr = t('assistant.historyTitleGlobal', {}, 'Recent conversations');
+      titleEl.textContent = historyTitleStr;
+      titleEl.setAttribute('data-i18n', 'assistant.historyTitleGlobal');
+      titleEl.removeAttribute('data-i18n-params');
+      if (historyBtn) {
+        historyBtn.setAttribute('title', historyTitleStr);
+        historyBtn.setAttribute('aria-label', historyTitleStr);
+        historyBtn.setAttribute('data-i18n-title', 'assistant.historyTitleGlobal');
+        historyBtn.setAttribute('data-i18n-aria-label', 'assistant.historyTitleGlobal');
+        historyBtn.removeAttribute('data-i18n-params');
+      }
+    }
     list.innerHTML = '';
-    const conversations = await listRelevantConversations(teamId);
+    const conversations = (await listRelevantConversations(teamId)).filter(
+      (c) => !currentConversation || c.id !== currentConversation.id,
+    );
     if (!conversations.length) {
-      list.appendChild(el(`<div class="tcrt-assistant-hm-empty" data-i18n="assistant.historyEmpty">${escapeHtml(t('assistant.historyEmpty', {}, 'No recent conversations'))}</div>`));
+      list.appendChild(el(`<div class="tcrt-assistant-hm-empty" data-i18n="assistant.historyEmpty">${_assistantEscapeHtml(t('assistant.historyEmpty', {}, 'No recent conversations'))}</div>`));
       return;
     }
     conversations.forEach((c) => {
@@ -1267,7 +1560,7 @@ const AssistantWidget = (() => {
             <span class="tcrt-assistant-t"></span>
             <span class="tcrt-assistant-m"></span>
           </button>
-          <button class="tcrt-assistant-hm-delete" type="button" data-i18n-aria-label="assistant.confirmDelete" aria-label="${escapeHtml(t('assistant.confirmDelete', {}, 'Delete'))}">✕</button>
+          <button class="tcrt-assistant-hm-delete" type="button" data-i18n-aria-label="assistant.confirmDelete" aria-label="${_assistantEscapeHtml(t('assistant.confirmDelete', {}, 'Delete'))}">✕</button>
         </div>
       `);
       row.querySelector('.tcrt-assistant-t').textContent = c.title || c.conversation_key.slice(0, 8);
@@ -1308,7 +1601,12 @@ const AssistantWidget = (() => {
         lastTurnKey = m.turn_key;
       }
       if (m.role === 'user') {
-        addUserBubble(m.content || '');
+        const attachments = (m.attachments || []).map((a) => ({
+          name: a.original_name,
+          status: 'done',
+          href: `/api/assistant/conversations/${currentConversation.id}/turns/${m.turn_key}/attachments/${a.attachment_index}`,
+        }));
+        addUserBubble(m.content || '', attachments);
         lastAssistantNode = null;
         return;
       }
@@ -1336,8 +1634,11 @@ const AssistantWidget = (() => {
           const bubble = node.querySelector('.tcrt-assistant-bubble');
           const typing = bubble.querySelector('.tcrt-assistant-typing');
           if (typing) typing.remove();
+          hideAgentThinking(node);
           m.tool_calls.forEach((call) => {
-            addToolStep(node, call.name);
+            // history 重播：不進入 live spinner / planning
+            addToolStep(node, call.name, { live: false });
+            if (call.id) activityByCallId.set(call.id, node);
           });
           lastAssistantNode = node;
           return;
@@ -1353,12 +1654,30 @@ const AssistantWidget = (() => {
         if (!outcome) return;
         const sourceNode = m.llm_tool_call_id ? activityByCallId.get(m.llm_tool_call_id) : null;
         const node = sourceNode || lastAssistantNode || addAssistantShell();
+        hideAgentThinking(node);
         const matchingSteps = m.tool_name
           ? node.querySelectorAll(`.tcrt-assistant-tool-step[data-tool="${CSS.escape(m.tool_name)}"]`)
           : [];
-        if (matchingSteps.length) resolveToolStep(node, m.tool_name, outcome === 'succeeded');
+        if (matchingSteps.length) {
+          resolveToolStep(node, m.tool_name, outcome === 'succeeded', { live: false });
+        } else if (m.tool_name) {
+          addToolStep(node, m.tool_name, { live: false });
+          resolveToolStep(node, m.tool_name, outcome === 'succeeded', { live: false });
+        }
         renderToolResult(ensureToolActivity(node), outcome);
+        closeToolActivity(node);
         if (!sourceNode) lastAssistantNode = node;
+      }
+    });
+    // 保險：history 重繪後不得殘留任何「工作中」忙碌列
+    messagesEl.querySelectorAll('.tcrt-assistant-thinking').forEach((node) => node.remove());
+    messagesEl.querySelectorAll('.tcrt-assistant-typing').forEach((node) => {
+      // 空 assistant shell 上的 typing（若該 bubble 已有內容/工具則移除）
+      const bubble = node.closest('.tcrt-assistant-bubble');
+      if (bubble && (bubble.querySelector('.tcrt-assistant-text')
+          || bubble.querySelector('.tcrt-assistant-tool-activity')
+          || bubble.querySelector('.tcrt-assistant-confirm-card'))) {
+        node.remove();
       }
     });
     scrollToBottom();

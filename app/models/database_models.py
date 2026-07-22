@@ -2766,3 +2766,41 @@ class AssistantRuntimeCounter(Base):
     scope_key = Column(String(80), primary_key=True)  # global | user:<id>
     active_count = Column(Integer, nullable=False, default=0, server_default="0")
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AssistantPromptDocument(Base):
+    """DB-stored assistant prompt documents (system.md etc.) for Docker-safe Super Admin CRUD.
+
+    Files under ``prompts/assistant/`` remain factory seed only; runtime source of truth is DB.
+    """
+
+    __tablename__ = "assistant_prompt_documents"
+
+    doc_key = Column(String(64), primary_key=True)  # e.g. "system"
+    content = Column(Text, nullable=False)
+    version = Column(Integer, nullable=False, default=1, server_default="1")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_by = Column(String(64), nullable=True)
+
+
+class AssistantSkillRow(Base):
+    """DB-stored assistant skill recipes (multi-step playbooks for the agent)."""
+
+    __tablename__ = "assistant_skills"
+    __table_args__ = (
+        UniqueConstraint("skill_id", name="uq_assistant_skills_skill_id"),
+        Index("ix_assistant_skills_enabled_sort", "is_enabled", "sort_order"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    skill_id = Column(String(64), nullable=False)
+    name = Column(String(200), nullable=False)
+    description = Column(Text, nullable=False)
+    body = Column(Text, nullable=False)
+    triggers_json = Column(Text, nullable=True)  # JSON array of trigger strings
+    is_enabled = Column(Boolean, nullable=False, default=True, server_default="1")
+    is_builtin = Column(Boolean, nullable=False, default=False, server_default="0")
+    sort_order = Column(Integer, nullable=False, default=0, server_default="0")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_by = Column(String(64), nullable=True)

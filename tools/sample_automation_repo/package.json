@@ -1,0 +1,13 @@
+{
+  "name": "tcrt-sample-automation-repo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sample automation repo for TCRT Automation Hub demos",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.46.0",
+    "typescript": "^5.5.0"
+  }
+}

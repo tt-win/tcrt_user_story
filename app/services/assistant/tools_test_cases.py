@@ -47,13 +47,42 @@ TOOLS = [
         name="list_test_cases",
         method="GET",
         path_template="/api/teams/{team_id}/testcases/",
-        summary="List test cases in the current team with filters.",
+        summary=(
+            "List test cases with full list projection. Prefer list_test_case_refs for bulk "
+            "selection; keep limit small."
+        ),
         permission=PermissionType.READ,
         risk_level=READ,
         query_params=_FILTER_QUERY,
         team_check="inject",
         resource_team_resolver=None,
         projection=_TC_LIST + _PAGE,
+        default_limit=50,
+        max_limit=100,
+    ),
+    AssistantTool(
+        name="list_test_case_refs",
+        method="GET",
+        path_template="/api/teams/{team_id}/testcases/refs",
+        summary=(
+            "List slim test-case refs (record_id, number, title, priority, set_id). "
+            "No steps/precondition/test_data. Prefer this before full list for bulk work."
+        ),
+        permission=PermissionType.READ,
+        risk_level=READ,
+        query_params={
+            "search": s_str("keyword search"),
+            "priority_filter": s_str(),
+            "test_result_filter": s_str(),
+            "assignee_filter": s_str(),
+            "set_id": s_int(),
+            "skip": s_int("pagination offset"),
+            "limit": s_int("page size, max 200"),
+        },
+        team_check="inject",
+        projection=("record_id", "test_case_number", "title", "priority", "test_case_set_id"),
+        default_limit=50,
+        max_limit=200,
     ),
     AssistantTool(
         name="count_test_cases",
@@ -74,6 +103,7 @@ TOOLS = [
         permission=PermissionType.READ,
         risk_level=READ,
         path_params=("record_id",),
+        path_param_schemas={"record_id": s_str("test case 的 record_id（可能是 Lark record id 或本地數字 id 的字串形式）")},
         team_check="inject",
         projection=_TC_DETAIL,
     ),
@@ -116,6 +146,7 @@ TOOLS = [
         permission=PermissionType.WRITE,
         risk_level="idempotent_write",
         path_params=("record_id",),
+        path_param_schemas={"record_id": s_str("test case 的 record_id（可能是 Lark record id 或本地數字 id 的字串形式）")},
         body_schema=body(_CREATE_UPDATE_FIELDS),
         team_check="inject",
         # team_check="inject" 信任對話綁定 team（無需 resolve_team 查詢），但 target_resolver="single"
@@ -136,6 +167,7 @@ TOOLS = [
         permission=PermissionType.WRITE,
         risk_level=IRREVERSIBLE,
         path_params=("record_id",),
+        path_param_schemas={"record_id": s_str("test case 的 record_id（可能是 Lark record id 或本地數字 id 的字串形式）")},
         team_check="inject",
         resource_team_resolver="test_case",
         projection=(),
@@ -152,6 +184,7 @@ TOOLS = [
         permission=PermissionType.WRITE,
         risk_level=HIGH_IMPACT,
         path_params=("record_id",),
+        path_param_schemas={"record_id": s_str("test case 的 record_id（可能是 Lark record id 或本地數字 id 的字串形式）")},
         body_schema=body(
             {"test_case_set_id": s_int(), "test_case_section_id": s_int()},
         ),
@@ -262,6 +295,7 @@ TOOLS = [
         permission=PermissionType.WRITE,
         risk_level=IRREVERSIBLE,
         path_params=("test_case_id", "target"),
+        path_param_schemas={"target": s_str("要刪除的附件檔名（原始上傳時的檔名，非數字索引）")},
         team_check="resolve",
         resource_team_resolver="test_case",
         projection=("deleted", "remaining"),

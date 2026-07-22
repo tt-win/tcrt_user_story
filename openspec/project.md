@@ -132,7 +132,7 @@ Automation Hub 的 script ↔ test case link 現況已收斂為 **marker-derived
 
 #### 主規格（`openspec/specs/`）
 
-目前主規格共 **43 個**，依領域分類如下：
+目前主規格共 **45 個**，依領域分類如下：
 
 **Automation Hub（6 個）：**
 - `automation-hub-mcp-read`
@@ -192,6 +192,10 @@ Automation Hub 的 script ↔ test case link 現況已收斂為 **marker-derived
 - `ai-assist-ui-exposure-control`
 - `team-badge-nav-dropdown`（由已封存 change 新增）
 
+**團隊與組織管理 UI（2 個，由 `redesign-team-settings-information-architecture` change 新增）：**
+- `team-management-console`：縮小後的 `/team-management` 頁面契約（僅 team 資料 CRUD + App Token 入口）
+- `organization-management-console`：獨立的「組織與系統設定」頁面（`/organization-management`），統整人員管理／組織同步／Service 管理／MCP Token／組織自動化基礎設施五個分頁
+
 **其他（4 個）：**
 - `etl-all-teams`
 - `jira-ticket-to-test-case-poc`
@@ -206,6 +210,7 @@ Automation Hub 的 script ↔ test case link 現況已收斂為 **marker-derived
   - `achieve-full-i18n-coverage` — 全站三語系翻譯覆蓋率推到 100%（linter 已建好，後端外部化與前端抽出未開始）
 - **進行中（中期）**：
   - `unify-ui-design-tokens-and-components` — UI design token 收斂與 Jinja macro 元件庫（P0 止血完成，P1/P2 未開始）
+  - `redesign-team-settings-information-architecture` — 拆分 `/team-management` 的組織層分頁至新頁面 `/organization-management`（實作完成、經紅隊審查修正，待 archive）
 - **未開始（僅完成規劃）**：
   - `consolidate-agent-onboarding-docs` — 整併散落的啟動/設定文件
   - `make-schema-engine-portable` — DB schema 跨引擎可攜（SQLite / MySQL / PostgreSQL）

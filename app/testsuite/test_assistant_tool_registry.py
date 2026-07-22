@@ -6,6 +6,7 @@ low-risk 工具不得暴露高風險欄位、projection allowlist 精確（巢�
 """
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 import sys
 
@@ -21,14 +22,22 @@ from app.services.assistant.tool_registry import (
     get_tool_registry,
 )
 
-EXPECTED_TOOL_COUNT = 65
-
+EXPECTED_TOOL_COUNT = 70  # 68 loopback/composite + list_skills + get_skill
 
 def _app_routes():
     return {
         (method, route.path)
         for route in app.routes
         if hasattr(route, "path") and hasattr(route, "methods")
+        for method in route.methods
+    }
+
+
+def _app_route_endpoints():
+    return {
+        (method, route.path): route.endpoint
+        for route in app.routes
+        if hasattr(route, "path") and hasattr(route, "methods") and hasattr(route, "endpoint")
         for method in route.methods
     }
 
@@ -66,6 +75,58 @@ def test_every_tool_path_and_method_resolves_against_real_routes():
         if tool.execution_mode == "loopback" and (tool.method, tool.path_template) not in routes
     ]
     assert not mismatches, f"tools with no matching registered route: {mismatches}"
+
+
+def test_path_param_llm_schema_types_match_real_endpoint_annotations():
+    """紅隊發現的 bug class：`to_llm_schema()` 對未覆寫的 path_params 一律宣告 "integer"，
+    但真正端點的參數型別可能是 str（檔名／ticket number／enum 值等)。這裡直接比對 registry
+    宣告的 schema 型別跟真實 FastAPI endpoint 的 Python 參數型別註記，防止未來新工具重演同一個
+    bug（LLM 被迫捏造假整數,確認卡建成但實際呼叫必然失敗)。"""
+    registry = get_tool_registry()
+    endpoints = _app_route_endpoints()
+    type_map = {int: "integer", str: "string"}
+    mismatches = []
+    for tool in registry.all():
+        if tool.execution_mode != "loopback" or not tool.path_params:
+            continue
+        endpoint = endpoints.get((tool.method, tool.path_template))
+        if endpoint is None:
+            continue  # 由 test_every_tool_path_and_method_resolves_against_real_routes 另外把關
+        sig = inspect.signature(endpoint)
+        schema = tool.to_llm_schema()["function"]["parameters"]["properties"]
+        for name in tool.path_params:
+            real_annotation = sig.parameters[name].annotation if name in sig.parameters else None
+            expected_type = type_map.get(real_annotation)
+            if expected_type is None:
+                continue  # 非 int/str 的參數型別不在本測試涵蓋範圍
+            declared_type = schema.get(name, {}).get("type")
+            if declared_type != expected_type:
+                mismatches.append(
+                    f"{tool.name}.{name}: 真實端點型別={real_annotation.__name__}（應宣告 {expected_type}），"
+                    f"但 registry 宣告 {declared_type}"
+                )
+    assert not mismatches, "path_param_schemas 與真實端點型別不一致：\n" + "\n".join(mismatches)
+
+
+def test_delete_test_case_attachment_and_friends_declare_string_path_params():
+    """明確鎖定 3 個已知因此 bug class 壞掉的工具，做為可讀的回歸標記（上面的通用 drift test
+    已涵蓋所有工具，這裡額外針對已知案例做語意清楚的斷言）。"""
+    registry = get_tool_registry()
+    expectations = {
+        "delete_test_case_attachment": {"target": "string"},
+        "remove_item_bug_ticket": {"ticket_number": "string"},
+        "unpin_entity": {"entity_type": "string"},
+    }
+    for tool_name, expected_types in expectations.items():
+        tool = registry.get(tool_name)
+        assert tool is not None, f"{tool_name} not found in registry"
+        schema = tool.to_llm_schema()["function"]["parameters"]["properties"]
+        for param_name, expected_type in expected_types.items():
+            assert schema[param_name]["type"] == expected_type, (
+                f"{tool_name}.{param_name}: expected type={expected_type}, got {schema[param_name]}"
+            )
+    unpin_schema = registry.get("unpin_entity").to_llm_schema()["function"]["parameters"]["properties"]
+    assert unpin_schema["entity_type"].get("enum") == ["test_case_set", "test_run_set"]
 
 
 def test_batch_actions_enum_covers_every_loopback_write_tool():

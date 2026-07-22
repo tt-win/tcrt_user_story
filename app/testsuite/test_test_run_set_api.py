@@ -197,6 +197,103 @@ def test_test_run_set_crud_and_membership(temp_db):
         assert remaining_config2 is not None
 
 
+def test_draft_to_completed_status_via_single_api_call(temp_db):
+    """JWT /status must multi-hop draft→completed (same path assistant set_test_run_status uses)."""
+    _, SessionLocal = temp_db
+    client = TestClient(app)
+
+    with SessionLocal() as session:
+        team_id, config1_id, _, _ = _seed_team_with_runs(session)
+        cfg = session.get(TestRunConfig, config1_id)
+        assert cfg is not None
+        cfg.status = "draft"
+        session.commit()
+
+    resp = client.put(
+        f"/api/teams/{team_id}/test-run-configs/{config1_id}/status",
+        json={"status": "completed"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "completed"
+    assert body.get("start_date")
+    assert body.get("end_date")
+
+
+def test_restart_attaches_new_run_to_same_set_and_copies_failed_items(temp_db):
+    """restart must create a new ACTIVE run in the same set (assistant restart_test_run path)."""
+    from app.models.database_models import TestRunItem
+    from app.models.lark_types import TestResultStatus
+    from app.models.test_run_config import TestRunStatus
+
+    _, SessionLocal = temp_db
+    client = TestClient(app)
+
+    with SessionLocal() as session:
+        team_id, config1_id, _, default_case_set_id = _seed_team_with_runs(session)
+        cfg = session.get(TestRunConfig, config1_id)
+        assert cfg is not None
+        cfg.status = TestRunStatus.COMPLETED
+        session.add_all(
+            [
+                TestRunItem(
+                    team_id=team_id,
+                    config_id=config1_id,
+                    test_case_number="TC-FAIL",
+                    test_result=TestResultStatus.FAILED,
+                ),
+                TestRunItem(
+                    team_id=team_id,
+                    config_id=config1_id,
+                    test_case_number="TC-PASS",
+                    test_result=TestResultStatus.PASSED,
+                ),
+            ]
+        )
+        session.commit()
+
+    create_set = client.post(
+        f"/api/teams/{team_id}/test-run-sets",
+        json={"name": "Restart Set", "initial_config_ids": [config1_id]},
+    )
+    assert create_set.status_code == 201, create_set.text
+    set_id = create_set.json()["id"]
+
+    resp = client.post(
+        f"/api/teams/{team_id}/test-run-configs/{config1_id}/restart",
+        json={"mode": "failed", "name": "Rerun TCRT"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["success"] is True
+    assert body["mode"] == "failed"
+    assert body["created_count"] == 1
+    assert body["set_id"] == set_id
+    new_id = body["new_config_id"]
+    assert new_id != config1_id
+
+    detail = client.get(f"/api/teams/{team_id}/test-run-configs/{new_id}")
+    assert detail.status_code == 200, detail.text
+    new_cfg = detail.json()
+    assert new_cfg["status"] == "active"
+    assert new_cfg["name"] == "Rerun TCRT"
+    assert new_cfg["set_id"] == set_id
+
+    set_detail = client.get(f"/api/teams/{team_id}/test-run-sets/{set_id}")
+    assert set_detail.status_code == 200
+    member_ids = {run["id"] for run in set_detail.json()["test_runs"]}
+    assert config1_id in member_ids
+    assert new_id in member_ids
+    # Source completed + new active member ⇒ set must not stay fully completed.
+    assert set_detail.json()["status"] == "active"
+
+    with SessionLocal() as session:
+        items = session.query(TestRunItem).filter(TestRunItem.config_id == new_id).all()
+        assert len(items) == 1
+        assert items[0].test_case_number == "TC-FAIL"
+        assert items[0].test_result is None
+
+
 def test_test_run_set_status_auto_updates(temp_db):
     _, SessionLocal = temp_db
     client = TestClient(app)

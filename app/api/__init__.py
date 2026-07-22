@@ -50,6 +50,7 @@ from .automation_webhooks_public import router as automation_webhooks_public_rou
 from .automation_result import router as automation_result_router
 from .pins import router as pins_router
 from .assistant import router as assistant_router
+from .admin_assistant import router as admin_assistant_router
 
 # 創建主 API 路由器
 api_router = APIRouter()
@@ -72,6 +73,7 @@ api_router.include_router(jira_router)
 api_router.include_router(lark_groups_router)
 api_router.include_router(lark_users_router)
 api_router.include_router(admin_router)
+api_router.include_router(admin_assistant_router)
 api_router.include_router(version_router)
 api_router.include_router(permissions_router)
 api_router.include_router(audit_router)

@@ -32,6 +32,7 @@ from app.models.database_models import (
     TestCaseSection,
 )
 import app.services.assistant.assistant_llm_service as llm_mod
+from app.services.assistant import conversation_service as conversation_service_module
 from app.services.assistant.attachment_storage import resolve_stored_path
 from app.testsuite.db_test_helpers import (
     create_managed_test_database,
@@ -46,12 +47,14 @@ class _FakeLLM:
     def __init__(self):
         self.script = []
         self.calls = 0
+        self.last_messages = None
 
     def is_configured(self):
         return True
 
     async def call(self, *, system_prompt, messages, tools):
         self.calls += 1
+        self.last_messages = messages
         if self.script:
             return self.script.pop(0)
         return llm_mod.AssistantLLMResult(content="(fallback) done", tool_calls=[])
@@ -271,6 +274,142 @@ def test_uploaded_attachment_relative_path_is_safe_and_resolvable(conv_db):
     resolved = resolve_stored_path(upload.relative_path)
     assert resolved.is_file()
     assert resolved.read_bytes() == b"file content"
+
+
+def test_uploaded_attachment_is_surfaced_to_llm_but_not_persisted_or_leaked_to_next_turn(conv_db, monkeypatch):
+    """紅隊發現的核心 bug：附件上傳成功後,LLM 從未被告知有哪些 file_ref 可用,導致助手實際上
+    用不到使用者上傳的檔案。驗證：(1) LLM 收到的 user 訊息內容含 file_ref/檔名,(2) 前端歷史畫面
+    仍只顯示使用者原始輸入（附件清單不寫回持久化內容),(3) 下一個 turn 不會再看到這份附件清單。
+
+    首輪（turn_seq==0）結束後會背景觸發標題自動摘要，其 LLM 呼叫共用同一個 fake（`conv_db`
+    monkeypatch 的 `_service_singleton`），會覆寫 `fake.last_messages`／多算 `fake.calls`，
+    與本測試要驗證的「agent loop 呼叫」互相干擾，故關閉標題背景生成，只保留本測試關注的行為。"""
+    monkeypatch.setattr(conversation_service_module, "_fire_and_forget_title_generation", lambda *a, **k: None)
+    client = _client()
+    r = client.post("/api/assistant/conversations", json={"scope_type": "team", "team_id": 1}, headers=HEADERS)
+    conv_id = r.json()["id"]
+    fake = conv_db["llm"]
+
+    _push_text(fake, "got your file")
+    resp = client.post(
+        f"/api/assistant/conversations/{conv_id}/messages", headers=HEADERS,
+        data={"text": "here is a file", "client_message_id": "m1"},
+        files={"attachments": ("evidence.txt", b"file content", "text/plain")},
+    )
+    assert resp.status_code == 200, resp.text
+
+    assert fake.last_messages is not None
+    user_msgs = [m for m in fake.last_messages if m["role"] == "user"]
+    assert len(user_msgs) == 1
+    assert "file_ref=0" in user_msgs[0]["content"], "LLM 必須被告知本回合可用的 file_ref,否則無從正確引用附件"
+    assert "evidence.txt" in user_msgs[0]["content"]
+
+    history = client.get(f"/api/assistant/conversations/{conv_id}/messages", headers=HEADERS).json()
+    history_user_msgs = [m for m in history["messages"] if m["role"] == "user"]
+    assert len(history_user_msgs) == 1
+    assert history_user_msgs[0]["content"] == "here is a file", (
+        "系統附加的附件清單不得寫回持久化內容,前端歷史畫面應只顯示使用者原始輸入"
+    )
+
+    # 下一個 turn（無新附件）：不應該再看到第一輪的 file_ref 附註洩漏過來
+    _push_text(fake, "no file this time")
+    resp2 = client.post(
+        f"/api/assistant/conversations/{conv_id}/messages", headers=HEADERS,
+        data={"text": "anything else?", "client_message_id": "m2"},
+    )
+    assert resp2.status_code == 200, resp2.text
+    assert fake.calls == 2
+    contents_in_second_call = [m.get("content") or "" for m in fake.last_messages]
+    assert not any("file_ref=0" in c for c in contents_in_second_call), (
+        "file_ref 只能在上傳當下的同一 turn 內有效,不得洩漏到後續 turn 的 LLM context"
+    )
+
+
+def test_attachments_saved_event_emitted_and_history_carries_attachments_field(conv_db, monkeypatch):
+    """紅隊發現的另一半 bug：使用者送出附件後,對話裡看不到任何圖示/上傳成功訊號。驗證：
+    (1) SSE 串流含 `attachments_saved` 事件，(2) 歷史重載的 user 訊息項目帶 `attachments` 欄位。"""
+    monkeypatch.setattr(conversation_service_module, "_fire_and_forget_title_generation", lambda *a, **k: None)
+    client = _client()
+    r = client.post("/api/assistant/conversations", json={"scope_type": "team", "team_id": 1}, headers=HEADERS)
+    conv_id = r.json()["id"]
+    fake = conv_db["llm"]
+    _push_text(fake, "got your file")
+    resp = client.post(
+        f"/api/assistant/conversations/{conv_id}/messages", headers=HEADERS,
+        data={"text": "here is a file", "client_message_id": "m1"},
+        files={"attachments": ("evidence.txt", b"file content", "text/plain")},
+    )
+    assert resp.status_code == 200, resp.text
+    assert "event: attachments_saved" in resp.text
+    assert '"original_name": "evidence.txt"' in resp.text
+    assert '"attachment_index": 0' in resp.text
+
+    history = client.get(f"/api/assistant/conversations/{conv_id}/messages", headers=HEADERS).json()
+    user_item = next(m for m in history["messages"] if m["role"] == "user")
+    assert user_item["attachments"] == [
+        {"attachment_index": 0, "original_name": "evidence.txt", "content_type": "text/plain", "size_bytes": 12}
+    ]
+
+
+def test_download_attachment_endpoint_streams_file_and_enforces_ownership(conv_db, monkeypatch):
+    monkeypatch.setattr(conversation_service_module, "_fire_and_forget_title_generation", lambda *a, **k: None)
+    client = _client()
+    r = client.post("/api/assistant/conversations", json={"scope_type": "team", "team_id": 1}, headers=HEADERS)
+    conv_id = r.json()["id"]
+    fake = conv_db["llm"]
+    _push_text(fake, "got your file")
+    client.post(
+        f"/api/assistant/conversations/{conv_id}/messages", headers=HEADERS,
+        data={"text": "here is a file", "client_message_id": "m1"},
+        files={"attachments": ("evidence.txt", b"file content", "text/plain")},
+    )
+    history = client.get(f"/api/assistant/conversations/{conv_id}/messages", headers=HEADERS).json()
+    turn_key = next(m for m in history["messages"] if m["role"] == "user")["turn_key"]
+
+    ok = client.get(
+        f"/api/assistant/conversations/{conv_id}/turns/{turn_key}/attachments/0", headers=HEADERS
+    )
+    assert ok.status_code == 200, ok.text
+    assert ok.content == b"file content"
+    assert 'filename="evidence.txt"' in ok.headers["content-disposition"]
+    assert ok.headers["content-disposition"].startswith("attachment;")
+
+    missing_index = client.get(
+        f"/api/assistant/conversations/{conv_id}/turns/{turn_key}/attachments/99", headers=HEADERS
+    )
+    assert missing_index.status_code == 404
+
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+        id=999, username="someone-else", role=UserRole.USER
+    )
+    try:
+        other_user = client.get(
+            f"/api/assistant/conversations/{conv_id}/turns/{turn_key}/attachments/0", headers=HEADERS
+        )
+        assert other_user.status_code == 404, "另一個使用者不得下載他人對話的附件"
+    finally:
+        app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+            id=1, username="conv-tester", role=UserRole.USER
+        )
+
+
+def test_attachment_only_message_with_empty_text_succeeds(conv_db, monkeypatch):
+    """紅隊發現：`text` 表單欄位原本宣告為 `Form(...)`（必填)。前端「只傳附件、不輸入文字」時
+    會送出 `text=""`,但 multipart 請求中空字串欄位會被 python-multipart 解析為缺失,導致
+    422 Field required,使用者無法單獨傳附件。驗證空字串 `text` 加檔案可成功送出。"""
+    monkeypatch.setattr(conversation_service_module, "_fire_and_forget_title_generation", lambda *a, **k: None)
+    client = _client()
+    r = client.post("/api/assistant/conversations", json={"scope_type": "team", "team_id": 1}, headers=HEADERS)
+    conv_id = r.json()["id"]
+    fake = conv_db["llm"]
+    _push_text(fake, "got your file, thanks!")
+    resp = client.post(
+        f"/api/assistant/conversations/{conv_id}/messages", headers=HEADERS,
+        data={"text": "", "client_message_id": "m1"},
+        files={"attachments": ("evidence.txt", b"file content", "text/plain")},
+    )
+    assert resp.status_code == 200, resp.text
+    assert "event: attachments_saved" in resp.text
 
 
 def test_per_worker_slot_exhaustion_returns_503(conv_db):

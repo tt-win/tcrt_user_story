@@ -136,8 +136,8 @@ def _require_storage_slot(slot: AutomationProviderSlot, provider_type: str) -> N
                 "code": "WRONG_PROVIDER_SCOPE",
                 "message": (
                     "CI / Result providers are managed at org level. "
-                    "Please ask a Super Admin to configure them in Team Management "
-                    "→ 同步組織架構 → Org Automation Infra."
+                    "Please ask a Super Admin to configure them in 組織與系統設定 "
+                    "→ Org Automation Infra."
                 ),
             },
         )

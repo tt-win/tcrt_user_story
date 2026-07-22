@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 2,
+  "changeName": "add-team-app-token-apis",
+  "issueKey": "TCG-152089",
+  "issueId": "689757",
+  "issueUrl": "https://jira.tc-gaming.co/jira/browse/TCG-152089",
+  "summary": "TCRT App Token APIs and Skills",
+  "projectKey": "TCG",
+  "issueType": "Change Request",
+  "components": [
+    "ART"
+  ],
+  "fixVersions": [
+    "TP-4935 Auto QA Agent"
+  ],
+  "assigneeSource": "configured",
+  "assigneeStatus": "assigned",
+  "assigneeLastAttemptAt": "2026-07-16T13:35:14.200Z",
+  "linkType": "Relates",
+  "linkedIssues": [],
+  "state": "active",
+  "lifecycleStage": "proposed",
+  "targetJiraStatus": "To Do",
+  "statusMappings": {
+    "proposed": "To Do",
+    "in_progress": "In Progress",
+    "completed": "Resolved",
+    "archived": "Scheduled"
+  },
+  "jiraStatus": "To Do",
+  "transitionStatus": "transitioned",
+  "contentSha256": "1b7512067ae746a4897298852872db44cf0318d269a15bdfa65b0d82dcb224b0",
+  "lastCommentedSha256": null,
+  "lastCommentedStage": null,
+  "lastCommentId": null,
+  "snapshotTruncated": false,
+  "createdAt": "2026-07-16T13:35:14.200Z",
+  "lastSyncedAt": "2026-07-16T13:35:14.200Z",
+  "archivedAt": null,
+  "transitionMessage": "Lifecycle transition verified",
+  "lastTransitionAttemptAt": "2026-07-16T13:35:15.441Z",
+  "lastTransitionedAt": "2026-07-16T13:35:15.441Z"
+}

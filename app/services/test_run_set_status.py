@@ -17,6 +17,51 @@ from app.models.database_models import (
 from app.models.test_run_config import TestRunStatus
 from app.models.test_run_set import TestRunSetStatus
 
+# Single-edge lifecycle graph (matches UI status.js). Forward multi-hop along the
+# main path DRAFT → ACTIVE → COMPLETED is expanded automatically so assistants may
+# request "completed" in one call without first activating.
+_ALLOWED_TRANSITIONS: dict[TestRunStatus, list[TestRunStatus]] = {
+    TestRunStatus.DRAFT: [TestRunStatus.ACTIVE, TestRunStatus.ARCHIVED],
+    TestRunStatus.ACTIVE: [TestRunStatus.COMPLETED, TestRunStatus.ARCHIVED],
+    TestRunStatus.COMPLETED: [TestRunStatus.ARCHIVED],
+    TestRunStatus.ARCHIVED: [TestRunStatus.ACTIVE, TestRunStatus.DRAFT],
+}
+
+# Ordered main path used only for multi-hop expansion (not archive/reopen).
+_MAIN_LIFECYCLE: tuple[TestRunStatus, ...] = (
+    TestRunStatus.DRAFT,
+    TestRunStatus.ACTIVE,
+    TestRunStatus.COMPLETED,
+)
+
+
+def _coerce_status(value: object) -> TestRunStatus:
+    """Normalize ORM/API values to TestRunStatus (handles str enum edge cases)."""
+    if isinstance(value, TestRunStatus):
+        return value
+    if value is None:
+        raise ValueError("status is required")
+    try:
+        return TestRunStatus(str(value).strip().lower())
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"invalid status: {value!r}") from exc
+
+
+def _main_path_hops(old_status: TestRunStatus, new_status: TestRunStatus) -> list[TestRunStatus] | None:
+    """If both statuses sit on the main lifecycle and new is strictly ahead, return intermediate targets.
+
+    Example: DRAFT → COMPLETED → [ACTIVE, COMPLETED]. Single-edge hops return None
+    (caller applies the direct transition). Non-main or reverse hops return None.
+    """
+    try:
+        old_i = _MAIN_LIFECYCLE.index(old_status)
+        new_i = _MAIN_LIFECYCLE.index(new_status)
+    except ValueError:
+        return None
+    if new_i <= old_i + 1:
+        return None  # same, adjacent, or reverse — not a multi-hop expand
+    return list(_MAIN_LIFECYCLE[old_i + 1 : new_i + 1])
+
 
 def apply_config_status_transition_sync(
     config_db: TestRunConfigDB, new_status: TestRunStatus
@@ -25,25 +70,34 @@ def apply_config_status_transition_sync(
 
     供 JWT 與 app-token 的 ``/status`` 端點共用，確保狀態機不在兩條 auth 路徑漂移。
     非法轉換時 raise ``ValueError``；不負責所屬 set 的狀態重算（由呼叫端處理）。
+
+    Multi-hop convenience along the main lifecycle (``DRAFT → ACTIVE → COMPLETED``):
+    ``DRAFT → COMPLETED`` is applied as ``DRAFT → ACTIVE → COMPLETED`` so assistants /
+    bulk workflows need not issue two status calls for the common "finish" path.
+    Archive and reopen edges stay single-hop only (no skip via multi-hop).
     """
-    old_status = config_db.status
-    allowed_transitions = {
-        TestRunStatus.DRAFT: [TestRunStatus.ACTIVE, TestRunStatus.ARCHIVED],
-        TestRunStatus.ACTIVE: [TestRunStatus.COMPLETED, TestRunStatus.ARCHIVED],
-        TestRunStatus.COMPLETED: [TestRunStatus.ARCHIVED],
-        TestRunStatus.ARCHIVED: [TestRunStatus.ACTIVE, TestRunStatus.DRAFT],
-    }
-    if new_status not in allowed_transitions.get(old_status, []):
-        raise ValueError(f"不允許從 {old_status} 轉換到 {new_status}")
+    old_status = _coerce_status(config_db.status)
+    target = _coerce_status(new_status)
+    if old_status == target:
+        return
 
-    config_db.status = new_status
+    hops = _main_path_hops(old_status, target)
+    if hops is not None:
+        for hop in hops:
+            apply_config_status_transition_sync(config_db, hop)
+        return
 
-    if old_status == TestRunStatus.ARCHIVED and new_status == TestRunStatus.ACTIVE:
+    if target not in _ALLOWED_TRANSITIONS.get(old_status, []):
+        raise ValueError(f"不允許從 {old_status.value} 轉換到 {target.value}")
+
+    config_db.status = target
+
+    if old_status == TestRunStatus.ARCHIVED and target == TestRunStatus.ACTIVE:
         config_db.start_date = datetime.utcnow()
         config_db.end_date = None
-    if new_status == TestRunStatus.COMPLETED and not config_db.end_date:
+    if target == TestRunStatus.COMPLETED and not config_db.end_date:
         config_db.end_date = datetime.utcnow()
-    if new_status == TestRunStatus.ACTIVE:
+    if target == TestRunStatus.ACTIVE:
         config_db.end_date = None
         if not config_db.start_date:
             config_db.start_date = datetime.utcnow()

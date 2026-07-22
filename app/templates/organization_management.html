@@ -1,0 +1,723 @@
+{% extends "base.html" %}
+
+{% set page_title_i18n_key = "orgSync.modalTitle" %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/team-management.css">
+{% endblock %}
+
+{% block page_title_text %}
+<span class="text-primary" data-i18n="orgSync.modalTitle">組織與系統設定</span>
+{% endblock %}
+
+{% block page_subtitle_text %}
+<span data-i18n="orgAutomationInfra.tabHint">人員管理、組織同步、排程服務、MCP Token 與組織自動化基礎設施</span>
+{% endblock %}
+
+{% block page_specific_actions %}
+<div class="d-flex gap-2">
+    <button type="button" class="btn btn-secondary btn-sm" id="refreshSyncDataBtn">
+        <i class="fas fa-sync-alt me-1"></i><span data-i18n="common.refresh">重新整理</span>
+    </button>
+    <a href="/assistant-admin" class="btn btn-secondary btn-sm d-none" id="assistantAdminLink">
+        <i class="fas fa-robot me-1"></i><span data-i18n="assistantAdmin.menuEntry">AI 助手設定</span>
+    </a>
+    <a href="/team-management" class="btn btn-secondary btn-sm">
+        <i class="fas fa-users me-1"></i><span data-i18n="navigation.teamManagement">團隊管理</span>
+    </a>
+    <a href="/" class="btn btn-secondary btn-sm">
+        <i class="fas fa-home me-1"></i><span data-i18n="navigation.backToHome">回到首頁</span>
+    </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Tabs for sync categories -->
+    <ul class="nav nav-tabs" id="syncTabs" role="tablist">
+        <!-- 人員管理分頁（預設隱藏，ADMIN+/SUPER_ADMIN 顯示） -->
+        <li class="nav-item" role="presentation" id="tab-personnel-li" style="display: none;">
+            <button class="nav-link active" id="tab-personnel" data-bs-toggle="tab" data-bs-target="#tab-pane-personnel" type="button" role="tab" aria-controls="tab-pane-personnel" aria-selected="true" data-testid="tab-personnel" data-i18n="personnel.tabTitle">人員管理</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tab-org" data-bs-toggle="tab" data-bs-target="#tab-pane-org" type="button" role="tab" aria-controls="tab-pane-org" aria-selected="false" data-testid="tab-org" data-i18n="orgSync.tabTitle">組織</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tab-service-management" data-bs-toggle="tab" data-bs-target="#tab-pane-service-management" type="button" role="tab" aria-controls="tab-pane-service-management" aria-selected="false" data-testid="tab-service-management" data-i18n="scheduledServices.tabTitle">Service 管理</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tab-mcp-token" data-bs-toggle="tab" data-bs-target="#tab-pane-mcp-token" type="button" role="tab" aria-controls="tab-pane-mcp-token" aria-selected="false" data-testid="tab-mcp-token" data-i18n="mcpToken.tabTitle">MCP Token</button>
+        </li>
+        <!-- 組織自動化基礎設施分頁：預設隱藏（fail-closed），由 applyTabVisibility() 依權限決定是否顯示 -->
+        <li class="nav-item" role="presentation" style="display: none;">
+            <button class="nav-link" id="tab-org-automation-infra" data-bs-toggle="tab" data-bs-target="#tab-pane-org-automation-infra" type="button" role="tab" aria-controls="tab-pane-org-automation-infra" aria-selected="false" data-testid="tab-org-automation-infra">
+                <i class="fas fa-cogs me-1"></i><span data-i18n="orgAutomationInfra.tabTitle">組織自動化基礎設施</span>
+            </button>
+        </li>
+    </ul>
+    <div class="tab-content pt-3" id="syncTabsContent">
+        <!-- 人員管理分頁內容 -->
+        <div class="tab-pane fade show active" id="tab-pane-personnel" role="tabpanel" aria-labelledby="tab-personnel">
+            <div class="row g-3">
+                <!-- 左欄：搜尋與使用者列表 -->
+                <div class="col-12 col-lg-4">
+                    <div class="card h-100">
+                        <div class="card-header bg-light d-flex align-items-center">
+                            <i class="fas fa-user-friends me-2"></i>
+                            <strong data-i18n="personnel.userList">使用者清單</strong>
+                        </div>
+                        <div class="card-body p-2">
+                            <div class="mb-2">
+                                <input type="text" class="form-control form-control-sm" id="pm-search" placeholder="搜尋使用者（名稱/Email）" data-i18n-placeholder="personnel.searchPlaceholder">
+                            </div>
+                            <div id="pm-user-list" class="list-group small" style="max-height: 420px; overflow:auto;"></div>
+                        </div>
+                        <div class="card-footer d-flex justify-content-between align-items-center">
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button class="btn btn-secondary" id="pm-prev" data-i18n="personnel.prevPage">上一頁</button>
+                                <button class="btn btn-secondary" id="pm-next" data-i18n="personnel.nextPage">下一頁</button>
+                            </div>
+                            <small class="text-muted" id="pm-page-indicator" data-i18n="personnel.pageIndicator" data-i18n-params='{"page":1,"maxPage":1,"total":0}'>—</small>
+                        </div>
+                    </div>
+                </div>
+                <!-- 右欄：詳情/編輯表單 -->
+                <div class="col-12 col-lg-8">
+                    <div class="card h-100">
+                        <div class="card-header bg-light d-flex align-items-center">
+                            <i class="fas fa-id-card me-2"></i>
+                            <strong data-i18n="personnel.userDetail">使用者詳情</strong>
+                        </div>
+                        <div class="card-body">
+                            <div id="pm-select-user-prompt" class="text-center py-5" style="display:none;">
+                                <i class="fas fa-users fa-3x text-muted mb-3"></i>
+                                <h5 class="text-muted mb-2" data-i18n="personnel.selectUser">Select User</h5>
+                                <p class="text-muted" data-i18n="personnel.selectUserHint">Click on a user from the list or click "New User" to create a new user</p>
+                            </div>
+                            <form id="pm-form" autocomplete="off" style="display:none;">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label" data-i18n="personnel.username">Username</label> <span class="text-danger">*</span>
+                                        <input type="text" class="form-control" id="pm-username" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label" data-i18n="personnel.fullName">姓名</label>
+                                        <input type="text" class="form-control" id="pm-full-name">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label" data-i18n="personnel.email">Email</label>
+                                        <input type="email" class="form-control" id="pm-email">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label" data-i18n="personnel.role">角色</label>
+                                        <select class="form-select" id="pm-role"></select>
+                                    </div>
+                                    <div class="col-md-3 d-flex align-items-end">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="pm-active">
+                                            <label class="form-check-label" for="pm-active" data-i18n="personnel.active">啟用</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label" data-i18n="personnel.larkUserId">Lark 使用者</label>
+                                        <div class="input-group position-relative">
+                                            <input type="text" class="form-control" id="pm-lark-search" placeholder="搜尋 Lark 使用者" data-i18n-placeholder="personnel.larkSearchPlaceholder" autocomplete="off">
+                                            <button class="btn btn-danger" type="button" id="pm-lark-unlink" data-i18n="personnel.unlink">解除</button>
+                                            <div class="dropdown-menu position-absolute w-100" id="pm-lark-dropdown" style="display:none; top:100%; z-index:1050; max-height:300px; overflow-y:auto;"></div>
+                                        </div>
+                                        <input type="hidden" id="pm-lark-id">
+                                        <div class="d-flex align-items-center mt-2 small" id="pm-lark-preview-box" style="display:none;">
+                                            <img id="pm-lark-avatar" src="" alt="avatar" class="rounded me-2" style="width:32px;height:32px;object-fit:cover;" onerror="this.style.display='none';">
+                                            <span id="pm-lark-name"></span>
+                                        </div>
+                                        <div id="pm-lark-not-configured" class="mt-2 text-muted small" style="display:none;">
+                                            <i class="fas fa-info-circle me-1"></i>
+                                            <span data-i18n="personnel.larkNotLinked">尚未連結 Lark 帳號</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label" data-i18n="personnel.primaryTeam">主要團隊</label>
+                                        <input type="text" class="form-control" id="pm-primary-team" disabled>
+                                    </div>
+                                </div>
+                            </form>
+                            <div class="text-muted small mt-2" id="pm-dirty-hint" style="display:none;" data-i18n="personnel.unsaved">有未儲存的變更</div>
+                        </div>
+                        <div class="card-footer">
+                            <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center">
+                                <div class="btn-group flex-shrink-0" role="group">
+                                    <button class="btn btn-primary text-nowrap" id="pm-create"><i class="fas fa-user-plus me-1"></i><span data-i18n="personnel.newUser">New User</span></button>
+                                    <button class="btn btn-primary text-nowrap" id="pm-save"><i class="fas fa-save me-1"></i><span data-i18n="personnel.save">儲存</span></button>
+                                </div>
+                                <div class="btn-group flex-shrink-0" role="group">
+                                    <button class="btn btn-warning text-nowrap" id="pm-reset"><i class="fas fa-key me-1"></i><span data-i18n="personnel.resetPassword">重設密碼</span></button>
+                                    <button class="btn btn-danger text-nowrap" id="pm-delete"><i class="fas fa-trash me-1"></i><span data-i18n="personnel.delete">刪除</span></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="tab-pane-org" role="tabpanel" aria-labelledby="tab-org">
+            <!-- 同步狀態區域 -->
+            <div class="mb-4">
+                <div class="card">
+                    <div class="card-header bg-light">
+                        <h6 class="card-title mb-0">
+                            <i class="fas fa-info-circle me-2"></i><span data-i18n="orgSync.currentStatus">當前同步狀態</span>
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div id="syncStatusContent">
+                            <div id="syncStatusLoading" class="text-center py-3" style="display: none;">
+                                <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                                <span class="text-muted" data-i18n="orgSync.loadingStatus">載入狀態中...</span>
+                            </div>
+
+                            <div id="syncStatusIdle" class="d-flex align-items-center" style="display: none;">
+                                <div class="flex-shrink-0">
+                                    <i class="fas fa-check-circle text-success fa-2x"></i>
+                                </div>
+                                <div class="flex-grow-1 ms-3">
+                                    <h6 class="mb-1 text-success" data-i18n="orgSync.idle">系統空閒</h6>
+                                    <p class="mb-0 text-muted small" data-i18n="orgSync.readyToRun">準備執行新的同步作業</p>
+                                    <div id="lastSyncTime" class="text-muted small mt-1"></div>
+                                </div>
+                            </div>
+
+                            <div id="syncStatusRunning" class="d-flex align-items-center" style="display: none;">
+                                <div class="flex-shrink-0">
+                                    <div class="spinner-border text-primary" role="status"></div>
+                                </div>
+                                <div class="flex-grow-1 ms-3">
+                                    <h6 class="mb-1 text-primary" data-i18n="orgSync.syncing">同步進行中</h6>
+                                    <p class="mb-2 text-muted small" data-i18n="orgSync.syncingDesc">正在同步組織架構資料...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 組織統計區域 -->
+            <div class="mb-4">
+                <div class="card">
+                    <div class="card-header bg-light">
+                        <h6 class="card-title mb-0">
+                            <i class="fas fa-chart-bar me-2"></i><span data-i18n="orgSync.statsTitle">組織架構統計</span>
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div id="orgStatsContent">
+                            <div id="orgStatsLoading" class="text-center py-3" style="display: none;">
+                                <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                                <span class="text-muted" data-i18n="orgSync.statsLoading">載入統計資料中...</span>
+                            </div>
+
+                            <div id="orgStatsData" class="text-muted" style="display: none;">
+                                <div class="d-flex flex-nowrap align-items-center org-compact-stats">
+                                    <span class="stat me-3">
+                                        <i class="fas fa-building text-info me-1" style="font-size: 0.95rem;"></i>
+                                        <span class="fw-semibold" id="totalDepartments">-</span>
+                                    </span>
+                                    <span class="stat">
+                                        <i class="fas fa-users text-success me-1" style="font-size: 0.95rem;"></i>
+                                        <span class="fw-semibold" id="totalUsers">-</span>
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div id="orgStatsError" class="text-center py-3 text-muted" style="display: none;">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <span data-i18n="orgSync.statsError">統計資料載入失敗</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 組織同步按鈕：分頁底部 -->
+            <div class="d-flex justify-content-end mt-3 pt-2 border-top">
+                <div class="btn-group no-stretch" role="group" data-i18n-aria-label="common.actions" aria-label="Actions">
+                    <button type="button" class="btn btn-primary" id="startDeptSyncBtn">
+                        <i class="fas fa-sitemap me-2"></i><span data-i18n="orgSync.departmentsSync">部門同步</span>
+                    </button>
+                    <button type="button" class="btn btn-primary" id="startUserSyncBtn">
+                        <i class="fas fa-address-book me-2"></i><span data-i18n="orgSync.contactsSync">用戶同步</span>
+                    </button>
+                    <button type="button" class="btn btn-primary" id="startSyncBtn">
+                        <i class="fas fa-play me-2"></i><span data-i18n="orgSync.fullSync">完整同步</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="tab-pane-service-management" role="tabpanel" aria-labelledby="tab-service-management">
+            <div class="scheduled-services-hero mb-3">
+                <div>
+                    <div class="scheduled-services-hero__eyebrow" data-i18n="scheduledServices.heroEyebrow">Scheduler Service Registry</div>
+                    <h5 class="scheduled-services-hero__title mb-1" data-i18n="scheduledServices.heroTitle">排程服務管理</h5>
+                    <p class="scheduled-services-hero__desc mb-0" data-i18n="scheduledServices.heroDesc">選擇目前系統可排程的服務，設定每日執行時間，並查看最近執行結果與目前狀態。</p>
+                </div>
+                <div class="scheduled-services-hero__meta">
+                    <span class="scheduled-services-hero__summary text-muted small" id="scheduledServicesSummary" data-i18n="scheduledServices.summaryIdle">尚未載入排程服務</span>
+                    <span class="badge rounded-pill text-bg-secondary" id="scheduledSchedulerState" data-i18n="scheduledServices.schedulerUnknown">狀態未知</span>
+                </div>
+            </div>
+
+            <div id="scheduledServicesLoading" class="text-center py-4 d-none">
+                <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                <span class="text-muted" data-i18n="scheduledServices.loading">載入排程服務中...</span>
+            </div>
+
+            <div id="scheduledServicesEmpty" class="alert alert-light border text-muted d-none" role="alert" data-i18n="scheduledServices.empty">目前沒有可排程服務</div>
+
+            <div id="scheduledServicesList" class="scheduled-services-list"></div>
+        </div>
+
+        <!-- MCP Machine Token 分頁 -->
+        <div class="tab-pane fade" id="tab-pane-mcp-token" role="tabpanel" aria-labelledby="tab-mcp-token">
+            <div class="card mb-3">
+                <div class="card-header bg-light d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <div class="d-flex align-items-center">
+                        <i class="fas fa-key me-2"></i>
+                        <strong data-i18n="mcpToken.title">MCP Machine Token</strong>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-primary btn-sm" id="mcpTokenOpenCreateBtn">
+                            <i class="fas fa-key me-1"></i><span data-i18n="mcpToken.openCreateButton">核發 Token</span>
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="mcpTokenRefreshBtn">
+                            <i class="fas fa-sync-alt me-1"></i><span data-i18n="common.refresh">Refresh</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3" data-i18n="mcpToken.listSubtitle">列出已核發的 machine token（僅 metadata，無法再次查看明文）。可撤銷不再使用的 token。</p>
+                    <div id="mcpTokenListLoading" class="text-center py-4 d-none">
+                        <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                        <span class="text-muted" data-i18n="mcpToken.listLoading">載入 token 列表中...</span>
+                    </div>
+                    <div id="mcpTokenListEmpty" class="alert alert-light border text-muted d-none mb-0" role="alert" data-i18n="mcpToken.listEmpty">目前尚未核發任何 token</div>
+                    <div class="table-responsive" id="mcpTokenTableWrap">
+                        <table class="table table-sm align-middle mb-0" id="mcpTokenTable">
+                            <thead>
+                                <tr>
+                                    <th data-i18n="mcpToken.colName">名稱</th>
+                                    <th data-i18n="mcpToken.colStatus">狀態</th>
+                                    <th data-i18n="mcpToken.colScope">可存取團隊</th>
+                                    <th data-i18n="mcpToken.colExpires">到期</th>
+                                    <th data-i18n="mcpToken.colLastUsed">最後使用</th>
+                                    <th data-i18n="mcpToken.colCreated">建立</th>
+                                    <th class="text-end" data-i18n="mcpToken.colActions">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mcpTokenTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 組織自動化基礎設施（Super Admin only） -->
+        <div class="tab-pane fade" id="tab-pane-org-automation-infra" role="tabpanel" aria-labelledby="tab-org-automation-infra">
+            <!-- Automation Hub 入口開關 -->
+            <div class="card mb-3">
+                <div class="card-header bg-light d-flex align-items-center">
+                    <i class="fas fa-robot me-2"></i>
+                    <strong data-i18n="automationHubEntryToggle.title">Automation Hub 入口</strong>
+                </div>
+                <div class="card-body">
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" role="switch" id="automationHubEntryToggle" checked>
+                        <label class="form-check-label" for="automationHubEntryToggle" data-i18n="automationHubEntryToggle.switchLabel">顯示 Automation Hub 入口</label>
+                    </div>
+                    <p class="text-muted small mb-0" data-i18n="automationHubEntryToggle.hint">關閉後會隱藏首頁 team card 的「Automation Hub」按鈕，以及「進入團隊」選單中的 Automation Hub 項目；/automation-hub 頁面與 API 仍可由直接網址存取（保留後端能力）。</p>
+                </div>
+            </div>
+            <div class="card mb-3">
+                <div class="card-header bg-light d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <div class="d-flex align-items-center">
+                        <i class="fas fa-cogs me-2"></i>
+                        <strong data-i18n="orgAutomationInfra.tabTitle">組織自動化基礎設施</strong>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-secondary btn-sm" id="orgInfraRefreshBtn">
+                            <i class="fas fa-sync-alt me-1"></i><span data-i18n="common.refresh">Refresh</span>
+                        </button>
+                        <button type="button" class="btn btn-primary btn-sm" id="orgInfraAddProviderBtn">
+                            <i class="fas fa-plus me-1"></i><span data-i18n="orgAutomationInfra.addProvider">新增 Provider</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3" data-i18n="orgAutomationInfra.tabHint">全組織共用的 CI / Result Provider（僅 Super Admin 可管理）</p>
+
+                    <div id="orgInfraLoadingState" class="text-center py-4 d-none">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden" data-i18n="common.loading">Loading...</span>
+                        </div>
+                    </div>
+
+                    <div id="orgInfraEmptyState" class="text-center py-4 d-none">
+                        <i class="fas fa-plug text-muted" style="font-size: 2rem;"></i>
+                        <h6 class="mt-3 mb-1" data-i18n="orgAutomationInfra.emptyTitle">尚未設定組織層 Provider</h6>
+                        <p class="text-muted small mb-0" data-i18n="orgAutomationInfra.emptyDesc">設定全公司共用的 Jenkins / Allure Provider。</p>
+                    </div>
+
+                    <div id="orgInfraContent" class="d-none">
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="text-center" style="width: 64px;" data-i18n="automationHub.providers.slot">Slot</th>
+                                        <th data-i18n="common.name">Name</th>
+                                        <th data-i18n="automationHub.providers.credentials">Credentials</th>
+                                        <th data-i18n="automationHub.providers.health">Health</th>
+                                        <th data-i18n="common.status">Status</th>
+                                        <th class="text-end" data-i18n="common.actions">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="orgInfraProviderRows"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MCP Machine Token: 核發 Modal -->
+<div class="modal fade" id="mcpTokenCreateModal" tabindex="-1" aria-labelledby="mcpTokenCreateModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="mcpTokenCreateModalLabel" data-i18n="mcpToken.createModalTitle">核發 MCP Machine Token</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="關閉"></button>
+            </div>
+            <form id="mcpTokenForm" autocomplete="off">
+                <div class="modal-body">
+                    <p class="text-muted small mb-3" data-i18n="mcpToken.subtitle">建立給 MCP Server 使用的唯讀 machine token（僅顯示一次）。</p>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="mcpTokenName" class="form-label">
+                                <span data-i18n="mcpToken.nameLabel">Token 名稱</span>
+                                <span class="text-danger">*</span>
+                            </label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                id="mcpTokenName"
+                                maxlength="100"
+                                required
+                                data-i18n-placeholder="mcpToken.namePlaceholder"
+                                placeholder="例如：mcp-prod-reader"
+                            >
+                        </div>
+                        <div class="col-md-6">
+                            <label for="mcpTokenExpiresDays" class="form-label" data-i18n="mcpToken.expiresDaysLabel">有效天數（留空表示不過期）</label>
+                            <input
+                                type="number"
+                                class="form-control"
+                                id="mcpTokenExpiresDays"
+                                min="1"
+                                max="3650"
+                                data-i18n-placeholder="mcpToken.expiresDaysPlaceholder"
+                                placeholder="例如：180"
+                            >
+                        </div>
+                        <div class="col-12">
+                            <label for="mcpTokenDescription" class="form-label" data-i18n="mcpToken.descriptionLabel">描述</label>
+                            <textarea
+                                class="form-control"
+                                id="mcpTokenDescription"
+                                rows="2"
+                                maxlength="2000"
+                                data-i18n-placeholder="mcpToken.descriptionPlaceholder"
+                                placeholder="用途描述（選填）"
+                            ></textarea>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="mcpAllowAllTeams">
+                                <label class="form-check-label" for="mcpAllowAllTeams" data-i18n="mcpToken.allowAllTeamsLabel">允許存取所有團隊</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label for="mcpTeamScopeIds" class="form-label">
+                                <span data-i18n="mcpToken.teamScopeLabel">可存取團隊</span>
+                                <span class="text-danger">*</span>
+                            </label>
+                            <select class="form-select" id="mcpTeamScopeIds" multiple size="6"></select>
+                            <div class="form-text" id="mcpTeamScopeHint" data-i18n="mcpToken.teamScopeHint">未啟用「所有團隊」時，至少選擇一個團隊。</div>
+                        </div>
+                        <div class="col-12">
+                            <div id="mcpTokenResult" class="alert alert-warning d-none mcp-token-result mb-0" role="alert">
+                                <div class="d-flex flex-wrap gap-2 justify-content-between align-items-start">
+                                    <div>
+                                        <div class="fw-semibold" data-i18n="mcpToken.oneTimeWarning">此 token 僅會顯示一次</div>
+                                        <div class="small text-muted" data-i18n="mcpToken.oneTimeHint">請立即複製並安全保存；之後無法再次查看明文。</div>
+                                    </div>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="mcpCopyTokenBtn">
+                                        <i class="fas fa-copy me-1"></i><span data-i18n="mcpToken.copyButton">複製</span>
+                                    </button>
+                                </div>
+                                <div class="mcp-token-code mt-2">
+                                    <code id="mcpTokenValue"></code>
+                                </div>
+                                <div class="small text-muted mt-2" id="mcpTokenMeta"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="mcpResetTokenFormBtn">
+                        <i class="fas fa-eraser me-2"></i><span data-i18n="mcpToken.resetButton">清除</span>
+                    </button>
+                    <button type="submit" class="btn btn-primary" id="mcpCreateTokenBtn">
+                        <i class="fas fa-key me-2"></i><span data-i18n="mcpToken.generateButton">產生 Token</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Org Automation Infra: Provider Add/Edit Modal -->
+<div class="modal fade" id="orgInfraProviderModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="orgInfraProviderModalTitle"><span data-i18n="orgAutomationInfra.addProvider">新增 Provider</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="orgInfraProviderForm" class="provider-form">
+                    <input type="hidden" id="orgInfraProviderId">
+                    <section class="modal-section">
+                        <header class="modal-section-header">
+                            <i class="fas fa-id-badge text-muted me-2"></i>
+                            <span data-i18n="automationHub.providers.basicsSection">Basics</span>
+                        </header>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="orgInfraProviderType" class="form-label" data-i18n="automationHub.providers.slot">Slot</label>
+                                <select id="orgInfraProviderType" class="form-select" required></select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="orgInfraProviderName" class="form-label" data-i18n="common.name">Name</label>
+                                <input type="text" id="orgInfraProviderName" class="form-control" maxlength="100" required>
+                            </div>
+                            <div class="col-md-6 d-flex align-items-end">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="orgInfraProviderActive" checked>
+                                    <label class="form-check-label" for="orgInfraProviderActive" data-i18n="automationHub.providers.active">Active</label>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="modal-section">
+                        <header class="modal-section-header">
+                            <i class="fas fa-sliders-h text-muted me-2"></i>
+                            <span data-i18n="automationHub.providers.configSection">Configuration</span>
+                        </header>
+                        <div id="orgInfraConfigFields" class="row g-3"></div>
+                    </section>
+                    <section class="modal-section">
+                        <header class="modal-section-header">
+                            <i class="fas fa-key text-muted me-2"></i>
+                            <span data-i18n="automationHub.providers.credentialSection">Credentials</span>
+                        </header>
+                        <div class="text-muted small mb-2" data-i18n="automationHub.providers.credentialHint">Leave credential fields blank while editing to keep the existing credentials.</div>
+                        <div id="orgInfraCredentialFields" class="row g-3"></div>
+                        <div class="form-check mt-3 d-none" id="orgInfraClearCredentialsWrap">
+                            <input class="form-check-input" type="checkbox" id="orgInfraClearCredentials">
+                            <label class="form-check-label" for="orgInfraClearCredentials" data-i18n="automationHub.providers.clearCredentials">Clear stored credentials</label>
+                        </div>
+                    </section>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Cancel</button>
+                <button type="button" class="btn btn-outline-info" id="orgInfraTestProviderConfigBtn">
+                    <i class="fas fa-vial me-1"></i><span data-i18n="automationHub.providers.testConnection">Test connection</span>
+                </button>
+                <button type="button" class="btn btn-primary" id="orgInfraSaveProviderBtn">
+                    <i class="fas fa-save me-1"></i><span data-i18n="common.save">Save</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Org Automation Infra: Health Result Modal -->
+<div class="modal fade" id="orgInfraProviderHealthModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-vial me-2"></i>
+                    <span data-i18n="automationHub.providers.healthModalTitle">Connection test result</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="orgInfraProviderHealthLoading" class="text-center py-4 d-none">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden" data-i18n="common.loading">Loading...</span>
+                    </div>
+                    <div class="mt-2 text-muted" data-i18n="automationHub.providers.testingNow">Testing connection...</div>
+                </div>
+                <div id="orgInfraProviderHealthContent" class="d-none">
+                    <div class="d-flex align-items-center gap-2 mb-3">
+                        <span id="orgInfraProviderHealthStatusBadge" class="badge"></span>
+                        <span id="orgInfraProviderHealthStatusLabel" class="fw-semibold"></span>
+                    </div>
+                    <div id="orgInfraProviderHealthMessage" class="mb-3"></div>
+                    <div id="orgInfraProviderHealthWarning" class="alert alert-warning d-none mb-3" role="alert"></div>
+                    <div id="orgInfraProviderHealthDetailsWrap" class="d-none">
+                        <h6 class="text-muted small text-uppercase mb-2" data-i18n="automationHub.providers.healthDetailsTitle">Details</h6>
+                        <dl id="orgInfraProviderHealthDetails" class="row mb-0 small"></dl>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/organization-management/main.js"></script>
+<script src="/static/js/organization-management/org-automation-infra.js"></script>
+<script src="/static/js/organization-management/personnel_management.js"></script>
+
+<!-- Hidden i18n texts for Organization Sync (used by JS without window.i18n.t) -->
+<div id="org-sync-i18n" class="d-none">
+    <span data-i18n="orgSync.openButton">組織與系統設定</span>
+    <span data-i18n="orgSync.modalTitle">組織與系統設定</span>
+    <span data-i18n="orgSync.currentStatus">當前同步狀態</span>
+    <span data-i18n="orgSync.loadingStatus">載入狀態中...</span>
+    <span data-i18n="orgSync.idle">系統空閒</span>
+    <span data-i18n="orgSync.readyToRun">準備執行新的同步作業</span>
+    <span data-i18n="orgSync.syncing">同步進行中</span>
+    <span data-i18n="orgSync.syncingDesc">正在同步組織架構資料...</span>
+    <span data-i18n="orgSync.preparing">準備開始...</span>
+    <span data-i18n="orgSync.statsTitle">組織架構統計</span>
+    <span data-i18n="orgSync.statsLoading">載入統計資料中...</span>
+    <span data-i18n="orgSync.statsError">統計資料載入失敗</span>
+    <span data-i18n="orgSync.departmentsStats">部門統計</span>
+    <span data-i18n="orgSync.usersStats">用戶統計</span>
+    <span data-i18n="orgSync.total">總數</span>
+    <span data-i18n="orgSync.active">活躍</span>
+    <span data-i18n="orgSync.fullSync">完整同步</span>
+    <span data-i18n="orgSync.departmentsSync">部門同步</span>
+    <span data-i18n="orgSync.contactsSync">用戶同步</span>
+    <span data-i18n="orgSync.table.type">類型</span>
+    <span data-i18n="orgSync.table.status">狀態</span>
+    <span data-i18n="orgSync.table.startTime">開始時間</span>
+    <span data-i18n="orgSync.table.endTime">結束時間</span>
+    <span data-i18n="orgSync.table.duration">耗時</span>
+    <span data-i18n="orgSync.table.stats">統計</span>
+    <span data-i18n="orgSync.table.trigger">觸發者</span>
+    <span data-i18n="orgSync.table.actions">操作</span>
+    <span data-i18n="orgSync.lastSyncPrefix">最後同步:</span>
+    <span data-i18n="orgSync.syncIdPrefix">同步ID:</span>
+    <span data-i18n="orgSync.addTeamFirst">請先新增團隊後再執行同步</span>
+    <span data-i18n="orgSync.syncStarted">組織架構同步已開始</span>
+    <span data-i18n="orgSync.syncCompleted">組織架構同步已完成！</span>
+    <span data-i18n="orgSync.syncCompletedWithIssues">同步完成，但可能有部分錯誤</span>
+    <span data-i18n="orgSync.syncFailedPrefix">同步失敗</span>
+    <span data-i18n="orgSync.startFailedPrefix">啟動同步失敗</span>
+    <span data-i18n="orgSync.triggerFailedPrefix">觸發全域同步失敗</span>
+    <span data-i18n="orgSync.statusTimeout">同步狀態檢查超時，請手動刷新頁面查看結果</span>
+    <span data-i18n="orgSync.viewErrorDetails">查看錯誤詳情</span>
+    <span data-i18n="orgSync.errorPrefix">同步錯誤</span>
+    <span data-i18n="orgSync.status.completed">完成</span>
+    <span data-i18n="orgSync.status.failed">失敗</span>
+    <span data-i18n="orgSync.status.running">進行中</span>
+    <span data-i18n="orgSync.status.unknown">未知</span>
+    <span data-i18n="orgSync.type.full">完整同步</span>
+    <span data-i18n="orgSync.type.departments">部門同步</span>
+    <span data-i18n="orgSync.type.users">用戶同步</span>
+    <span data-i18n="orgSync.labels.departments">部門</span>
+    <span data-i18n="orgSync.labels.users">用戶</span>
+    <span data-i18n="mcpToken.createInProgress">產生中...</span>
+    <span data-i18n="mcpToken.createSuccess">MCP machine token 已建立</span>
+    <span data-i18n="mcpToken.createFailedPrefix">建立 token 失敗</span>
+    <span data-i18n="mcpToken.requiredName">請先填寫 token 名稱</span>
+    <span data-i18n="mcpToken.scopeRequired">請至少選擇一個可存取團隊</span>
+    <span data-i18n="mcpToken.invalidExpiresDays">有效天數需為正整數</span>
+    <span data-i18n="mcpToken.noTeamOptions">目前沒有可選擇的團隊</span>
+    <span data-i18n="mcpToken.teamScopeHint">未啟用「所有團隊」時，至少選擇一個團隊。</span>
+    <span data-i18n="mcpToken.teamScopeIgnoredHint">已啟用所有團隊，team scope 將被忽略。</span>
+    <span data-i18n="mcpToken.copySuccess">已複製 token</span>
+    <span data-i18n="mcpToken.copyFallback">無法直接複製，請手動複製 token</span>
+    <span data-i18n="mcpToken.copyModalTitle">手動複製 Token</span>
+    <span data-i18n="mcpToken.copyModalInstruction">請使用 Ctrl/Cmd + C 進行複製</span>
+    <span data-i18n="mcpToken.rawTokenLabel">Raw Token</span>
+    <span data-i18n="mcpToken.createdAt">建立時間</span>
+    <span data-i18n="mcpToken.expiresAt">到期時間</span>
+    <span data-i18n="mcpToken.neverExpires">永不過期</span>
+    <span data-i18n="scheduledServices.tabTitle">Service 管理</span>
+    <span data-i18n="scheduledServices.heroEyebrow">Scheduler Service Registry</span>
+    <span data-i18n="scheduledServices.heroTitle">排程服務管理</span>
+    <span data-i18n="scheduledServices.heroDesc">選擇目前系統可排程的服務，設定每日執行時間，並查看最近執行結果與目前狀態。</span>
+    <span data-i18n="scheduledServices.summaryIdle">尚未載入排程服務</span>
+    <span data-i18n="scheduledServices.summaryLoading">正在載入排程服務...</span>
+    <span data-i18n="scheduledServices.summaryReady">可管理 {count} 個排程服務</span>
+    <span data-i18n="scheduledServices.summaryEmpty">目前沒有可排程服務</span>
+    <span data-i18n="scheduledServices.summaryError">無法取得排程服務資料</span>
+    <span data-i18n="scheduledServices.schedulerUnknown">狀態未知</span>
+    <span data-i18n="scheduledServices.schedulerRunning">Scheduler 運行中</span>
+    <span data-i18n="scheduledServices.schedulerStopped">Scheduler 未啟動</span>
+    <span data-i18n="scheduledServices.loading">載入排程服務中...</span>
+    <span data-i18n="scheduledServices.empty">目前沒有可排程服務</span>
+    <span data-i18n="scheduledServices.loadFailed">載入排程服務失敗</span>
+    <span data-i18n="scheduledServices.enabled">已啟用</span>
+    <span data-i18n="scheduledServices.disabled">未啟用</span>
+    <span data-i18n="scheduledServices.running">執行中</span>
+    <span data-i18n="scheduledServices.statusCompleted">最近成功</span>
+    <span data-i18n="scheduledServices.statusFailed">最近失敗</span>
+    <span data-i18n="scheduledServices.statusInterrupted">啟動時回收</span>
+    <span data-i18n="scheduledServices.statusUnknown">尚未執行</span>
+    <span data-i18n="scheduledServices.nextRun">下次執行</span>
+    <span data-i18n="scheduledServices.lastRun">上次執行</span>
+    <span data-i18n="scheduledServices.runTime">每日時間</span>
+    <span data-i18n="scheduledServices.lastMessage">最近訊息</span>
+    <span data-i18n="scheduledServices.noDescription">尚未提供描述</span>
+    <span data-i18n="scheduledServices.noRecentMessage">尚無執行紀錄</span>
+    <span data-i18n="scheduledServices.enableSchedule">啟用每日排程</span>
+    <span data-i18n="scheduledServices.timeLabel">執行時間</span>
+    <span data-i18n="scheduledServices.saveSchedule">儲存排程</span>
+    <span data-i18n="scheduledServices.timeHint">第一版支援每日固定時間排程；多副本部署需額外處理 leader lock。</span>
+    <span data-i18n="scheduledServices.saving">儲存中...</span>
+    <span data-i18n="scheduledServices.saveSuccess">排程設定已更新</span>
+    <span data-i18n="scheduledServices.saveFailed">更新排程設定失敗</span>
+</div>
+
+<!-- 人員管理 i18n（僅少量，其他直接透過 data-i18n 使用全域字典） -->
+<div id="personnel-i18n" class="d-none">
+    <span data-i18n="personnel.tabTitle">人員管理</span>
+    <span data-i18n="personnel.userList">使用者清單</span>
+    <span data-i18n="personnel.userDetail">使用者詳情</span>
+    <span data-i18n="personnel.fullName">姓名</span>
+    <span data-i18n="personnel.role">角色</span>
+    <span data-i18n="personnel.active">啟用</span>
+    <span data-i18n="personnel.larkUserId">Lark 使用者 ID</span>
+    <span data-i18n="personnel.preview">預覽</span>
+    <span data-i18n="personnel.unlink">解除</span>
+    <span data-i18n="personnel.primaryTeam">主要團隊</span>
+    <span data-i18n="personnel.unsaved">有未儲存的變更</span>
+    <span data-i18n="personnel.create">新增</span>
+    <span data-i18n="personnel.save">儲存</span>
+    <span data-i18n="personnel.resetPassword">重設密碼</span>
+    <span data-i18n="personnel.deactivate">停用/刪除</span>
+    <span data-i18n="personnel.searchPlaceholder">搜尋使用者（名稱/Email）</span>
+</div>
+{% endblock %}

@@ -759,6 +759,34 @@ class ConversationService:
             raise PendingActionNotFoundError("附件不存在或不屬於此對話")
         return row
 
+    async def load_attachments_for_turn(self, turn_id: int) -> list[dict[str, Any]]:
+        """該 turn 已記錄的暫存附件清單（依 attachment_index 排序），供 LLM history 建構時
+        把「本回合有哪些可用 file_ref」附加進 user 訊息內容——`_resolve_file_ref` 只認同一
+        turn_id 的附件，因此這裡刻意只查單一 turn，不做跨對話/跨 turn 彙整。"""
+
+        async def _load(session: AsyncSession) -> list[AssistantUploadedFile]:
+            return list(
+                (
+                    await session.execute(
+                        select(AssistantUploadedFile)
+                        .where(AssistantUploadedFile.turn_id == turn_id)
+                        .order_by(AssistantUploadedFile.attachment_index.asc())
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+        rows = await self.main_boundary.run_read(_load)
+        return [
+            {
+                "attachment_index": row.attachment_index,
+                "original_name": row.original_name,
+                "content_type": row.content_type,
+            }
+            for row in rows
+        ]
+
     async def get_events_after(self, *, turn_id: int, after_seq: int) -> list[AssistantEvent]:
         async def _get(session: AsyncSession) -> list[AssistantEvent]:
             return list(
@@ -841,6 +869,28 @@ class ConversationService:
                 for row in journal_rows
                 if row.llm_tool_call_id and row.status in ("succeeded", "failed", "unknown")
             }
+            attachment_rows = (
+                (
+                    await session.execute(
+                        select(AssistantUploadedFile)
+                        .join(AssistantTurn, AssistantTurn.id == AssistantUploadedFile.turn_id)
+                        .where(AssistantTurn.conversation_id == conversation_id)
+                        .order_by(AssistantUploadedFile.attachment_index.asc())
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            attachments_by_turn_id: dict[int, list[dict[str, Any]]] = {}
+            for row in attachment_rows:
+                attachments_by_turn_id.setdefault(row.turn_id, []).append(
+                    {
+                        "attachment_index": row.attachment_index,
+                        "original_name": row.original_name,
+                        "content_type": row.content_type,
+                        "size_bytes": row.size_bytes,
+                    }
+                )
 
             out: list[dict[str, Any]] = []
             outcome_by_pending_status = {
@@ -860,6 +910,10 @@ class ConversationService:
                     "llm_tool_call_id": message.llm_tool_call_id,
                     "tool_calls": json.loads(message.tool_calls_json) if message.tool_calls_json else None,
                 }
+                if message.role == "user":
+                    turn_attachments = attachments_by_turn_id.get(message.turn_id)
+                    if turn_attachments:
+                        item["attachments"] = turn_attachments
                 pending = pending_by_call_id.get(message.llm_tool_call_id) if message.llm_tool_call_id else None
                 if message.role == "tool" and message.content:
                     try:
