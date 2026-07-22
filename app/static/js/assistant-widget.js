@@ -386,6 +386,19 @@ const AssistantWidget = (() => {
             }
           });
         }
+        if (window.marked && typeof window.marked.use === 'function') {
+          // 面板寬度固定，寬表格（多欄或單欄超長文字）必須能獨立橫向捲動，
+          // 不能撐破訊息氣泡；用 wrapper div 而非在 <table> 本身設 display:block，
+          // 避免破壞瀏覽器對 table/thead/tr/td 內建的表格版面配置。
+          window.marked.use({
+            renderer: {
+              table(header, body) {
+                const bodyHtml = body ? `<tbody>${body}</tbody>` : '';
+                return `<div class="tcrt-assistant-table-wrap"><table>\n<thead>\n${header}</thead>\n${bodyHtml}</table>\n</div>\n`;
+              },
+            },
+          });
+        }
         mdLibsReady = !!(window.marked && window.DOMPurify);
       })
       .catch(() => {

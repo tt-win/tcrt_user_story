@@ -189,8 +189,20 @@
 .tcrt-assistant-bubble p { margin: 0 0 6px; }
 .tcrt-assistant-bubble p:last-child { margin-bottom: 0; }
 .tcrt-assistant-bubble ul { margin: 4px 0; padding-left: 18px; }
-.tcrt-assistant-bubble table { border-collapse: collapse; margin: 6px 0; font-size: 12.5px; font-variant-numeric: tabular-nums; }
-.tcrt-assistant-bubble th, .tcrt-assistant-bubble td { border: 1px solid var(--tr-border-light); padding: 4px 9px; }
+.tcrt-assistant-table-wrap { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 6px 0; }
+.tcrt-assistant-bubble table {
+  border-collapse: collapse;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.tcrt-assistant-bubble th, .tcrt-assistant-bubble td {
+  border: 1px solid var(--tr-border-light);
+  padding: 4px 9px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .tcrt-assistant-bubble th { background: var(--tr-bg-sidebar); }
 .tcrt-assistant-bubble a { color: var(--tr-primary-dark); }
 
