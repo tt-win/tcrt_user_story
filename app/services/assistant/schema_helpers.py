@@ -14,6 +14,14 @@ def s_str(description: str = "", enum: list[str] | None = None) -> dict[str, Any
     return schema
 
 
+def s_str_or_int(description: str = "") -> dict[str, Any]:
+    """產生同時接受 string 與 integer 的 schema；供 LLM 把 local id 以整數傳入的欄位使用。"""
+    schema: dict[str, Any] = {"type": "string_or_integer"}
+    if description:
+        schema["description"] = description
+    return schema
+
+
 def s_int(description: str = "") -> dict[str, Any]:
     schema: dict[str, Any] = {"type": "integer"}
     if description:

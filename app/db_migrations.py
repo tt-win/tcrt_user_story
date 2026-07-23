@@ -122,6 +122,7 @@ TARGETS = {
         metadata_factory=_load_audit_metadata,
         validate_flag="--validate-legacy-audit-db",
         adopt_flag="--adopt-legacy-audit-db",
+        allowed_extra_tables=frozenset({"migration_history"}),
     ),
     "usm": MigrationTarget(
         key="usm",

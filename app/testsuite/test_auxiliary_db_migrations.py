@@ -94,6 +94,10 @@ def test_audit_legacy_varchar_enum_schema_is_treated_as_compatible(tmp_path: Pat
                         severity VARCHAR(8) NOT NULL,
                         ip_address VARCHAR(45),
                         user_agent VARCHAR(500),
+                        event_code VARCHAR(128),
+                        impact VARCHAR(32),
+                        outcome VARCHAR(32),
+                        schema_version SMALLINT NOT NULL DEFAULT 0,
                         PRIMARY KEY (id)
                     )
                     """
@@ -116,6 +120,8 @@ def test_audit_legacy_varchar_enum_schema_is_treated_as_compatible(tmp_path: Pat
                 "CREATE INDEX ix_audit_logs_username ON audit_logs (username)",
                 "CREATE INDEX ix_audit_logs_timestamp ON audit_logs (timestamp)",
                 "CREATE INDEX idx_audit_time_team ON audit_logs (timestamp, team_id)",
+                "CREATE INDEX ix_audit_logs_event_code ON audit_logs (event_code)",
+                "CREATE INDEX ix_audit_logs_event_code_timestamp ON audit_logs (event_code, timestamp)",
             ):
                 conn.execute(text(ddl))
     finally:

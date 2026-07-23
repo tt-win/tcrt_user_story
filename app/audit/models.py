@@ -8,7 +8,9 @@
 from enum import Enum
 from typing import Optional, Dict, Any, List
 from datetime import datetime
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
+
+from app.services.observability.enums import Impact, Outcome
 
 
 class ActionType(str, Enum):
@@ -67,6 +69,11 @@ class AuditLogBase(BaseModel):
     severity: AuditSeverity = Field(AuditSeverity.INFO, description="嚴重性等級")
     ip_address: Optional[str] = Field(None, max_length=45, description="來源 IP 位址")
     user_agent: Optional[str] = Field(None, max_length=500, description="使用者代理")
+    # Event envelope fields (v1 schema)
+    event_code: Optional[str] = Field(None, max_length=128, description="Event catalog code (v1 schema)")
+    impact: Optional[Impact] = Field(None, description="Business impact level (v1 schema)")
+    outcome: Optional[Outcome] = Field(None, description="Operation outcome (v1 schema)")
+    schema_version: int = Field(0, ge=0, le=1, description="Schema version: 0=legacy, 1=v1")
 
 
 class AuditLogCreate(AuditLogBase):
@@ -79,8 +86,7 @@ class AuditLog(AuditLogBase):
     id: int
     timestamp: datetime = Field(..., description="操作時間 (UTC)")
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AuditLogSummary(BaseModel):
@@ -96,6 +102,11 @@ class AuditLogSummary(BaseModel):
     severity: AuditSeverity
     action_brief: Optional[str] = None
     ip_address: Optional[str] = None
+    # Event envelope fields (v1 schema)
+    event_code: Optional[str] = None
+    impact: Optional[Impact] = None
+    outcome: Optional[Outcome] = None
+    schema_version: int = 0
 
 
 # ===================== 查詢條件模型 =====================
@@ -115,6 +126,10 @@ class AuditLogQuery(BaseModel):
     team_id: Optional[int] = Field(None, description="團隊 ID")
     severity: Optional[AuditSeverity] = Field(None, description="嚴重性等級")
     role: Optional[str] = Field(None, description="操作者角色")
+    # Event envelope filters (v1 schema)
+    event_code: Optional[str] = Field(None, max_length=128, description="Event catalog code")
+    impact: Optional[Impact] = Field(None, description="Business impact level")
+    outcome: Optional[Outcome] = Field(None, description="Operation outcome")
     
     # 分頁
     page: int = Field(1, ge=1, description="頁碼")
@@ -124,10 +139,11 @@ class AuditLogQuery(BaseModel):
     sort_by: str = Field("timestamp", description="排序欄位")
     sort_order: str = Field("desc", pattern="^(asc|desc)$", description="排序順序")
     
-    @validator('end_time')
-    def validate_time_range(cls, v, values):
+    @field_validator('end_time')
+    @classmethod
+    def validate_time_range(cls, v, info):
         """驗證時間範圍有效性"""
-        if v and values.get('start_time') and v <= values['start_time']:
+        if v and info.data.get('start_time') and v <= info.data['start_time']:
             raise ValueError('結束時間必須晚於開始時間')
         return v
 

@@ -22,7 +22,7 @@ from app.services.assistant.tool_registry import (
     get_tool_registry,
 )
 
-EXPECTED_TOOL_COUNT = 70  # 68 loopback/composite + list_skills + get_skill
+EXPECTED_TOOL_COUNT = 72  # 68 loopback/composite + list_skills + get_skill + plan_batch + generate_chunk_actions
 
 def _app_routes():
     return {

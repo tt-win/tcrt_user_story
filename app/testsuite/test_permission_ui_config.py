@@ -57,3 +57,21 @@ async def test_organization_automation_infra_tab_is_super_admin_only():
     assert super_config["components"].get("tab-org-automation-infra") is True
     assert admin_config["components"].get("tab-org-automation-infra") is False
     assert user_config["components"].get("tab-org-automation-infra") is False
+
+
+@pytest.mark.asyncio
+async def test_organization_assistant_admin_tab_is_super_admin_only():
+    """AI 助手設定分頁（原獨立頁面 /assistant-admin，見
+    move-assistant-admin-into-organization-tab）沿用既有 organization_management:manage，
+    僅 Super Admin 可見。"""
+    super_admin = SimpleNamespace(id=1, role="super_admin")
+    admin = SimpleNamespace(id=2, role="admin")
+    user = SimpleNamespace(id=3, role="user")
+
+    super_config = await permission_service.get_ui_config(super_admin, "organization")
+    admin_config = await permission_service.get_ui_config(admin, "organization")
+    user_config = await permission_service.get_ui_config(user, "organization")
+
+    assert super_config["components"].get("tab-assistant-admin") is True
+    assert admin_config["components"].get("tab-assistant-admin") is False
+    assert user_config["components"].get("tab-assistant-admin") is False

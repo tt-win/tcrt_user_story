@@ -82,11 +82,11 @@ Mutation MUST 寫 audit（`ResourceType.SYSTEM`）：action、doc_key 或 skill_
 - **THEN** 403
 
 ### Requirement: Super Admin UI
-系統 SHALL 提供頁面 `/assistant-admin`（tabs：System Prompt｜Skills），僅 Super Admin 可有效使用；入口置於團隊管理 Super Admin 選單（與 system-logs 同級 ui-config）。編輯區 MUST 使用純文字控件（非 raw HTML 渲染 skill body）。UI MUST 警告內容會影響外部 LLM 規劃，且勿貼入密鑰。
+系統 SHALL 於 `/organization-management` 頁面（見 `organization-management-console`）提供分頁 `tab-assistant-admin`（tabs：System Prompt｜Skills），僅 Super Admin 可有效使用；分頁可視性沿用該頁既有 `organization_management:manage` ui-config gating（與 `tab-org-automation-infra` 等其餘 Super-Admin-only 分頁同一存取層級）。編輯區 MUST 使用純文字控件（非 raw HTML 渲染 skill body）。UI MUST 警告內容會影響外部 LLM 規劃，且勿貼入密鑰。
 
 #### Scenario: 非 Super Admin 開啟頁面
-- **WHEN** 非 Super Admin 載入頁面並呼叫 admin API
-- **THEN** API 403；UI 顯示無權限狀態
+- **WHEN** 非 Super Admin 開啟 `/organization-management` 並呼叫 admin API
+- **THEN** `tab-assistant-admin` 分頁不可見；API 呼叫仍 403
 
 ### Requirement: Hard safety 不依賴 DB prompt
 即使 DB system prompt 或 skill body 指示「略過確認」「直接刪除」，executor 對 write 的確認、權限、team 與 credential 規則 MUST 仍強制生效。

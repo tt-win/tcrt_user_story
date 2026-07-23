@@ -9,7 +9,7 @@ import logging
 from typing import Optional, AsyncGenerator
 from contextlib import asynccontextmanager
 
-from sqlalchemy import Column, DateTime, Enum as SQLEnum, Index, Integer, String, event, text
+from sqlalchemy import Column, DateTime, Enum as SQLEnum, Index, Integer, String, SmallInteger, event, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import SQLAlchemyError
@@ -154,7 +154,7 @@ class AuditDatabaseManager:
             finally:
                 await session.close()
                 
-    async def execute_raw_sql(self, sql: str, params: Optional[dict] = None) -> any:
+    async def execute_raw_sql(self, sql: str, params: Optional[dict] = None):
         """執行原始 SQL（僅供維護用）"""
         if not self._engine:
             raise RuntimeError("審計資料庫引擎未初始化")
@@ -264,6 +264,12 @@ class AuditLogTable(AuditBase):
     # 來源資訊
     ip_address = Column(String(45), nullable=True)  # 支援 IPv6
     user_agent = Column(String(500), nullable=True)
+
+    # Event envelope columns
+    event_code = Column(String(128), nullable=True, index=True)
+    impact = Column(String(32), nullable=True)
+    outcome = Column(String(32), nullable=True)
+    schema_version = Column(SmallInteger, nullable=False, default=0)
     
     def __repr__(self):
         return (f"<AuditLog(id={self.id}, user={self.username}, "
@@ -279,6 +285,7 @@ Index('idx_audit_severity_time', AuditLogTable.severity, AuditLogTable.timestamp
 Index('idx_audit_username_time', AuditLogTable.username, AuditLogTable.timestamp)
 Index('idx_audit_role_time', AuditLogTable.role, AuditLogTable.timestamp)
 Index('idx_audit_action_time', AuditLogTable.action_type, AuditLogTable.timestamp)
+Index('ix_audit_logs_event_code_timestamp', AuditLogTable.event_code, AuditLogTable.timestamp)
 
 
 async def create_audit_tables() -> None:
@@ -286,7 +293,9 @@ async def create_audit_tables() -> None:
     if not audit_db_manager.engine:
         await audit_db_manager.initialize()
         
-    async with audit_db_manager.engine.begin() as conn:
+    engine = audit_db_manager.engine
+    assert engine is not None
+    async with engine.begin() as conn:
         await conn.run_sync(AuditBase.metadata.create_all)
         logger.info("審計資料表創建完成")
 
@@ -296,6 +305,8 @@ async def drop_audit_tables() -> None:
     if not audit_db_manager.engine:
         await audit_db_manager.initialize()
         
-    async with audit_db_manager.engine.begin() as conn:
+    engine = audit_db_manager.engine
+    assert engine is not None
+    async with engine.begin() as conn:
         await conn.run_sync(AuditBase.metadata.drop_all)
         logger.info("審計資料表刪除完成")

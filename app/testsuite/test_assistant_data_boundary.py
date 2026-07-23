@@ -31,7 +31,8 @@ from app.models.database_models import (
 )
 from app.services.assistant.conversation_service import ConversationService
 from app.services.assistant.projection import project_and_redact
-from app.services.assistant.tool_executor import PendingCreationRequest, RejectionResult, ToolExecutor
+from app.services.assistant.param_validation import validate_arguments
+from app.services.assistant.tool_executor import PendingCreationRequest, RejectionResult, ToolExecutor, combined_schema
 from app.services.assistant.tool_registry import get_tool_registry
 from app.testsuite.db_test_helpers import (
     create_managed_test_database,
@@ -61,9 +62,11 @@ def boundary_db(tmp_path, monkeypatch):
         tcs = TestCaseSet(team_id=1, name="Default", description="", is_default=True)
         session.add(tcs)
         session.flush()
-        session.add(TestCaseSection(test_case_set_id=tcs.id, name="Unassigned", level=1, sort_order=0))
+        unassigned = TestCaseSection(test_case_set_id=tcs.id, name="Unassigned", level=1, sort_order=0)
+        other = TestCaseSection(test_case_set_id=tcs.id, name="Other", level=1, sort_order=1)
+        session.add_all([unassigned, other])
         session.commit()
-        ids = {"set_id": tcs.id}
+        ids = {"set_id": tcs.id, "section_id": other.id}
 
     yield {"bundle": bundle, "ids": ids}
 
@@ -351,6 +354,161 @@ async def test_bulk_clone_summary_supports_lark_source_record_id(boundary_db):
     assert prepared.confirmation_summary["targets"] == [
         {"target_id": case_id, "target_label": "TC-SOURCE → TC-CLONE"}
     ]
+
+
+async def test_batch_move_test_cases_accepts_integer_record_ids(boundary_db):
+    """batch_move_test_cases 註冊的 LLM schema 原先把 record_ids 標為 integer[]，但底層 API
+    (TestCaseBatchOperation) 預期 List[str]（可接受 local id / lark_record_id / case number）。
+    當 LLM 傳入整數時會在校驗階段被攔截（schema_invalid），導致確認後執行失敗（紅隊發現）。
+    修正後 schema 應改為 string[]，並且 prepare_write_tool 能順利建立 pending。
+    """
+    executor, _conv_svc, registry = _make_services()
+    case_ids = []
+    with boundary_db["bundle"]["sync_session_factory"]() as session:
+        for idx in range(3):
+            case = TestCaseLocal(
+                team_id=1,
+                test_case_set_id=boundary_db["ids"]["set_id"],
+                test_case_number=f"TC-BATCH-MOVE-{idx:03d}",
+                title=f"Batch move case {idx}",
+            )
+            session.add(case)
+            session.flush()
+            case_ids.append(case.id)
+        session.commit()
+
+    tool = registry.get("batch_move_test_cases")
+    # LLM 常傳入數字清單（來自 list_test_case_refs 的 record_id）
+    arguments = {
+        "operation": "update_test_set",
+        "record_ids": case_ids,
+        "update_data": {"test_set_id": boundary_db["ids"]["set_id"]},
+    }
+    prepared = await executor.prepare_write_tool(
+        tool,
+        arguments,
+        conversation=_FakeConversation(),
+        user_id=1,
+        role=UserRole.USER,
+        execution_key="g" * 32,
+    )
+    assert isinstance(prepared, PendingCreationRequest), (
+        f"batch_move_test_cases 整數 record_ids 應可建立 pending，got {prepared!r}"
+    )
+    assert prepared.confirmation_summary["target_type"] == "batch"
+    assert prepared.confirmation_summary["affected_count"] == len(case_ids)
+
+
+async def test_batch_delete_test_cases_accepts_integer_record_ids(boundary_db):
+    """batch_delete_test_cases 同樣把 record_ids 標為 integer[]，但底層 API 預期 List[str]。
+    當 LLM 傳入整數（或 lark_record_id 字串）時會被拒絕，導致刪除失敗。
+    修正後應接受 string 或 integer 的陣列。
+    """
+    executor, _conv_svc, registry = _make_services()
+    case_ids = []
+    with boundary_db["bundle"]["sync_session_factory"]() as session:
+        for idx in range(3):
+            case = TestCaseLocal(
+                team_id=1,
+                test_case_set_id=boundary_db["ids"]["set_id"],
+                test_case_number=f"TC-BATCH-DEL-{idx:03d}",
+                title=f"Batch delete case {idx}",
+            )
+            session.add(case)
+            session.flush()
+            case_ids.append(case.id)
+        session.commit()
+
+    tool = registry.get("batch_delete_test_cases")
+    arguments = {"record_ids": case_ids}
+    prepared = await executor.prepare_write_tool(
+        tool,
+        arguments,
+        conversation=_FakeConversation(),
+        user_id=1,
+        role=UserRole.USER,
+        execution_key="g" * 32,
+    )
+    assert isinstance(prepared, PendingCreationRequest), (
+        f"batch_delete_test_cases 整數 record_ids 應可建立 pending，got {prepared!r}"
+    )
+    assert prepared.confirmation_summary["target_type"] == "batch"
+    assert prepared.confirmation_summary["affected_count"] == len(case_ids)
+
+
+async def test_batch_update_and_preview_tools_accept_string_or_integer_record_ids(boundary_db):
+    """盤點所有接受 test case record_ids 的批次/預覽工具：schema 都應與底層 API 一致，
+    同時接受 string（lark_record_id / case number）與 integer（local id）。
+    """
+    executor, _conv_svc, registry = _make_services()
+    case_ids = []
+    with boundary_db["bundle"]["sync_session_factory"]() as session:
+        for idx in range(3):
+            case = TestCaseLocal(
+                team_id=1,
+                test_case_set_id=boundary_db["ids"]["set_id"],
+                test_case_number=f"TC-BATCH-UNI-{idx:03d}",
+                title=f"Batch universal case {idx}",
+                lark_record_id=f"rec_universal_{idx}",
+            )
+            session.add(case)
+            session.flush()
+            case_ids.append(case.id)
+        session.commit()
+
+    str_ids = [str(i) for i in case_ids]
+    lark_ids = [f"rec_universal_{idx}" for idx in range(3)]
+
+    # 1. batch_update_test_cases：integer / string / lark record id 都應通過 schema
+    update_tool = registry.get("batch_update_test_cases")
+    assert update_tool is not None
+    for ids in (case_ids, str_ids, lark_ids):
+        arguments = {
+            "operation": "update_priority",
+            "record_ids": ids,
+            "update_data": {"priority": "P1"},
+        }
+        validation = validate_arguments(arguments, combined_schema(update_tool))
+        assert validation.ok, f"batch_update_test_cases 應接受 {type(ids[0]).__name__} record_ids: {validation.errors}"
+
+    # 2. preview_move_test_set_impact：integer / string / lark record id 都應通過 schema
+    preview_tool = registry.get("preview_move_test_set_impact")
+    assert preview_tool is not None
+    for ids in (case_ids, str_ids, lark_ids):
+        arguments = {"record_ids": ids, "target_test_set_id": boundary_db["ids"]["set_id"]}
+        validation = validate_arguments(arguments, combined_schema(preview_tool))
+        assert validation.ok, f"preview_move_test_set_impact 應接受 {type(ids[0]).__name__} record_ids: {validation.errors}"
+
+    # 3. batch_update_test_cases 實際能建立 pending（驗證權限/team resolve 也走整數）
+    prepared = await executor.prepare_write_tool(
+        update_tool,
+        {"operation": "update_priority", "record_ids": case_ids, "update_data": {"priority": "P1"}},
+        conversation=_FakeConversation(),
+        user_id=1,
+        role=UserRole.USER,
+        execution_key="u" * 32,
+    )
+    assert isinstance(prepared, PendingCreationRequest), (
+        f"batch_update_test_cases 整數 record_ids 應可建立 pending，got {prepared!r}"
+    )
+    assert prepared.confirmation_summary["target_type"] == "batch"
+    assert prepared.confirmation_summary["affected_count"] == len(case_ids)
+
+    # 4. batch_update_test_cases 與 batch_delete_test_cases 使用 Lark record id 字串亦可成功建立 pending 與 confirmation summary（不發生 ValueError）
+    delete_tool = registry.get("batch_delete_test_cases")
+    prepared_lark = await executor.prepare_write_tool(
+        delete_tool,
+        {"record_ids": lark_ids},
+        conversation=_FakeConversation(),
+        user_id=1,
+        role=UserRole.USER,
+        execution_key="v" * 32,
+    )
+    assert isinstance(prepared_lark, PendingCreationRequest), (
+        f"batch_delete_test_cases Lark record id 字串應可建立 pending，got {prepared_lark!r}"
+    )
+    assert prepared_lark.confirmation_summary["target_type"] == "batch"
+    assert prepared_lark.confirmation_summary["affected_count"] == len(lark_ids)
 
 
 def test_pending_action_execution_payload_cleared_after_resolution():

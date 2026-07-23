@@ -39,6 +39,7 @@ from app.models.database_models import (
     AutomationScriptGroup,
     Team,
 )
+from app.services.observability import emit_ops_event, Outcome
 
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,11 @@ async def upload_run_results(
 
     cfg = get_settings().automation_provider.allure
     if not cfg.base_url:
+        await emit_ops_event(
+            event_code="tcrt.ops.automation.allure_proxy.skip",
+            outcome=Outcome.PARTIAL,
+            details={"run_id": run.id, "reason": "base_url_not_configured"},
+        )
         raise AllureProxyNotConfiguredError(
             "automation_provider.allure.base_url is not set"
         )
@@ -136,6 +142,11 @@ async def upload_run_results(
                 client, api_root, project_id, run, auth_headers
             )
 
+    await emit_ops_event(
+        event_code="tcrt.ops.automation.allure_proxy.upload",
+        outcome=Outcome.SUCCESS,
+        details={"run_id": run.id, "project_id": project_id, "file_count": len(result_files)},
+    )
     run.report_url = report_url
     return report_url
 

@@ -301,10 +301,10 @@ class ToolExecutor:
                 ids = body_params.get("record_ids") or []
                 update_data = body_params.get("update_data") or {}
                 pairs = [("test_case", rid) for rid in ids]
-                if update_data.get("test_case_set_id"):
-                    pairs.append(("test_case_set", update_data["test_case_set_id"]))
-                if update_data.get("test_case_section_id"):
-                    pairs.append(("test_case_section", update_data["test_case_section_id"]))
+                if update_data.get("test_set_id"):
+                    pairs.append(("test_case_set", update_data["test_set_id"]))
+                if update_data.get("section_id"):
+                    pairs.append(("test_case_section", update_data["section_id"]))
                 return await self._resolve_all_equal(session, pairs)
             if key == "create_test_run_config_scope":
                 ids = body_params.get("test_case_set_ids") or []
@@ -437,6 +437,20 @@ class ToolExecutor:
     ) -> Optional[RejectionResult]:
         if not 2 <= len(actions) <= 50:
             return RejectionResult("schema_invalid", "batch requires 2-50 actions", fixable=True)
+        # Size guardrail: avoid single LLM responses so large that they trigger timeout/length truncation.
+        total_payload_chars = len(json.dumps(actions, ensure_ascii=False))
+        max_chunk_actions = max(2, min(self.config.batch_chunk_max_actions, 50))
+        max_payload_chars = max(1000, self.config.batch_chunk_max_payload_chars)
+        if len(actions) > max_chunk_actions or total_payload_chars > max_payload_chars:
+            return RejectionResult(
+                "batch_too_large",
+                (
+                    f"This batch has {len(actions)} actions / {total_payload_chars} chars, which exceeds "
+                    f"the safe single-call limit ({max_chunk_actions} actions / {max_payload_chars} chars). "
+                    "Use plan_batch + generate_chunk_actions to split into smaller chunks."
+                ),
+                fixable=True,
+            )
         for index, action in enumerate(actions):
             child = self.registry.get(action.get("tool_name"))
             arguments = action.get("arguments")
@@ -665,7 +679,13 @@ class ToolExecutor:
                         resolvers.resolve_test_run_item_identity
                         if tool.name == "batch_update_results" else resolvers.resolve_test_case_identity
                     )
-                    for target_id in sorted((int(value) for value in ids)):
+                    def _sort_key(val: Any) -> tuple[int, int | str]:
+                        try:
+                            return (0, int(val))
+                        except (TypeError, ValueError):
+                            return (1, str(val))
+
+                    for target_id in sorted(ids, key=_sort_key):
                         identity = await identity_fn(session, target_id)
                         if identity is None:
                             return None

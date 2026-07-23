@@ -60,11 +60,23 @@
   pointer-events: none;
 }
 .tcrt-assistant-panel.tcrt-assistant-is-open { opacity: 1; transform: none; pointer-events: auto; }
+
+/* 展開模式：加大面板尺寸以提升長文閱讀與多訊息瀏覽體驗。
+   高度 calc 與 compact 相同的 96px 餘裕，確保面板頂部不被 fixed header 遮擋。 */
+.tcrt-assistant-panel.tcrt-assistant-is-expanded {
+  width: min(50vw, calc(100vw - 40px));
+  height: min(80vh, calc(100vh - var(--header-height) - var(--footer-height) - 96px));
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .tcrt-assistant-panel { transition: opacity .15s ease, transform .15s ease; }
 }
+/* Mobile 全螢幕：必須同時覆蓋 expanded selector，因為 (0,2,0) specificity 高於 (0,1,0)。 */
 @media (max-width: 575.98px) {
-  .tcrt-assistant-panel { inset: 0; width: auto; height: auto; border-radius: 0; z-index: 1046; }
+  .tcrt-assistant-panel,
+  .tcrt-assistant-panel.tcrt-assistant-is-expanded {
+    inset: 0; width: auto; height: auto; border-radius: 0; z-index: 1046;
+  }
 }
 
 .tcrt-assistant-head {
@@ -251,6 +263,14 @@
 }
 .tcrt-assistant-bubble th { background: var(--tr-bg-sidebar); }
 .tcrt-assistant-bubble a { color: var(--tr-primary-dark); }
+
+/* AI 回應中的 Markdown 標題在窄面板中必須等比縮小，避免佔據過多版面 */
+.tcrt-assistant-text h1 { font-size: 1.45em; margin: 0.45em 0 0.25em; font-weight: 700; line-height: 1.25; }
+.tcrt-assistant-text h2 { font-size: 1.32em; margin: 0.4em 0 0.22em; font-weight: 700; line-height: 1.25; }
+.tcrt-assistant-text h3 { font-size: 1.2em; margin: 0.35em 0 0.2em; font-weight: 650; line-height: 1.3; }
+.tcrt-assistant-text h4 { font-size: 1.1em; margin: 0.3em 0 0.18em; font-weight: 650; line-height: 1.35; }
+.tcrt-assistant-text h5 { font-size: 1em; margin: 0.25em 0 0.15em; font-weight: 600; line-height: 1.4; }
+.tcrt-assistant-text h6 { font-size: 0.92em; margin: 0.2em 0 0.12em; font-weight: 600; color: var(--tr-text-secondary); line-height: 1.4; }
 
 .tcrt-assistant-typing { display: inline-flex; gap: 4px; padding: 4px 2px; }
 .tcrt-assistant-typing i {

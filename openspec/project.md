@@ -194,7 +194,7 @@ Automation Hub 的 script ↔ test case link 現況已收斂為 **marker-derived
 
 **團隊與組織管理 UI（2 個，由 `redesign-team-settings-information-architecture` change 新增）：**
 - `team-management-console`：縮小後的 `/team-management` 頁面契約（僅 team 資料 CRUD + App Token 入口）
-- `organization-management-console`：獨立的「組織與系統設定」頁面（`/organization-management`），統整人員管理／組織同步／Service 管理／MCP Token／組織自動化基礎設施五個分頁
+- `organization-management-console`：獨立的「組織與系統設定」頁面（`/organization-management`），統整人員管理／組織同步／Service 管理／MCP Token／組織自動化基礎設施／AI 助手設定六個分頁
 
 **其他（4 個）：**
 - `etl-all-teams`
@@ -211,6 +211,7 @@ Automation Hub 的 script ↔ test case link 現況已收斂為 **marker-derived
 - **進行中（中期）**：
   - `unify-ui-design-tokens-and-components` — UI design token 收斂與 Jinja macro 元件庫（P0 止血完成，P1/P2 未開始）
   - `redesign-team-settings-information-architecture` — 拆分 `/team-management` 的組織層分頁至新頁面 `/organization-management`（實作完成、經紅隊審查修正，待 archive）
+  - `move-assistant-admin-into-organization-tab` — 將原獨立頁面 `/assistant-admin` 併為 `/organization-management` 第 6 個分頁，並修正 `assistantAdmin.*` 三語系文案大小寫（實作完成，待 archive）
 - **未開始（僅完成規劃）**：
   - `consolidate-agent-onboarding-docs` — 整併散落的啟動/設定文件
   - `make-schema-engine-portable` — DB schema 跨引擎可攜（SQLite / MySQL / PostgreSQL）

@@ -400,3 +400,18 @@ def test_drop_oldest_group_removes_one_whole_group_not_a_partial_message():
     ]
     result = history_builder.drop_oldest_group(messages)
     assert result == messages[1:], "should drop exactly the oldest single-message group"
+
+
+def test_is_stale_preconfirm_prose_preserves_completion_summaries():
+    from app.services.assistant.assistant_agent_service import _is_stale_preconfirm_prose
+
+    # 包含 completion / past-tense 語意者絕不可被判為 stale pre-confirm，必須呈現給使用者
+    summary_zh = "已完成 Sprint 12 的測試執行建立，共加入 5 筆案例。請確認相關記錄。"
+    summary_en = "Successfully created test run and updated results. Please review."
+    stale_pre_zh = "我準備幫你執行此動作，請確認下方的卡片。"
+    stale_pre_en = "Ready to proceed with execution. Please confirm."
+
+    assert not _is_stale_preconfirm_prose(summary_zh), "帶有『已完成』的完成總結不得被靜默過濾"
+    assert not _is_stale_preconfirm_prose(summary_en), "帶有『Successfully』的完成總結不得被靜默過濾"
+    assert _is_stale_preconfirm_prose(stale_pre_zh), "純預備執行文案仍需被靜默過濾"
+    assert _is_stale_preconfirm_prose(stale_pre_en), "純 English ready to proceed 文案仍需被靜默過濾"

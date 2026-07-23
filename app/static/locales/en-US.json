@@ -397,7 +397,7 @@
   "dataMenu": {
     "title": "Data & Records"
   },
-  "audit": {
+    "audit": {
     "viewLogs": "Audit Logs",
     "pageTitle": "Audit Log Review",
     "pageSubtitle": "Review and trace system activities",
@@ -419,7 +419,13 @@
       "teamHint": "Display by team name",
       "apply": "Apply Filters",
       "reset": "Clear Filters",
-      "teamLoadFailed": "Failed to load team list"
+      "teamLoadFailed": "Failed to load team list",
+      "eventCode": "Event Code",
+      "eventCodePlaceholder": "Enter event code",
+      "impact": "Impact",
+      "outcome": "Outcome",
+      "resourceId": "Resource ID",
+      "resourceIdPlaceholder": "Enter resource ID"
     },
     "results": {
       "title": "Audit Logs"
@@ -436,7 +442,13 @@
       "resource": "Resource",
       "severity": "Severity",
       "ip": "Source IP",
-      "noData": "No records match the current filters"
+      "eventCode": "Event Code",
+      "impact": "Impact",
+      "outcome": "Outcome",
+      "schemaVersion": "Schema Ver",
+      "noData": "No records match the current filters",
+      "legacyNotice": "Legacy record (pre-event-envelope)",
+      "legacyImpactHint": "Impact filter only matches records with event envelope v1+"
     },
     "loadingMore": "Loading more records...",
     "allLoaded": "All records are loaded",
@@ -470,6 +482,18 @@
       "info": "Info",
       "warning": "Warning",
       "critical": "Critical"
+    },
+    "impact": {
+      "routine": "Routine",
+      "notable": "Notable",
+      "sensitive": "Sensitive",
+      "privileged": "Privileged"
+    },
+    "outcome": {
+      "success": "Success",
+      "denied": "Denied",
+      "failure": "Failure",
+      "partial": "Partial"
     },
     "loadFailed": "Failed to load audit logs",
     "exportSuccess": "CSV export completed",
@@ -2900,7 +2924,7 @@
         "summary": "Summary (All Sheets)",
         "perSheet": "Per Sheet Stats (Stacked)",
         "openHtml": "Open HTML Report",
-        "close": "Close",
+    "close": "Close",
         "noData": "No data"
       },
       "messages": {
@@ -3831,7 +3855,7 @@
       "irreversible": "This action is permanent and cannot be undone."
     },
     "fabLabel": "Open TCRT Assistant",
-    "title": "TCRT Assistant",
+    "title": "TCRT AI Assistant",
     "scopeNotice": "Only helps with TCRT test case and test run operations; actions run under your account permissions.",
     "scopeDataEgress": "Conversation content is sent to an external LLM — do not paste passwords or other secrets.",
     "inputPlaceholder": "Ask or act on test cases / test runs…",
@@ -3843,6 +3867,8 @@
     "historyEmpty": "No recent conversations",
     "newConversation": "New conversation",
     "close": "Close",
+    "expand": "Expand",
+    "shrink": "Shrink",
     "confirm": "Confirm",
     "cancel": "Cancel",
     "confirmDelete": "Confirm delete",
@@ -3899,31 +3925,31 @@
     "thinkingRunningTool": "Running: {tool}"
   },
   "assistantAdmin": {
-    "menuEntry": "AI Assistant settings",
-    "pageTitle": "AI Assistant settings",
-    "pageSubtitle": "Super Admin: system prompt and skill recipes (database)",
+    "tabTitle": "AI Assistant Settings",
+    "pageTitle": "AI Assistant Settings",
+    "pageSubtitle": "Super Admin: System Prompt and Skill Recipes (database)",
     "unauthorized": "Super Admin permission required.",
     "warning": "Content affects external LLM planning. Do not paste passwords or tokens. Write confirmation and other hard safety rules cannot be disabled via prompt.",
     "tabs": {
       "prompt": "System Prompt",
       "skills": "Skills"
     },
-    "promptLabel": "System prompt template (exactly one {{SKILL_CATALOG}} required)",
-    "restoreBuiltins": "Restore factory (overwrite builtins)",
-    "newSkill": "New skill",
-    "seedMissing": "Seed missing defaults",
-    "editSkill": "Edit skill",
-    "resetFactory": "Reset to factory",
+    "promptLabel": "System Prompt template (exactly one {{SKILL_CATALOG}} required)",
+    "restoreBuiltins": "Restore Factory Defaults (Overwrite Builtins)",
+    "newSkill": "New Skill",
+    "seedMissing": "Seed Missing Defaults",
+    "editSkill": "Edit Skill",
+    "resetFactory": "Reset to Factory",
     "col": {
-      "skillId": "skill_id",
-      "name": "name",
-      "enabled": "enabled",
-      "builtin": "builtin"
+      "skillId": "Skill ID",
+      "name": "Name",
+      "enabled": "Enabled",
+      "builtin": "Builtin"
     },
     "versionUnknown": "v?",
-    "triggersLabel": "triggers (comma-separated)",
-    "bodyLabel": "body (markdown)",
-    "confirmOverwrite": "Overwrite system prompt and all builtin skill bodies from factory? is_enabled flags are kept. Custom skills are not deleted.",
+    "triggersLabel": "Triggers (comma-separated)",
+    "bodyLabel": "Body (Markdown)",
+    "confirmOverwrite": "Overwrite System Prompt and all builtin skill bodies from factory? Enabled flags are kept. Custom skills are not deleted.",
     "loadFailed": "Load failed"
   }
 }

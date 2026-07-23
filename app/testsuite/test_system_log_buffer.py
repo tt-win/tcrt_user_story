@@ -202,7 +202,7 @@ class TestRedaction:
         [
             ("Authorization: Bearer abc123token", "abc123token"),
             ("jwt eyJhbGciOi.eyJzdWIiOi.SflKxwRJSM", "eyJhbGciOi"),
-            ("jwt abc.def.ghi", "abc.def.ghi"),
+            ("jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.SflKxwRJSM", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.SflKxwRJSM"),
             ("password=hunter2", "hunter2"),
             ("PASSWORD=HUNTER2", "HUNTER2"),
             ("url ?token=sekrit&next=1", "sekrit"),

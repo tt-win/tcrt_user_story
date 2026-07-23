@@ -14,6 +14,7 @@ from app.audit import ActionType, AuditSeverity, ResourceType, audit_service
 from app.auth.app_token_dependencies import get_current_app_token_principal
 from app.models.app_token import READ_SCOPES, AppTokenPrincipal
 from app.models.mcp import MCPMachinePrincipal
+from app.services.observability import Impact, Outcome
 
 
 logger = logging.getLogger(__name__)
@@ -120,6 +121,9 @@ async def _log_mcp_access(
             severity=severity,
             ip_address=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
+            event_code="tcrt.audit.auth.mcp_deny" if not allowed else "tcrt.audit.legacy.generic",
+            outcome=Outcome.DENIED if not allowed else Outcome.SUCCESS,
+            impact=Impact.SENSITIVE if not allowed else Impact.ROUTINE,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("MCP 審計寫入失敗: %s", exc, exc_info=True)

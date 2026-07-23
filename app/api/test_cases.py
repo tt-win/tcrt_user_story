@@ -823,6 +823,7 @@ async def create_test_case(
             sync_db.flush()  # 取得自增 id
 
             # 如有暫存附件，搬移並記錄
+            metas: list = []
             if getattr(case, "temp_upload_id", None):
                 project_root = Path(__file__).resolve().parents[2]
 
@@ -832,7 +833,6 @@ async def create_test_case(
                     final_dir = root_dir / "test-cases" / str(team_id) / item.test_case_number
                     final_dir.mkdir(parents=True, exist_ok=True)
 
-                    metas = []
                     for p in sorted(staging_dir.iterdir()):
                         if not p.is_file():
                             continue
@@ -860,6 +860,25 @@ async def create_test_case(
             section_level = target_section.level if target_section else None
             section_path = target_section.name if target_section else None
 
+            attachments = []
+            for m in metas:
+                normalized = normalize_attachment_metadata(m, allow_missing_path=True)
+                token = normalized.get("stored_name") or normalized.get("name") or ""
+                name = normalized.get("name") or normalized.get("stored_name") or "file"
+                size = int(normalized.get("size") or 0)
+                mime = normalized.get("type") or "application/octet-stream"
+                url = get_attachment_access_url(normalized)
+                attachments.append(
+                    {
+                        "file_token": token,
+                        "name": name,
+                        "size": size,
+                        "type": mime,
+                        "url": url,
+                        "tmp_url": url,
+                    }
+                )
+
             response = TestCaseResponse(
                 record_id=str(item.id),
                 test_case_number=item.test_case_number,
@@ -872,9 +891,7 @@ async def create_test_case(
                 test_result=(
                     item.test_result.value if hasattr(item.test_result, "value") else (item.test_result or None)
                 ),
-                attachment_count=0,
-                execution_result_count=0,
-                total_attachment_count=0,
+                attachments=attachments,
                 executed_at=None,
                 created_at=item.created_at,
                 updated_at=item.updated_at,

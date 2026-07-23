@@ -419,7 +419,13 @@
       "teamHint": "依團隊名稱顯示",
       "apply": "套用篩選",
       "reset": "清除條件",
-      "teamLoadFailed": "載入團隊清單失敗"
+      "teamLoadFailed": "載入團隊清單失敗",
+      "eventCode": "事件代碼",
+      "eventCodePlaceholder": "輸入事件代碼",
+      "impact": "影響度",
+      "outcome": "結果",
+      "resourceId": "資源 ID",
+      "resourceIdPlaceholder": "輸入資源 ID"
     },
     "results": {
       "title": "稽核記錄"
@@ -436,7 +442,13 @@
       "resource": "資源",
       "severity": "嚴重性",
       "ip": "來源 IP",
-      "noData": "暫無符合條件的記錄"
+      "eventCode": "事件代碼",
+      "impact": "影響度",
+      "outcome": "結果",
+      "schemaVersion": "Schema 版本",
+      "noData": "暫無符合條件的記錄",
+      "legacyNotice": "舊版記錄 (事件信封 v1 之前)",
+      "legacyImpactHint": "影響度篩選僅匹配事件信封 v1+ 的記錄"
     },
     "loadingMore": "載入更多記錄...",
     "allLoaded": "已載入全部稽核記錄",
@@ -470,6 +482,18 @@
       "info": "一般",
       "warning": "警示",
       "critical": "重大"
+    },
+    "impact": {
+      "routine": "常規",
+      "notable": "值得注意",
+      "sensitive": "敏感",
+      "privileged": "特權"
+    },
+    "outcome": {
+      "success": "成功",
+      "denied": "拒絕",
+      "failure": "失敗",
+      "partial": "部分"
     },
     "loadFailed": "載入稽核記錄失敗",
     "exportSuccess": "CSV 匯出成功",
@@ -3831,7 +3855,7 @@
       "irreversible": "此操作為永久且無法復原。"
     },
     "fabLabel": "開啟 TCRT 助手",
-    "title": "TCRT 助手",
+    "title": "TCRT AI 助手",
     "scopeNotice": "僅協助 TCRT 的 test case 與 test run 操作，動作以你的帳號權限執行。",
     "scopeDataEgress": "對話內容會送往外部 LLM，請勿貼入密碼等機密。",
     "inputPlaceholder": "詢問或操作 test case / test run…",
@@ -3843,6 +3867,8 @@
     "historyEmpty": "尚無近期對話",
     "newConversation": "新對話",
     "close": "關閉",
+    "expand": "放大",
+    "shrink": "縮小",
     "confirm": "確認",
     "cancel": "取消",
     "confirmDelete": "確認刪除",
@@ -3899,31 +3925,31 @@
     "thinkingRunningTool": "執行中：{tool}"
   },
   "assistantAdmin": {
-    "menuEntry": "AI 助手設定",
+    "tabTitle": "AI 助手設定",
     "pageTitle": "AI 助手設定",
-    "pageSubtitle": "Super Admin：System prompt 與 skill recipes（資料庫）",
+    "pageSubtitle": "Super Admin：System Prompt 與 Skill Recipes（資料庫）",
     "unauthorized": "需要 Super Admin 權限。",
-    "warning": "內容會影響外部 LLM 規劃；請勿貼入密碼或 token。Write 確認等硬性安全仍由系統強制，無法靠 prompt 關閉。",
+    "warning": "內容會影響外部 LLM 規劃；請勿貼入密碼或 Token。Write 確認等硬性安全仍由系統強制，無法靠 Prompt 關閉。",
     "tabs": {
       "prompt": "System Prompt",
       "skills": "Skills"
     },
-    "promptLabel": "System prompt 模板（須含恰好一個 {{SKILL_CATALOG}}）",
-    "restoreBuiltins": "還原 factory（overwrite builtins）",
-    "newSkill": "新增 skill",
-    "seedMissing": "補齊缺失 seed",
-    "editSkill": "編輯 skill",
-    "resetFactory": "重設 factory",
+    "promptLabel": "System Prompt 模板（須含恰好一個 {{SKILL_CATALOG}}）",
+    "restoreBuiltins": "還原原廠設定（覆寫內建 Skill）",
+    "newSkill": "新增 Skill",
+    "seedMissing": "補齊缺少的 Seed",
+    "editSkill": "編輯 Skill",
+    "resetFactory": "重設為原廠設定",
     "col": {
-      "skillId": "skill_id",
-      "name": "name",
-      "enabled": "enabled",
-      "builtin": "builtin"
+      "skillId": "Skill ID",
+      "name": "名稱",
+      "enabled": "啟用",
+      "builtin": "內建"
     },
     "versionUnknown": "v?",
-    "triggersLabel": "triggers（逗號分隔）",
-    "bodyLabel": "body（markdown）",
-    "confirmOverwrite": "要以 factory 覆寫 system prompt 與所有 builtin skill 內容嗎？會保留 is_enabled，不會刪除 custom skills。",
+    "triggersLabel": "觸發詞（逗號分隔）",
+    "bodyLabel": "內容（Markdown）",
+    "confirmOverwrite": "要以原廠設定覆寫 System Prompt 與所有內建 Skill 內容嗎？會保留啟用狀態，不會刪除自訂 Skill。",
     "loadFailed": "載入失敗"
   }
 }

@@ -202,9 +202,16 @@ _active_log_streams = 0
 
 
 def _redacted(entry: dict) -> dict:
-    from app.utils.system_log_buffer import redact_sensitive
+    from app.utils.system_log_buffer import redact_sensitive, _parse_event_suffix
 
-    return {**entry, "message": redact_sensitive(entry["message"])}
+    message = redact_sensitive(entry["message"])
+    event_code, outcome = _parse_event_suffix(message)
+    result = {**entry, "message": message}
+    if event_code:
+        result["event_code"] = event_code
+    if outcome:
+        result["outcome"] = outcome
+    return result
 
 
 @router.get("/system-logs", include_in_schema=False)

@@ -37,15 +37,7 @@ function applyOrganizationUiVisibilityByRoleFallback() {
     toggleSyncTabVisibility('tab-org', isSuperAdmin);
     toggleSyncTabVisibility('tab-service-management', isSuperAdmin);
     toggleSyncTabVisibility('tab-mcp-token', isSuperAdmin);
-    toggleAssistantAdminLinkVisibility(isSuperAdmin);
-}
-
-// assistantAdminLink 是頁面工具列上的一顆連結按鈕，不是分頁，故直接切換
-// 自身的 d-none，不透過 toggleSyncTabVisibility（後者假設目標在 <li> 內）。
-function toggleAssistantAdminLinkVisibility(visible) {
-    const link = document.getElementById('assistantAdminLink');
-    if (!link) return;
-    link.classList.toggle('d-none', !visible);
+    toggleSyncTabVisibility('tab-assistant-admin', isSuperAdmin);
 }
 
 // 依據後端 UI 能力控制頁面分頁可視
@@ -54,7 +46,7 @@ async function applyOrganizationUiVisibility() {
     toggleSyncTabVisibility('tab-org', false);
     toggleSyncTabVisibility('tab-service-management', false);
     toggleSyncTabVisibility('tab-mcp-token', false);
-    toggleAssistantAdminLinkVisibility(false);
+    toggleSyncTabVisibility('tab-assistant-admin', false);
 
     try {
         if (!window.AuthClient) {
@@ -76,8 +68,8 @@ async function applyOrganizationUiVisibility() {
         toggleSyncTabVisibility('tab-org', !!map['tab-org']);
         toggleSyncTabVisibility('tab-service-management', !!map['tab-service-management']);
         toggleSyncTabVisibility('tab-mcp-token', mcpTokenVisible);
-        // AI 助手設定入口（僅 Super Admin；後端另以 require_super_admin 防護）
-        toggleAssistantAdminLinkVisibility(!!map['assistantAdminLink']);
+        // AI 助手設定分頁（僅 Super Admin；後端另以 require_super_admin 防護）
+        toggleSyncTabVisibility('tab-assistant-admin', !!map['tab-assistant-admin']);
     } catch (_) {
         applyOrganizationUiVisibilityByRoleFallback();
     }

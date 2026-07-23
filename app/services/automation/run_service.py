@@ -26,6 +26,10 @@ from app.services.automation.provider_registry import (
     instantiate_provider,
 )
 from app.services.automation.providers.base import CIProvider, ResultProvider, RunStatusSnapshot
+from app.services.observability import (
+    emit_ops_event,
+    Outcome,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -184,8 +188,19 @@ class AutomationRunService:
         try:
             await provider.cancel_run(run.external_run_id)
         except Exception as exc:
+            await emit_ops_event(
+                event_code="tcrt.ops.automation.run.cancel",
+                outcome=Outcome.FAILURE,
+                details={"run_id": run_id, "external_run_id": run.external_run_id, "error": str(exc)},
+            )
             logger.warning("Provider cancel failed for run %s: %s", run_id, exc, exc_info=True)
             raise AutomationRunServiceError(f"Provider failed to cancel run: {exc}") from exc
+
+        await emit_ops_event(
+            event_code="tcrt.ops.automation.run.cancel",
+            outcome=Outcome.SUCCESS,
+            details={"run_id": run_id, "external_run_id": run.external_run_id},
+        )
 
         now = _utcnow()
         run.status = AutomationRunStatus.CANCELLED
@@ -265,13 +280,28 @@ class AutomationRunService:
         for run in rows:
             try:
                 updated = await self._apply_status_sync(run=run, ci_provider=None)
+                await emit_ops_event(
+                    event_code="tcrt.ops.automation.run.sync",
+                    outcome=Outcome.SUCCESS,
+                    details={"run_id": run.id, "external_run_id": run.external_run_id},
+                )
                 synced.append(updated)
             except httpx.HTTPError as exc:
                 # CI connectivity/HTTP errors (timeouts, unreachable host, 4xx/5xx)
                 # are operational, not bugs — log concisely without a stack trace
                 # so a flaky or relocated CI doesn't flood the log every tick.
+                await emit_ops_event(
+                    event_code="tcrt.ops.automation.run.sync",
+                    outcome=Outcome.FAILURE,
+                    details={"run_id": run.id, "external_run_id": run.external_run_id, "error": str(exc)},
+                )
                 logger.warning("Sync failed for run %s: %s", run.id, exc)
             except Exception as exc:  # noqa: BLE001
+                await emit_ops_event(
+                    event_code="tcrt.ops.automation.run.sync",
+                    outcome=Outcome.FAILURE,
+                    details={"run_id": run.id, "external_run_id": run.external_run_id, "error": str(exc)},
+                )
                 logger.warning("Sync failed for run %s: %s", run.id, exc, exc_info=True)
         return synced
 
@@ -339,6 +369,12 @@ class AutomationRunService:
     ) -> AutomationRun:
         provider = ci_provider or await self._provider_from_run_record(run)
         snapshot = await provider.get_run_status(run.external_run_id)
+        outcome = Outcome.SUCCESS if snapshot.status in ("SUCCEEDED", "FAILED", "CANCELLED") else Outcome.FAILURE
+        await emit_ops_event(
+            event_code="tcrt.ops.automation.run.sync",
+            outcome=outcome,
+            details={"run_id": run.id, "external_run_id": run.external_run_id, "status": snapshot.status},
+        )
         merged = self._merge_status_snapshot(run=run, snapshot=snapshot)
         # Pass the live CI provider into the backfill helper so it can pull
         # build artifacts from Jenkins (cross-network firewalls usually

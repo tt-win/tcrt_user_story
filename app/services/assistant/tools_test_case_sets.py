@@ -26,7 +26,7 @@ TOOLS = [
         permission=PermissionType.READ,
         risk_level=READ,
         team_check="inject",
-        projection=_SET_PROJECTION,
+        projection=_SET_PROJECTION + ("_deep_links",),
     ),
     AssistantTool(
         name="get_test_case_set",
@@ -38,7 +38,7 @@ TOOLS = [
         path_params=("set_id",),
         team_check="inject",
         resource_team_resolver="test_case_set",
-        projection=_SET_PROJECTION + ("sections",),
+        projection=_SET_PROJECTION + ("sections", "_deep_links"),
     ),
     AssistantTool(
         name="create_test_case_set",
@@ -49,7 +49,7 @@ TOOLS = [
         risk_level=REVERSIBLE_WRITE,
         body_schema=body(_SET_FIELDS, required=["name"]),
         team_check="inject",
-        projection=_SET_PROJECTION,
+        projection=_SET_PROJECTION + ("_deep_links",),
         confirmation_action_key="assistant.action.create_test_case_set",
         warning_key="assistant.warning.confirm_write",
         target_resolver="create",

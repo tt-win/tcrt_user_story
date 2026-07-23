@@ -22,22 +22,25 @@ from typing import List, Optional, Tuple
 TRUNCATION_MARKER = "…[truncated]"
 REDACTION_MARKER = "***REDACTED***"
 
-_SECRET_FIELD_NAMES = (
-    "password|secret|api_key|access_token|refresh_token|client_secret|token|authorization"
-)
+# Secret field names for redaction - each as a word with boundaries to avoid
+# false matches like "token" inside "automation.run.cancel"
+_SECRET_FIELD_NAMES = r"password|secret|api_key|access_token|refresh_token|client_secret|token|authorization"
+# Build word-boundary pattern: \b(?:password|secret|...)\b
+_SECRET_FIELD_NAMES_WB = r"\b(?:" + _SECRET_FIELD_NAMES + r")\b"
+
 # Quoted JSON / Python repr values must be consumed through their closing quote so
 # whitespace cannot leave a plaintext suffix behind. Unquoted env/query values keep
 # the narrower delimiter set to avoid redacting the rest of an unrelated log line.
 _DOUBLE_QUOTED_ASSIGNMENT_RE = re.compile(
-    r'(?P<prefix>"?(?:' + _SECRET_FIELD_NAMES + r')"?\s*[=:]\s*)"(?:\\.|[^"\\])*"',
+    r'(?P<prefix>"?' + _SECRET_FIELD_NAMES_WB + r'"?\s*[=:]\s*)"(?:\\.|[^"\\])*"',
     re.IGNORECASE,
 )
 _SINGLE_QUOTED_ASSIGNMENT_RE = re.compile(
-    r"(?P<prefix>'?(?:" + _SECRET_FIELD_NAMES + r")'?\s*[=:]\s*)'(?:\\.|[^'\\])*'",
+    r"(?P<prefix>'?" + _SECRET_FIELD_NAMES_WB + r"'?\s*[=:]\s*)'(?:\\.|[^'\\])*'",
     re.IGNORECASE,
 )
 _UNQUOTED_ASSIGNMENT_RE = re.compile(
-    r"(?P<prefix>['\"]?(?:" + _SECRET_FIELD_NAMES + r")[\"']?\s*[=:]\s*)(?P<value>[^'\"\s&,;]+)",
+    r"(?P<prefix>['\"]?" + _SECRET_FIELD_NAMES_WB + r"['\"]?\s*[=:]\s*)(?P<value>[^'\"\s&,;]+)",
     re.IGNORECASE,
 )
 _AUTHORIZATION_SCHEME_RE = re.compile(
@@ -45,7 +48,33 @@ _AUTHORIZATION_SCHEME_RE = re.compile(
     re.IGNORECASE,
 )
 _BEARER_RE = re.compile(r"\bBearer\s+[A-Za-z0-9\-._~+/=]+", re.IGNORECASE)
-_JWT_RE = re.compile(r"\b[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\b")
+# JWT: three base64url parts separated by dots, not part of longer dot sequence
+# JWT: three base64url parts separated by dots
+# Exclude all-lowercase three-part patterns (like "automation.run.cancel")
+# Real JWTs have mixed case, digits, or base64url encoding
+_JWT_RE = re.compile(
+    r"(?<!\.)\b(?!([a-z]+\.){2}[a-z]+\b)[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{3,}\b(?!\.)"
+)
+
+# Pattern to extract event_code and outcome from structured log suffix
+# Format: " | event=tcrt.ops.xxx outcome=success key=value ..."
+_EVENT_SUFFIX_RE = re.compile(r" \|\s*(.+)$")
+_EVENT_KV_RE = re.compile(r"(\w+)=([^\s]+)")
+
+
+def _parse_event_suffix(message: str) -> tuple[Optional[str], Optional[str]]:
+    """Parse event_code and outcome from structured log message suffix.
+    
+    Expected suffix format: " | event=tcrt.xxx outcome=success key=value ..."
+    Returns (event_code, outcome) or (None, None) if not present.
+    """
+    match = _EVENT_SUFFIX_RE.search(message)
+    if not match:
+        return None, None
+    suffix = match.group(1)
+    pairs = _EVENT_KV_RE.findall(suffix)
+    d = dict(pairs)
+    return d.get("event"), d.get("outcome")
 
 
 def redact_sensitive(text: str) -> str:
@@ -144,9 +173,13 @@ class RingBufferLogHandler(logging.Handler):
             entries = list(self._buffer)
             oldest = entries[0]["seq"] if entries else None
             latest = entries[-1]["seq"] if entries else None
-        min_levelno = logging.getLevelName(level.upper()) if level else None
-        if isinstance(min_levelno, int):
-            entries = [e for e in entries if logging.getLevelName(e["level"]) >= min_levelno]
+        if level:
+            min_levelno = logging._nameToLevel.get(level.upper())
+            if min_levelno is not None:
+                entries = [
+                    e for e in entries
+                    if logging._nameToLevel.get(e["level"], 0) >= min_levelno
+                ]
         if logger_prefix:
             entries = [e for e in entries if e["logger_name"].startswith(logger_prefix)]
         if limit is not None and len(entries) > limit:

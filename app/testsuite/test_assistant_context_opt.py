@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 import sys
 
-import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -15,14 +13,12 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from app.config import AssistantConfig
 from app.services.assistant.history_builder import (
-    build_exchange_groups,
     build_llm_messages,
     compact_exchange_groups,
     _groups_size,
 )
 from app.services.assistant.projection import project_and_redact, soft_truncate_list
 from app.services.assistant.tool_executor import (
-    ToolExecutor,
     _apply_assistant_list_limits,
     _request_skip_from_query,
 )
@@ -41,6 +37,10 @@ def test_assistant_config_defaults_aggressive_budget():
     assert cfg.history_compact_enabled is True
     assert cfg.history_compact_threshold_ratio == 0.75
     assert cfg.history_compact_keep_recent_groups == 4
+    assert cfg.batch_plan_max_targets == 200
+    assert cfg.batch_chunk_max_actions == 10
+    assert cfg.batch_chunk_max_payload_chars == 16000
+    assert cfg.batch_auto_continue_allowed_risk_levels is True
 
 
 def test_assistant_config_env_clamps(monkeypatch):
@@ -49,12 +49,20 @@ def test_assistant_config_env_clamps(monkeypatch):
     monkeypatch.setenv("TCRT_ASSISTANT_MAX_ITERATIONS", "999")
     monkeypatch.setenv("TCRT_ASSISTANT_HISTORY_COMPACT_THRESHOLD_RATIO", "0.1")
     monkeypatch.setenv("TCRT_ASSISTANT_HISTORY_COMPACT_KEEP_RECENT_GROUPS", "0")
+    monkeypatch.setenv("TCRT_ASSISTANT_BATCH_PLAN_MAX_TARGETS", "500")
+    monkeypatch.setenv("TCRT_ASSISTANT_BATCH_CHUNK_MAX_ACTIONS", "25")
+    monkeypatch.setenv("TCRT_ASSISTANT_BATCH_CHUNK_MAX_PAYLOAD_CHARS", "32000")
+    monkeypatch.setenv("TCRT_ASSISTANT_BATCH_AUTO_CONTINUE_ALLOWED_RISK_LEVELS", "false")
     cfg = AssistantConfig.from_env()
     assert cfg.history_max_chars == 1200000
     assert cfg.tool_result_max_chars == 200000
     assert cfg.max_iterations == 64
     assert cfg.history_compact_threshold_ratio == 0.5
     assert cfg.history_compact_keep_recent_groups == 1
+    assert cfg.batch_plan_max_targets == 500
+    assert cfg.batch_chunk_max_actions == 25
+    assert cfg.batch_chunk_max_payload_chars == 32000
+    assert cfg.batch_auto_continue_allowed_risk_levels is False
 
 
 def test_soft_truncate_list_keeps_full_rows_and_meta():

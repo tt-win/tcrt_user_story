@@ -23,6 +23,7 @@ from app.database import get_db
 from app.db_access.main import create_main_access_boundary_for_session
 from app.models.app_token import ALL_APP_TOKEN_SCOPES, APP_TOKEN_DEFAULT_EXPIRY_DAYS
 from app.models.database_models import TeamAppToken, TeamAppTokenStatus, User
+from app.services.observability import Impact, Outcome
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +147,9 @@ async def _audit_token_action(
     token: TeamAppToken,
     action_brief: str,
     severity: AuditSeverity = AuditSeverity.INFO,
+    event_code: str = "tcrt.audit.legacy.generic",
+    outcome: Outcome = Outcome.SUCCESS,
+    impact: Impact = Impact.ROUTINE,
 ) -> None:
     try:
         await audit_service.log_action(
@@ -167,6 +171,9 @@ async def _audit_token_action(
             severity=severity,
             ip_address=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
+            event_code=event_code,
+            impact=impact,
+            outcome=outcome,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("App token management audit failed: %s", exc, exc_info=True)
@@ -212,7 +219,14 @@ async def create_team_app_token(
 
     saved = await boundary.run_write(_save)
     await _audit_token_action(
-        request, current_user, ActionType.CREATE, saved, f"Created app token '{body.name}'"
+        request,
+        current_user,
+        ActionType.CREATE,
+        saved,
+        f"Created app token '{body.name}'",
+        event_code="tcrt.audit.auth.token_create",
+        outcome=Outcome.SUCCESS,
+        impact=Impact.SENSITIVE,
     )
 
     resp = AppTokenCreateResponse(
@@ -289,7 +303,14 @@ async def revoke_team_app_token(
 
     token = await boundary.run_write(_revoke)
     await _audit_token_action(
-        request, current_user, ActionType.DELETE, token, f"Revoked app token '{token.name}'"
+        request,
+        current_user,
+        ActionType.DELETE,
+        token,
+        f"Revoked app token '{token.name}'",
+        event_code="tcrt.audit.auth.token_revoke",
+        outcome=Outcome.SUCCESS,
+        impact=Impact.PRIVILEGED,
     )
     return _to_response(token)
 
@@ -347,6 +368,9 @@ async def rotate_team_app_token(
         token,
         f"Rotated app token '{token.name}'",
         severity=AuditSeverity.WARNING,
+        event_code="tcrt.audit.auth.token_rotate",
+        outcome=Outcome.SUCCESS,
+        impact=Impact.PRIVILEGED,
     )
     return AppTokenRotateResponse(
         id=token.id,
@@ -402,6 +426,13 @@ async def revoke_any_app_token(
 
     token = await boundary.run_write(_revoke)
     await _audit_token_action(
-        request, current_user, ActionType.DELETE, token, f"Super Admin revoked app token '{token.name}'"
+        request,
+        current_user,
+        ActionType.DELETE,
+        token,
+        f"Super Admin revoked app token '{token.name}'",
+        event_code="tcrt.audit.auth.token_revoke",
+        outcome=Outcome.SUCCESS,
+        impact=Impact.PRIVILEGED,
     )
     return _to_response(token)

@@ -57,7 +57,7 @@ Indexes: `(team_id, started_at)`, `(automation_script_id, started_at)`, `(script
 
 ### Requirement: System MUST NOT expose any run trigger UI or API on Automation Hub
 
-Automation Hub 對外契約 SHALL **僅**包含 read / sync / metadata CRUD：
+Automation Hub 對外契約 SHALL **僅**包含 read / sync / metadata CRUD；app-token automation trigger SHALL 仍以 Test Run Set 作為入口，不得在 Automation Hub script 或 suite endpoint 重新引入 run trigger。
 
 - ✅ 允許：
   - `GET /api/teams/{team_id}/automation-scripts`：列表
@@ -72,7 +72,7 @@ Automation Hub 對外契約 SHALL **僅**包含 read / sync / metadata CRUD：
   - `POST .../automation-script-groups/{id}/runs`（已移除）
   - Hub 任何 UI 內的「Run」/「Run Now」/「Run Suite」CTA
 
-執行入口 SHALL 完全位於 Test Run Set detail 頁（見 `test-run-management-ui` spec）。
+執行入口 SHALL 完全位於 Test Run Set detail 頁或其 app-token 等價 endpoint。
 
 #### Scenario: Hub 不再觸發 run
 - **WHEN** user 在 Automation Hub 任何頁面想執行 script 或 suite
@@ -83,6 +83,11 @@ Automation Hub 對外契約 SHALL **僅**包含 read / sync / metadata CRUD：
 - **WHEN** client 對 `POST /automation-scripts/{id}/runs` 或 `POST /automation-script-groups/{id}/runs` 送 request
 - **THEN** API SHALL 回 404 / 405
 - **AND** response detail SHALL 含 `{"code": "RUN_TRIGGER_REMOVED", "message": "Use POST /api/teams/{team_id}/test-run-sets/{set_id}/run-automation instead."}`
+
+#### Scenario: App token 不可透過 Hub endpoint 觸發
+- **WHEN** app token 對 Automation Hub script 或 suite endpoint 嘗試觸發 run
+- **THEN** 系統 SHALL 拒絕
+- **AND** response SHALL 指向 `/api/app/teams/{team_id}/test-run-sets/{set_id}/run-automation`
 
 ### Requirement: System MUST mark automation_script_id as a legacy column
 
@@ -100,11 +105,16 @@ Automation Hub 對外契約 SHALL **僅**包含 read / sync / metadata CRUD：
 
 - Test Run Set 觸發的 run：`test_run_set_id` 必填
 - Legacy hub 觸發的 run（archive 前既有）：`test_run_set_id` 為 NULL
-- Future webhook / schedule / MCP 觸發的 run：可選 `test_run_set_id`（若 context 有）
+- Future webhook / schedule / MCP / app-token 觸發的 run：若 context 有 Test Run Set，`test_run_set_id` 必填
 
 #### Scenario: 列表 query 篩選 Test Run Set 觸發
 - **WHEN** 查詢 `?test_run_set_id=42`
 - **THEN** API SHALL 回該 set 觸發的所有 run
+
+#### Scenario: App token 觸發保留 canonical source
+- **WHEN** app token 透過 Test Run Set 觸發 automation
+- **THEN** 每筆 automation run SHALL 寫入 `test_run_set_id`
+- **AND** `triggered_by` 或 details SHALL 可識別 app-token actor
 
 ### Requirement: System MUST reconcile external_run_id via correlation polling
 
@@ -120,13 +130,18 @@ Automation Hub 對外契約 SHALL **僅**包含 read / sync / metadata CRUD：
 
 ### Requirement: System MUST sync run status periodically for non-terminal runs
 
-背景 scheduler 任務 SHALL 每 60 秒掃描 `status ∈ {QUEUED, RUNNING}` 且 `last_synced_at < now - 60s` 的 runs，呼叫 `CIProvider.get_run_status` 取最新 status，更新 DB。
+背景 scheduler 任務 SHALL 每 60 秒掃描 `status ∈ {QUEUED, RUNNING}` 且 `last_synced_at < now - 60s` 的 runs，呼叫 `CIProvider.get_run_status` 取最新 status，更新 DB。候選 runs SHALL 以尚未同步（`last_synced_at IS NULL`）優先，其次依 `last_synced_at ASC` 與 `id ASC` 排序；該 query SHALL 在 SQLite、MySQL 8 與 PostgreSQL 16 上可執行。
 
 到達終態（SUCCEEDED / FAILED / CANCELLED / UNKNOWN）後 sync SHALL 停止；同時 TCRT SHALL 呼叫 `ResultProvider.get_run_report_url` 填 `report_url`。
 
 #### Scenario: RUNNING to SUCCEEDED transition
 - **WHEN** run 在 CI 完成
 - **THEN** 下次 sync SHALL 更新 status=SUCCEEDED、finished_at、duration_ms、report_url，並觸發 outbound webhook event `run.completed`
+
+#### Scenario: 未同步 runs 跨引擎優先排序
+- **WHEN** background sync 在 SQLite、MySQL 8 或 PostgreSQL 16 查詢同時含 NULL 與非 NULL `last_synced_at` 的候選 runs
+- **THEN** query 不使用目標引擎不支援的 `NULLS FIRST` 語法
+- **AND** NULL `last_synced_at` 的 runs 先於非 NULL runs，順序以 `last_synced_at` 與 `id` 穩定決定
 
 ### Requirement: System MUST allow cancelling runs
 
@@ -191,7 +206,9 @@ Preview 區頂端 SHALL 顯示引導訊息：「To run this script, add its suit
 
 ### Requirement: Audit MUST record trigger / cancel / reconcile
 
-所有 run 相關寫操作 SHALL 寫 audit `ResourceType.AUTOMATION_RUN`，details 含 `test_run_set_id`（nullable）、`script_group_id`（nullable）、`suite_name`、`workflow_id`、`branch`、`actor`、`external_run_id`（若已知）、`trigger_source` enum（`test-run-set` / `webhook` / `schedule` / `mcp` / `legacy-hub-script` / `legacy-hub-suite`）。
+所有 run 相關寫操作 SHALL 寫 audit `ResourceType.AUTOMATION_RUN`，details 含 `test_run_set_id`（nullable）、`script_group_id`（nullable）、`suite_name`、`workflow_id`、`branch`、`actor`、`external_run_id`（若已知）、`trigger_source` enum（`test-run-set` / `webhook` / `schedule` / `mcp` / `app-token` / `legacy-hub-script` / `legacy-hub-suite`）。
+
+凡經 app-token principal 觸發的 run（含 `tcrt_mcp` write tools 透過 app token 呼叫）SHALL 一律記 `trigger_source="app-token"`；`mcp` 保留為 legacy 值，新程式碼 SHALL NOT 再寫入。
 
 #### Scenario: Test Run Set 觸發寫 audit
 - **WHEN** Test Run Set 觸發 automation suite
@@ -201,6 +218,12 @@ Preview 區頂端 SHALL 顯示引導訊息：「To run this script, add its suit
   - `details.trigger_source="test-run-set"`
   - `details.suite_name` 必填
   - `details.workflow_id` 與 `details.branch` 必填
+
+#### Scenario: App token 觸發寫 audit
+- **WHEN** app token 觸發 automation suite
+- **THEN** audit SHALL 包含 app credential id/name
+- **AND** `details.trigger_source="app-token"`
+- **AND** raw token 與 token hash SHALL NOT 出現在 audit
 
 ### Requirement: System MUST reject any future attempt to re-introduce Hub trigger
 

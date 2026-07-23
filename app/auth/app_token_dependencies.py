@@ -28,6 +28,7 @@ from app.models.app_token import (
     ALL_APP_TOKEN_SCOPES,
     AppTokenPrincipal,
 )
+from app.services.observability import Impact, Outcome
 from app.models.database_models import (
     MCPMachineCredential,
     MCPMachineCredentialStatus,
@@ -254,6 +255,9 @@ async def log_app_token_audit(
             severity=severity,
             ip_address=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
+            event_code="tcrt.audit.auth.app_token_deny" if not allowed else "tcrt.audit.legacy.generic",
+            outcome=Outcome.DENIED if not allowed else Outcome.SUCCESS,
+            impact=Impact.SENSITIVE if not allowed else Impact.ROUTINE,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("App token audit write failed: %s", exc, exc_info=True)

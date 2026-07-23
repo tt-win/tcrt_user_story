@@ -19,9 +19,6 @@
     <button type="button" class="btn btn-secondary btn-sm" id="refreshSyncDataBtn">
         <i class="fas fa-sync-alt me-1"></i><span data-i18n="common.refresh">重新整理</span>
     </button>
-    <a href="/assistant-admin" class="btn btn-secondary btn-sm d-none" id="assistantAdminLink">
-        <i class="fas fa-robot me-1"></i><span data-i18n="assistantAdmin.menuEntry">AI 助手設定</span>
-    </a>
     <a href="/team-management" class="btn btn-secondary btn-sm">
         <i class="fas fa-users me-1"></i><span data-i18n="navigation.teamManagement">團隊管理</span>
     </a>
@@ -52,6 +49,12 @@
         <li class="nav-item" role="presentation" style="display: none;">
             <button class="nav-link" id="tab-org-automation-infra" data-bs-toggle="tab" data-bs-target="#tab-pane-org-automation-infra" type="button" role="tab" aria-controls="tab-pane-org-automation-infra" aria-selected="false" data-testid="tab-org-automation-infra">
                 <i class="fas fa-cogs me-1"></i><span data-i18n="orgAutomationInfra.tabTitle">組織自動化基礎設施</span>
+            </button>
+        </li>
+        <!-- AI 助手設定分頁：預設隱藏（fail-closed），由 applyOrganizationUiVisibility() 依權限決定是否顯示 -->
+        <li class="nav-item" role="presentation" style="display: none;">
+            <button class="nav-link" id="tab-assistant-admin" data-bs-toggle="tab" data-bs-target="#tab-pane-assistant-admin" type="button" role="tab" aria-controls="tab-pane-assistant-admin" aria-selected="false" data-testid="tab-assistant-admin">
+                <i class="fas fa-robot me-1"></i><span data-i18n="assistantAdmin.tabTitle">AI 助手設定</span>
             </button>
         </li>
     </ul>
@@ -387,6 +390,134 @@
                 </div>
             </div>
         </div>
+
+        <!-- AI 助手設定（Super Admin only） -->
+        <div class="tab-pane fade" id="tab-pane-assistant-admin" role="tabpanel" aria-labelledby="tab-assistant-admin">
+            <div id="aaUnauthorized" class="alert alert-danger d-none" role="alert">
+                <i class="fas fa-ban me-2"></i><span data-i18n="assistantAdmin.unauthorized">需要 Super Admin 權限。</span>
+            </div>
+            <div id="aaWarning" class="alert alert-warning" role="alert">
+                <span data-i18n="assistantAdmin.warning">內容會影響外部 LLM 規劃；請勿貼入密碼或 Token。Write 確認等硬性安全仍由系統強制，無法靠 Prompt 關閉。</span>
+            </div>
+
+            <div id="aaMain" class="d-none">
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="aaTabPrompt" data-bs-toggle="tab" data-bs-target="#aaPanePrompt"
+                                type="button" role="tab" data-i18n="assistantAdmin.tabs.prompt">
+                            <i class="fas fa-file-alt me-1"></i>System Prompt</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="aaTabSkills" data-bs-toggle="tab" data-bs-target="#aaPaneSkills"
+                                type="button" role="tab" data-i18n="assistantAdmin.tabs.skills">
+                            <i class="fas fa-toolbox me-1"></i>Skills</button>
+                    </li>
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="aaPanePrompt" role="tabpanel">
+                        <div class="card mb-3">
+                            <div class="card-header bg-light d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                <div class="d-flex align-items-center">
+                                    <i class="fas fa-file-alt me-2"></i>
+                                    <strong data-i18n="assistantAdmin.tabs.prompt">System Prompt</strong>
+                                    <span class="badge bg-secondary ms-2" id="aaPromptVersion" data-i18n="assistantAdmin.versionUnknown">v?</span>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-secondary btn-sm" id="aaPromptReload" data-i18n="common.refresh">重新整理</button>
+                                    <button type="button" class="btn btn-warning btn-sm" id="aaPromptRestore" data-i18n="assistantAdmin.restoreBuiltins">還原 factory（overwrite builtins）</button>
+                                    <button type="button" class="btn btn-primary btn-sm" id="aaPromptSave" data-i18n="common.save">儲存</button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <small class="text-muted d-block mb-2" id="aaPromptMeta"></small>
+                                <label class="form-label" for="aaPromptEditor" data-i18n="assistantAdmin.promptLabel">System prompt 模板（須含恰好一個 {{ '{{SKILL_CATALOG}}' }}）</label>
+                                <textarea id="aaPromptEditor" class="form-control font-monospace" rows="18" spellcheck="false"></textarea>
+                                <div class="form-text" id="aaPromptStatus"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="aaPaneSkills" role="tabpanel">
+                        <div id="aaSkillBanner" class="alert d-none mb-2" role="alert"></div>
+                        <div class="card mb-3">
+                            <div class="card-header bg-light d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                <div class="d-flex align-items-center">
+                                    <i class="fas fa-toolbox me-2"></i>
+                                    <strong data-i18n="assistantAdmin.tabs.skills">Skills</strong>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-secondary btn-sm" id="aaSkillsReload" data-i18n="common.refresh">重新整理</button>
+                                    <button type="button" class="btn btn-primary btn-sm" id="aaSkillNew" data-i18n="assistantAdmin.newSkill">新增 skill</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="aaSeedMissing" data-i18n="assistantAdmin.seedMissing">補齊缺失 seed</button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover align-middle mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th data-i18n="assistantAdmin.col.skillId">skill_id</th>
+                                                <th data-i18n="assistantAdmin.col.name">name</th>
+                                                <th data-i18n="assistantAdmin.col.enabled">enabled</th>
+                                                <th data-i18n="assistantAdmin.col.builtin">builtin</th>
+                                                <th class="text-end"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="aaSkillsBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card mb-3 d-none" id="aaSkillEditorCard">
+                            <div class="card-header bg-light d-flex align-items-center">
+                                <i class="fas fa-pen me-2"></i>
+                                <strong id="aaSkillEditorTitle" data-i18n="assistantAdmin.editSkill">編輯 skill</strong>
+                            </div>
+                            <div class="card-body">
+                                <div class="row g-2">
+                                    <div class="col-md-4">
+                                        <label class="form-label" for="aaSkillId">skill_id</label>
+                                        <input type="text" class="form-control form-control-sm" id="aaSkillId" autocomplete="off" />
+                                        <div class="form-text" data-i18n="assistantAdmin.skillIdHint">小寫 slug（a-z、0-9、連字）</div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label" for="aaSkillName">name</label>
+                                        <input type="text" class="form-control form-control-sm" id="aaSkillName" />
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label" for="aaSkillSort">sort_order</label>
+                                        <input type="number" class="form-control form-control-sm" id="aaSkillSort" value="0" />
+                                    </div>
+                                    <div class="col-md-2 d-flex align-items-end pb-1">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="aaSkillEnabled" checked />
+                                            <label class="form-check-label" for="aaSkillEnabled" data-i18n="assistantAdmin.col.enabled">enabled</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label" for="aaSkillDesc">description</label>
+                                        <input type="text" class="form-control form-control-sm" id="aaSkillDesc" />
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label" for="aaSkillTriggers" data-i18n="assistantAdmin.triggersLabel">triggers (comma-separated)</label>
+                                        <input type="text" class="form-control form-control-sm" id="aaSkillTriggers" />
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label" for="aaSkillBody" data-i18n="assistantAdmin.bodyLabel">body (markdown)</label>
+                                        <textarea class="form-control font-monospace form-control-sm" id="aaSkillBody" rows="12" spellcheck="false"></textarea>
+                                    </div>
+                                </div>
+                                <div class="d-flex flex-wrap gap-2 mt-3">
+                                    <button type="button" class="btn btn-primary btn-sm" id="aaSkillSave" data-i18n="common.save">儲存</button>
+                                    <button type="button" class="btn btn-warning btn-sm d-none" id="aaSkillReset" data-i18n="assistantAdmin.resetFactory">重設 factory</button>
+                                    <button type="button" class="btn btn-danger btn-sm d-none" id="aaSkillDelete" data-i18n="common.delete">刪除</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="aaSkillCancel" data-i18n="common.cancel">取消</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -596,6 +727,7 @@
 <script src="/static/js/organization-management/main.js"></script>
 <script src="/static/js/organization-management/org-automation-infra.js"></script>
 <script src="/static/js/organization-management/personnel_management.js"></script>
+<script src="/static/js/organization-management/assistant-admin.js"></script>
 
 <!-- Hidden i18n texts for Organization Sync (used by JS without window.i18n.t) -->
 <div id="org-sync-i18n" class="d-none">

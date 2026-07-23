@@ -605,3 +605,55 @@ def test_unknown_outcome_when_loopback_raises_after_claim(confirm_db, monkeypatc
     assert action.status == "unknown"
     assert action.execution_payload_json is None
     assert secret_marker not in str(journal.error_message or "")
+
+
+def test_create_test_case_attaches_uploaded_file_even_if_llm_supplies_wrong_temp_upload_id(confirm_db, monkeypatch, tmp_path):
+    """回歸測試：使用者上傳附件並要求「建立 test case 並附加這隻檔案」時，即便 LLM 自行帶了
+    (杜撰或空白的) temp_upload_id，runner 仍必須以本 turn 實際 staging 的 id 覆蓋，
+    且 create_test_case 的回應要如實回報 attachments，而非固定回報空清單。"""
+    monkeypatch.setenv("ATTACHMENTS_ROOT_DIR", str(tmp_path / "attachments"))
+    client = _client()
+    conv_id = _create_conversation(client)
+    fake = confirm_db["llm"]
+    _push_tool_call(fake, "create_test_case", {
+        "test_case_number": "TCG-000001.001.001",
+        "title": "Attach evidence",
+        "temp_upload_id": "llm-guessed-wrong-id",
+    })
+    r = client.post(
+        f"/api/assistant/conversations/{conv_id}/messages", headers=HEADERS,
+        data={"text": "建立一支 Test Case 並附加這隻檔案", "client_message_id": "m1"},
+        files={"attachments": ("evidence.txt", b"hello world", "text/plain")},
+    )
+    assert r.status_code == 200, r.text
+    assert "confirmation_required" in r.text
+
+    action_id = _find_pending_action_id(client, conv_id)
+    _push_text(fake, "done")
+    r2 = client.post(f"/api/assistant/conversations/{conv_id}/actions/{action_id}/confirm", headers=HEADERS)
+    assert r2.status_code == 200, r2.text
+    assert '"outcome": "succeeded"' in r2.text
+
+    history = client.get(f"/api/assistant/conversations/{conv_id}/messages", headers=HEADERS).json()["messages"]
+    tool_messages = [m for m in history if m["role"] == "tool" and m["tool_name"] == "create_test_case"]
+    assert len(tool_messages) == 1
+    attachments = tool_messages[0]["tool_result"].get("attachments")
+    assert attachments, f"expected the created test case to report its attachment, got {tool_messages[0]['tool_result']}"
+    # 附件搬移後的 stored name 帶時間戳前綴（既有、與本次修復無關的獨立行為），
+    # 這裡只驗證檔名本體有保留，不驗證完全相等。
+    assert attachments[0]["name"].endswith("evidence.txt")
+
+    from app.models.database_models import TestCaseLocal
+
+    def _get_case(session):
+        return (
+            session.query(TestCaseLocal)
+            .filter(TestCaseLocal.team_id == 1, TestCaseLocal.test_case_number == "TCG-000001.001.001")
+            .first()
+        )
+
+    with confirm_db["bundle"]["sync_session_factory"]() as session:
+        case = _get_case(session)
+    assert case is not None
+    assert case.attachments_json, "attachment must actually be persisted on the created test case, not just in the response"
+    assert "evidence.txt" in case.attachments_json

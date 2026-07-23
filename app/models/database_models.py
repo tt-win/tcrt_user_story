@@ -2696,6 +2696,7 @@ class AssistantToolExecution(Base):
     # 注：journal.status 的 unknown 對應 pending_action.status 的 unknown 終態（orphan executing recovery）
     http_status = Column(Integer, nullable=True)
     error_message = Column(Text, nullable=True)  # 經遮罩管線
+    result_payload_json = Column(medium_text_type(), nullable=True)  # 每個 action 的執行結果 JSON，用於 batch 斷點續作
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     finished_at = Column(DateTime, nullable=True)
 

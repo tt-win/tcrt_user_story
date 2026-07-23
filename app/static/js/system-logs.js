@@ -202,7 +202,28 @@
             line.dataset.logSeq = String(record.seq);
             const head = document.createElement('span');
             head.className = 'log-line-head';
-            head.textContent = `${record.timestamp} ${record.level} [${record.logger_name}] `;
+            const metaParts = [`${record.timestamp} ${record.level} [${record.logger_name}]`];
+            if (record.event_code) {
+                const ec = document.createElement('span');
+                ec.className = 'log-event-code';
+                ec.textContent = `event=${record.event_code}`;
+                metaParts.push(ec);
+            }
+            if (record.outcome) {
+                const oc = document.createElement('span');
+                oc.className = `log-outcome log-outcome-${record.outcome.toLowerCase()}`;
+                oc.textContent = `outcome=${record.outcome}`;
+                metaParts.push(oc);
+            }
+            head.appendChild(document.createTextNode(metaParts[0] + ' '));
+            for (let i = 1; i < metaParts.length; i += 1) {
+                if (typeof metaParts[i] === 'string') {
+                    head.appendChild(document.createTextNode(metaParts[i] + ' '));
+                } else {
+                    head.appendChild(metaParts[i]);
+                    head.appendChild(document.createTextNode(' '));
+                }
+            }
             line.appendChild(head);
             const body = document.createElement('span');
             body.className = 'log-line-message';

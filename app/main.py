@@ -207,11 +207,6 @@ async def system_logs(request: Request):
     return templates.TemplateResponse("system_logs.html", {"request": request})
 
 
-@app.get("/assistant-admin", response_class=HTMLResponse)
-async def assistant_admin(request: Request):
-    return templates.TemplateResponse("assistant_admin.html", {"request": request})
-
-
 @app.get("/test-case-sets", response_class=HTMLResponse)
 async def test_case_set_list(request: Request):
     """Test Case Set 選擇頁面"""

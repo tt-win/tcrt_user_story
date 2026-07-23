@@ -20,6 +20,7 @@ from .database import AuditLogTable, audit_db_manager
 from ..config import get_settings
 from app.models.database_models import User
 from app.auth.models import UserRole
+from app.services.observability import Impact, Outcome, get_legacy_event_code
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +49,13 @@ class AuditService:
         action_brief: Optional[str] = None,
         severity: AuditSeverity = AuditSeverity.INFO,
         ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None
+        user_agent: Optional[str] = None,
+        # Event envelope v1 fields (optional for backward compat)
+        event_code: Optional[str] = None,
+        impact: Optional[Impact] = None,
+        outcome: Optional[Outcome] = None,
     ) -> None:
-        """記錄操作審計"""
+        """記錄操作審計 (legacy + event envelope dual-write)"""
         if not self.config.enabled:
             return
             
@@ -58,7 +63,26 @@ class AuditService:
             # 遮罩敏感資料
             masked_details = self._mask_sensitive_data(details) if details else None
             
-            # 創建審計記錄
+            # Derive legacy event_code from action+resource if not provided
+            legacy_event_code = event_code or get_legacy_event_code(
+                action=action_type.value.lower(),
+                resource=resource_type.value,
+            )
+            
+            # Map legacy severity -> impact if not provided
+            derived_impact = impact
+            if derived_impact is None:
+                severity_to_impact = {
+                    AuditSeverity.CRITICAL: Impact.PRIVILEGED,
+                    AuditSeverity.WARNING: Impact.SENSITIVE,
+                    AuditSeverity.INFO: Impact.ROUTINE,
+                }
+                derived_impact = severity_to_impact.get(severity, Impact.ROUTINE)
+            
+            # Default outcome = success (legacy paths assume success unless outcome provided)
+            derived_outcome = outcome or Outcome.SUCCESS
+            
+            # Create audit record with v1 fields
             audit_log = AuditLogCreate(
                 user_id=user_id,
                 username=username,
@@ -71,14 +95,18 @@ class AuditService:
                 action_brief=action_brief,
                 severity=severity,
                 ip_address=ip_address,
-                user_agent=user_agent
+                user_agent=user_agent,
+                event_code=legacy_event_code,
+                impact=derived_impact,
+                outcome=derived_outcome,
+                schema_version=1,
             )
             
-            # 加入批次緩衝區
+            # Add to batch buffer
             async with self._batch_lock:
                 self._batch_buffer.append(audit_log)
                 
-                # 檢查是否需要立即寫入
+                # Check if immediate flush needed
                 should_flush = (
                     len(self._batch_buffer) >= self.config.batch_size or
                     severity == AuditSeverity.CRITICAL or
@@ -220,7 +248,11 @@ class AuditService:
                         team_id=record.team_id,
                         severity=record.severity,
                         action_brief=getattr(record, 'action_brief', None),
-                        ip_address=record.ip_address
+                        ip_address=record.ip_address,
+                        event_code=getattr(record, 'event_code', None),
+                        impact=getattr(record, 'impact', None),
+                        outcome=getattr(record, 'outcome', None),
+                        schema_version=getattr(record, 'schema_version', 0),
                     )
                     for record in records
                 ]
@@ -263,6 +295,12 @@ class AuditService:
             conditions.append(AuditLogTable.severity == query.severity)
         if getattr(query, "role", None):
             conditions.append(AuditLogTable.role == query.role)
+        if query.event_code:
+            conditions.append(AuditLogTable.event_code == query.event_code)
+        if query.impact:
+            conditions.append(AuditLogTable.impact == query.impact.value)
+        if query.outcome:
+            conditions.append(AuditLogTable.outcome == query.outcome.value)
     
         # Admin 不能查看 super admin 的 audit log
         if current_user.role != UserRole.SUPER_ADMIN:
@@ -308,6 +346,10 @@ class AuditService:
                             severity=record.severity,
                             ip_address=record.ip_address,
                             user_agent=record.user_agent,
+                            event_code=getattr(record, 'event_code', None),
+                            impact=getattr(record, 'impact', None),
+                            outcome=getattr(record, 'outcome', None),
+                            schema_version=getattr(record, 'schema_version', 0),
                         )
                     )
     
@@ -350,7 +392,11 @@ class AuditService:
                     action_brief=getattr(record, 'action_brief', None),
                     severity=record.severity,
                     ip_address=record.ip_address,
-                    user_agent=record.user_agent
+                    user_agent=record.user_agent,
+                    event_code=getattr(record, 'event_code', None),
+                    impact=getattr(record, 'impact', None),
+                    outcome=getattr(record, 'outcome', None),
+                    schema_version=getattr(record, 'schema_version', 0),
                 )
                 
         except Exception as e:
@@ -547,7 +593,11 @@ class AuditService:
                         action_brief=record.action_brief,
                         severity=record.severity,
                         ip_address=record.ip_address,
-                        user_agent=record.user_agent
+                        user_agent=record.user_agent,
+                        event_code=record.event_code,
+                        impact=record.impact.value if record.impact else None,
+                        outcome=record.outcome.value if record.outcome else None,
+                        schema_version=record.schema_version,
                     )
                     db_records.append(db_record)
                     

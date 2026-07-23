@@ -419,7 +419,13 @@
       "teamHint": "按团队名称显示",
       "apply": "套用筛选",
       "reset": "清除条件",
-      "teamLoadFailed": "加载团队列表失败"
+      "teamLoadFailed": "加载团队列表失败",
+      "eventCode": "事件代码",
+      "eventCodePlaceholder": "输入事件代码",
+      "impact": "影响度",
+      "outcome": "结果",
+      "resourceId": "资源 ID",
+      "resourceIdPlaceholder": "输入资源 ID"
     },
     "results": {
       "title": "审计记录"
@@ -436,7 +442,13 @@
       "resource": "资源",
       "severity": "严重性",
       "ip": "来源 IP",
-      "noData": "暂无符合条件的记录"
+      "eventCode": "事件代码",
+      "impact": "影响度",
+      "outcome": "结果",
+      "schemaVersion": "Schema 版本",
+      "noData": "暂无符合条件的记录",
+      "legacyNotice": "旧版记录 (事件信封 v1 之前)",
+      "legacyImpactHint": "影响度筛选仅匹配事件信封 v1+ 的记录"
     },
     "loadingMore": "载入更多记录...",
     "allLoaded": "已载入全部审计记录",
@@ -470,6 +482,18 @@
       "info": "一般",
       "warning": "警示",
       "critical": "重大"
+    },
+    "impact": {
+      "routine": "常规",
+      "notable": "值得注意",
+      "sensitive": "敏感",
+      "privileged": "特权"
+    },
+    "outcome": {
+      "success": "成功",
+      "denied": "拒绝",
+      "failure": "失败",
+      "partial": "部分"
     },
     "loadFailed": "加载审计记录失败",
     "exportSuccess": "CSV 导出成功",
@@ -3831,7 +3855,7 @@
       "irreversible": "此操作为永久且无法恢复。"
     },
     "fabLabel": "打开 TCRT 助手",
-    "title": "TCRT 助手",
+    "title": "TCRT AI 助手",
     "scopeNotice": "仅协助 TCRT 的 test case 与 test run 操作，操作以你的账号权限执行。",
     "scopeDataEgress": "对话内容会发送至外部 LLM，请勿粘贴密码等机密信息。",
     "inputPlaceholder": "询问或操作 test case / test run…",
@@ -3843,6 +3867,8 @@
     "historyEmpty": "暂无近期对话",
     "newConversation": "新对话",
     "close": "关闭",
+    "expand": "放大",
+    "shrink": "缩小",
     "confirm": "确认",
     "cancel": "取消",
     "confirmDelete": "确认删除",
@@ -3899,31 +3925,31 @@
     "thinkingRunningTool": "执行中：{tool}"
   },
   "assistantAdmin": {
-    "menuEntry": "AI 助手设置",
+    "tabTitle": "AI 助手设置",
     "pageTitle": "AI 助手设置",
-    "pageSubtitle": "Super Admin：System prompt 与 skill recipes（数据库）",
+    "pageSubtitle": "Super Admin：System Prompt 与 Skill Recipes（数据库）",
     "unauthorized": "需要 Super Admin 权限。",
-    "warning": "内容会影响外部 LLM 规划；请勿粘贴密码或 token。Write 确认等硬性安全仍由系统强制，无法靠 prompt 关闭。",
+    "warning": "内容会影响外部 LLM 规划；请勿粘贴密码或 Token。Write 确认等硬性安全仍由系统强制，无法靠 Prompt 关闭。",
     "tabs": {
       "prompt": "System Prompt",
       "skills": "Skills"
     },
-    "promptLabel": "System prompt 模板（须含恰好一个 {{SKILL_CATALOG}}）",
-    "restoreBuiltins": "还原 factory（overwrite builtins）",
-    "newSkill": "新增 skill",
-    "seedMissing": "补齐缺失 seed",
-    "editSkill": "编辑 skill",
-    "resetFactory": "重置 factory",
+    "promptLabel": "System Prompt 模板（须含恰好一个 {{SKILL_CATALOG}}）",
+    "restoreBuiltins": "还原原厂设置（覆盖内置 Skill）",
+    "newSkill": "新增 Skill",
+    "seedMissing": "补齐缺少的 Seed",
+    "editSkill": "编辑 Skill",
+    "resetFactory": "重置为原厂设置",
     "col": {
-      "skillId": "skill_id",
-      "name": "name",
-      "enabled": "enabled",
-      "builtin": "builtin"
+      "skillId": "Skill ID",
+      "name": "名称",
+      "enabled": "启用",
+      "builtin": "内置"
     },
     "versionUnknown": "v?",
-    "triggersLabel": "triggers（逗号分隔）",
-    "bodyLabel": "body（markdown）",
-    "confirmOverwrite": "要以 factory 覆盖 system prompt 与所有 builtin skill 内容吗？会保留 is_enabled，不会删除 custom skills。",
+    "triggersLabel": "触发词（逗号分隔）",
+    "bodyLabel": "内容（Markdown）",
+    "confirmOverwrite": "要以原厂设置覆盖 System Prompt 与所有内置 Skill 内容吗？会保留启用状态，不会删除自定义 Skill。",
     "loadFailed": "加载失败"
   }
 }
