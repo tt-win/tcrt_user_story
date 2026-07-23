@@ -373,6 +373,12 @@ class AssistantConfig(BaseModel):
     history_compact_enabled: bool = True
     history_compact_threshold_ratio: float = 0.75
     history_compact_keep_recent_groups: int = 4
+    # Batch planning thresholds (plan-and-chunk for large bulk operations).
+    batch_plan_max_targets: int = 200
+    batch_chunk_max_actions: int = 10
+    batch_chunk_max_payload_chars: int = 16000
+    # When True, auto-continue is only allowed for idempotent_write and reversible_write chunks.
+    batch_auto_continue_allowed_risk_levels: bool = True
 
     @classmethod
     def from_env(cls, fallback: "AssistantConfig" = None) -> "AssistantConfig":
@@ -493,6 +499,28 @@ class AssistantConfig(BaseModel):
                 current.history_compact_keep_recent_groups,
                 1,
                 20,
+            ),
+            batch_plan_max_targets=_int(
+                "TCRT_ASSISTANT_BATCH_PLAN_MAX_TARGETS",
+                current.batch_plan_max_targets,
+                2,
+                500,
+            ),
+            batch_chunk_max_actions=_int(
+                "TCRT_ASSISTANT_BATCH_CHUNK_MAX_ACTIONS",
+                current.batch_chunk_max_actions,
+                2,
+                50,
+            ),
+            batch_chunk_max_payload_chars=_int(
+                "TCRT_ASSISTANT_BATCH_CHUNK_MAX_PAYLOAD_CHARS",
+                current.batch_chunk_max_payload_chars,
+                1000,
+                100000,
+            ),
+            batch_auto_continue_allowed_risk_levels=_bool(
+                "TCRT_ASSISTANT_BATCH_AUTO_CONTINUE_ALLOWED_RISK_LEVELS",
+                current.batch_auto_continue_allowed_risk_levels,
             ),
         )
 
