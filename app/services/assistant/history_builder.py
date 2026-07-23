@@ -103,6 +103,24 @@ def _sample_ids_from_list(rows: list[Any], limit: int = _COMPACT_ID_SAMPLE) -> l
     return samples
 
 
+def _sample_deep_links_from_list(rows: list[Any], limit: int = _COMPACT_ID_SAMPLE) -> dict[str, Any]:
+    """Preserve a sampling of _deep_links from list items during compaction."""
+    samples: dict[str, Any] = {}
+    for row in rows[:limit]:
+        if not isinstance(row, dict):
+            continue
+        links = row.get("_deep_links")
+        if not isinstance(links, dict):
+            continue
+        for key, url in links.items():
+            if key not in samples:
+                samples[key] = url
+                break
+        if samples:
+            break
+    return samples
+
+
 def _struct_compact_tool_content(content: str) -> str:
     """Deterministic structural compact of a tool-result JSON string."""
     try:
@@ -117,12 +135,15 @@ def _struct_compact_tool_content(content: str) -> str:
         )
 
     if isinstance(data, list):
-        meta = {
+        meta: dict[str, Any] = {
             "compacted": True,
             "source_count": len(data),
             "id_sample": _sample_ids_from_list(data),
             "hint": _STRUCT_HINT,
         }
+        sampled_links = _sample_deep_links_from_list(data)
+        if sampled_links:
+            meta["_deep_links"] = sampled_links
         return json.dumps(meta, ensure_ascii=False)
 
     if isinstance(data, dict) and isinstance(data.get("items"), list):
@@ -135,7 +156,21 @@ def _struct_compact_tool_content(content: str) -> str:
             "id_sample": _sample_ids_from_list(items),
             "hint": _STRUCT_HINT,
         }
+        sampled_links = _sample_deep_links_from_list(items)
+        if sampled_links:
+            meta["_deep_links"] = sampled_links
         return json.dumps(meta, ensure_ascii=False)
+
+    # Single-resource dict: preserve _deep_links even when truncating the rest.
+    if isinstance(data, dict):
+        compacted: dict[str, Any] = {"compacted": True, "hint": _STRUCT_HINT}
+        if "_deep_links" in data:
+            compacted["_deep_links"] = data["_deep_links"]
+        text = json.dumps(data, ensure_ascii=False)
+        if len(text) <= 400:
+            return text
+        compacted["preview"] = text[:360]
+        return json.dumps(compacted, ensure_ascii=False)
 
     text = json.dumps(data, ensure_ascii=False) if data is not None else ""
     if len(text) <= 400:

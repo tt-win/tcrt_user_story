@@ -34,6 +34,7 @@ from app.models.database_models import (
     AssistantUploadedFile,
 )
 from app.services.assistant import ids, title_service
+from app.services.assistant.deep_links import build_deep_links, build_list_deep_links
 from app.services.assistant.errors import (
     AdmissionDeniedError,
     ConfirmationStaleError,
@@ -671,6 +672,12 @@ class ConversationService:
         兩者皆不出現在歷史，不留孤兒 tool call。"""
 
         async def _append(session: AsyncSession) -> None:
+            payload = tool_result_payload
+            deep_links = build_deep_links(tool_name, payload, arguments_for_history)
+            if deep_links and isinstance(payload, dict):
+                payload = {**payload, "_deep_links": deep_links}
+            else:
+                build_list_deep_links(tool_name, payload)
             seq1 = await self._next_message_seq_in_session(session, turn_id)
             session.add(
                 AssistantMessage(
@@ -694,7 +701,7 @@ class ConversationService:
                     turn_id=turn_id,
                     message_seq=seq2,
                     role="tool",
-                    content=json.dumps(tool_result_payload, ensure_ascii=False),
+                    content=json.dumps(payload, ensure_ascii=False),
                     llm_tool_call_id=llm_tool_call_id,
                     tool_name=tool_name,
                 )
@@ -783,6 +790,7 @@ class ConversationService:
                 "attachment_index": row.attachment_index,
                 "original_name": row.original_name,
                 "content_type": row.content_type,
+                "relative_path": row.relative_path,
             }
             for row in rows
         ]
@@ -1453,6 +1461,8 @@ class ConversationService:
         outcome_status: str,
         tool_result_payload: dict[str, Any],
         http_status: int | None,
+        tool_name: str = "",
+        tool_arguments: dict[str, Any] | None = None,
     ) -> bool:
         """Confirm Tx B：更新 journal/pending 終態、寫 paired tool result、events。
 
@@ -1503,12 +1513,20 @@ class ConversationService:
                 journal.finished_at = now
 
             seq = await self._next_message_seq_in_session(session, turn.id)
+            payload = tool_result_payload
+            deep_links = build_deep_links(
+                tool_name or action.tool_name,
+                payload,
+                tool_arguments or {},
+            )
+            if deep_links and isinstance(payload, dict):
+                payload = {**payload, "_deep_links": deep_links}
             session.add(
                 AssistantMessage(
                     turn_id=turn.id,
                     message_seq=seq,
                     role="tool",
-                    content=json.dumps(tool_result_payload, ensure_ascii=False),
+                    content=json.dumps(payload, ensure_ascii=False),
                     llm_tool_call_id=action.llm_tool_call_id,
                     tool_name=action.tool_name,
                 )

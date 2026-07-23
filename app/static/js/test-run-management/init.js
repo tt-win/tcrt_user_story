@@ -166,3 +166,23 @@ function bindEventListeners() {
         });
     });
 }
+
+let _autoOpenSetIdConsumed = false;
+
+function autoOpenTestRunSetFromUrl() {
+    if (_autoOpenSetIdConsumed) return;
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get('set_id');
+    if (!raw) return;
+    const setId = parseInt(raw, 10);
+    if (!Number.isFinite(setId) || setId <= 0) return;
+    const exists = Array.isArray(testRunSets) && testRunSets.some(function(s) { return s.id === setId; });
+    if (!exists) return;
+    _autoOpenSetIdConsumed = true;
+    if (typeof openTestRunSetDetail === 'function') {
+        openTestRunSetDetail(setId);
+    } else {
+        const fn = window.openTestRunSetDetail;
+        if (typeof fn === 'function') fn(setId);
+    }
+}

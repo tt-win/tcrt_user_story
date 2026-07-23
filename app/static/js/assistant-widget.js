@@ -99,6 +99,14 @@ function parseSseEventId(id) {
   return { turnKey, seq };
 }
 
+/**
+ * 面板尺寸模式切換（純函式、可測試）。
+ * 'compact' ↔ 'expanded'，接受任意輸入時 fail-closed 回傳 'compact'。
+ */
+function nextSizeMode(current) {
+  return current === 'compact' ? 'expanded' : 'compact';
+}
+
 /** risk_level → 兩級確認卡（design：idempotent_write/reversible_write=輕量，high_impact/irreversible=警告）。 */
 function confirmTier(riskLevel) {
   return riskLevel === 'high_impact' || riskLevel === 'irreversible' ? 'warning' : 'light';
@@ -345,6 +353,7 @@ const AssistantWidget = (() => {
   const AVAILABILITY_CACHE_KEY = 'tcrt_assistant_availability_cache';
   const AVAILABILITY_CACHE_TTL_MS = 5 * 60 * 1000;
   const PANEL_OPEN_KEY = 'tcrt_assistant_panel_open';
+  const PANEL_SIZE_KEY = 'tcrt_assistant_panel_size';
   const CONV_KEY_PREFIX = 'tcrt_assistant_conv_';
   const INFLIGHT_KEY_PREFIX = 'tcrt_assistant_inflight_';
   const MARKED_URL = 'https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js';
@@ -363,6 +372,8 @@ const AssistantWidget = (() => {
   let historyMenuEl = null;
   let attachChipEl = null;
   let teamBadgeEl = null;
+  let expandBtnEl = null;
+  let panelSizeMode = 'compact';
 
   let currentConversation = null; // {id, conversation_key, scope_type, team_id, ...}
   let currentTurnKey = null;
@@ -452,10 +463,16 @@ const AssistantWidget = (() => {
         if (window.DOMPurify && typeof window.DOMPurify.addHook === 'function') {
           window.DOMPurify.addHook('afterSanitizeAttributes', (node) => {
             if (node.tagName === 'A') {
-              node.setAttribute('target', '_blank');
-              node.setAttribute('rel', 'noopener');
+              // Deep links from assistant should open in the same tab so the
+              // main TCRT app remains in focus; strip any target/rel so the
+              // browser uses the default navigation behavior.
+              node.removeAttribute('target');
+              node.removeAttribute('rel');
             }
           });
+        }
+        if (window.marked && typeof window.marked.setOptions === 'function') {
+          window.marked.setOptions({ gfm: true, breaks: true });
         }
         if (window.marked && typeof window.marked.use === 'function') {
           // 面板寬度固定，寬表格（多欄或單欄超長文字）必須能獨立橫向捲動，
@@ -516,6 +533,9 @@ const AssistantWidget = (() => {
           <button class="tcrt-assistant-icon-btn" type="button" id="tcrt-assistant-new-btn" data-i18n-title="assistant.newConversation" data-i18n-aria-label="assistant.newConversation" title="${_assistantEscapeHtml(t('assistant.newConversation', {}, 'New conversation'))}" aria-label="${_assistantEscapeHtml(t('assistant.newConversation', {}, 'New conversation'))}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
           </button>
+          <button class="tcrt-assistant-icon-btn" type="button" id="tcrt-assistant-expand-btn" title="${_assistantEscapeHtml(t('assistant.expand', {}, 'Expand'))}" aria-label="${_assistantEscapeHtml(t('assistant.expand', {}, 'Expand'))}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+          </button>
           <button class="tcrt-assistant-icon-btn" type="button" id="tcrt-assistant-close-btn" data-i18n-title="assistant.close" data-i18n-aria-label="assistant.close" title="${_assistantEscapeHtml(t('assistant.close', {}, 'Close'))}" aria-label="${_assistantEscapeHtml(t('assistant.close', {}, 'Close'))}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
           </button>
@@ -556,11 +576,18 @@ const AssistantWidget = (() => {
     historyMenuEl = root.querySelector('#tcrt-assistant-history-menu');
     attachChipEl = root.querySelector('#tcrt-assistant-attach-chip');
     teamBadgeEl = root.querySelector('#tcrt-assistant-team-badge');
+    expandBtnEl = root.querySelector('#tcrt-assistant-expand-btn');
 
     wireEvents();
     mounted = true;
 
     if (window.i18n && typeof window.i18n.retranslate === 'function') window.i18n.retranslate(root);
+
+    panelSizeMode = localStorage.getItem(PANEL_SIZE_KEY) === 'expanded' ? 'expanded' : 'compact';
+    if (panelSizeMode === 'expanded') {
+      panelEl.classList.add('tcrt-assistant-is-expanded');
+    }
+    updateExpandBtnIcon();
 
     if (localStorage.getItem(PANEL_OPEN_KEY) === '1') openPanel();
   }
@@ -571,6 +598,7 @@ const AssistantWidget = (() => {
     root.remove();
     root = null; panelEl = null; fabEl = null; messagesEl = null; inputEl = null;
     sendBtnEl = null; composerEl = null; historyMenuEl = null; attachChipEl = null; teamBadgeEl = null;
+    expandBtnEl = null; panelSizeMode = 'compact';
     mounted = false;
   }
 
@@ -601,6 +629,28 @@ const AssistantWidget = (() => {
 
   function togglePanel() {
     if (isOpen()) closePanel(); else openPanel();
+  }
+
+  function toggleSize() {
+    if (!panelEl) return;
+    panelSizeMode = nextSizeMode(panelSizeMode);
+    panelEl.classList.toggle('tcrt-assistant-is-expanded', panelSizeMode === 'expanded');
+    localStorage.setItem(PANEL_SIZE_KEY, panelSizeMode);
+    updateExpandBtnIcon();
+    scrollToBottom();
+  }
+
+  function updateExpandBtnIcon() {
+    if (!expandBtnEl) return;
+    const isExpanded = panelSizeMode === 'expanded';
+    const labelKey = isExpanded ? 'assistant.shrink' : 'assistant.expand';
+    const fallback = isExpanded ? 'Shrink' : 'Expand';
+    const label = t(labelKey, {}, fallback);
+    expandBtnEl.setAttribute('aria-label', label);
+    expandBtnEl.setAttribute('title', label);
+    expandBtnEl.innerHTML = isExpanded
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9V3h6M21 15v6h-6M3 3l7 7M21 21l-7-7"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>';
   }
 
   function toggleHistoryMenu() {
@@ -894,7 +944,9 @@ const AssistantWidget = (() => {
     bubble.appendChild(textWrap);
     scrollToBottom();
     void ensureMarkdownLibs().then(() => {
-      if (mdLibsReady) textWrap.innerHTML = renderMarkdown(text);
+      if (mdLibsReady && textWrap.isConnected) {
+        textWrap.innerHTML = renderMarkdown(text);
+      }
     });
   }
 
@@ -1787,6 +1839,7 @@ const AssistantWidget = (() => {
     root.querySelector('#tcrt-assistant-close-btn').addEventListener('click', closePanel);
     root.querySelector('#tcrt-assistant-history-btn').addEventListener('click', toggleHistoryMenu);
     root.querySelector('#tcrt-assistant-new-btn').addEventListener('click', () => { closeHistoryMenu(); void newConversation(); });
+    root.querySelector('#tcrt-assistant-expand-btn').addEventListener('click', toggleSize);
     root.querySelector('#tcrt-assistant-hm-new-btn').addEventListener('click', () => { closeHistoryMenu(); void newConversation(); });
     sendBtnEl.addEventListener('click', handleSendOrStop);
     inputEl.addEventListener('keydown', (e) => {
@@ -1805,6 +1858,9 @@ const AssistantWidget = (() => {
 
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
+      // If another modal/dialog (e.g. test-case detail) is open, let it handle Escape.
+      const activeModal = document.querySelector('.modal.show, [role="dialog"].show, [aria-modal="true"]');
+      if (activeModal && !root.contains(activeModal)) return;
       if (historyMenuEl && historyMenuEl.classList.contains('tcrt-assistant-show')) { closeHistoryMenu(); return; }
       if (isOpen()) closePanel();
     });
@@ -1817,8 +1873,8 @@ const AssistantWidget = (() => {
 
     window.addEventListener('teamChanged', () => void onTeamChanged());
     window.addEventListener('teamCleared', () => void onTeamChanged());
-    document.addEventListener('i18nReady', () => { if (mounted && window.i18n) window.i18n.retranslate(root); });
-    document.addEventListener('languageChanged', () => { if (mounted && window.i18n) window.i18n.retranslate(root); });
+    document.addEventListener('i18nReady', () => { if (mounted && window.i18n) { window.i18n.retranslate(root); updateExpandBtnIcon(); } });
+    document.addEventListener('languageChanged', () => { if (mounted && window.i18n) { window.i18n.retranslate(root); updateExpandBtnIcon(); } });
     document.addEventListener('logout', () => destroy());
   }
 

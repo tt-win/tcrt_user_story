@@ -55,6 +55,7 @@ async function loadTestRunConfigs() {
         dataLoadedOnce = true;
         renderTestRunOverview(currentStatusFilter);
         await refreshCurrentSetDetail();
+        autoOpenTestRunSetFromUrl();
     } catch (error) {
         console.error('Failed to load Test Run configurations:', error);
         const errorMsg = window.i18n ? window.i18n.t('messages.loadConfigsFailed') : '載入失敗';

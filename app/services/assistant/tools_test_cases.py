@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.auth.models import PermissionType
-from app.services.assistant.schema_helpers import TEST_DATA_ITEM_SCHEMA, body, s_array, s_int, s_str
+from app.services.assistant.schema_helpers import TEST_DATA_ITEM_SCHEMA, body, s_array, s_int, s_str, s_str_or_int
 from app.services.assistant.tool_registry import (
     HIGH_IMPACT,
     IRREVERSIBLE,
@@ -56,7 +56,7 @@ TOOLS = [
         query_params=_FILTER_QUERY,
         team_check="inject",
         resource_team_resolver=None,
-        projection=_TC_LIST + _PAGE,
+        projection=_TC_LIST + _PAGE + ("_deep_links",),
         default_limit=50,
         max_limit=100,
     ),
@@ -80,7 +80,7 @@ TOOLS = [
             "limit": s_int("page size, max 200"),
         },
         team_check="inject",
-        projection=("record_id", "test_case_number", "title", "priority", "test_case_set_id"),
+        projection=("record_id", "test_case_number", "title", "priority", "test_case_set_id", "_deep_links"),
         default_limit=50,
         max_limit=200,
     ),
@@ -105,7 +105,7 @@ TOOLS = [
         path_params=("record_id",),
         path_param_schemas={"record_id": s_str("test case 的 record_id（可能是 Lark record id 或本地數字 id 的字串形式）")},
         team_check="inject",
-        projection=_TC_DETAIL,
+        projection=_TC_DETAIL + ("_deep_links",),
     ),
     AssistantTool(
         name="find_test_cases_by_tickets",
@@ -127,12 +127,17 @@ TOOLS = [
         permission=PermissionType.WRITE,
         risk_level=REVERSIBLE_WRITE,
         body_schema=body(
-            {**_CREATE_UPDATE_FIELDS, "test_case_set_id": s_int(), "test_case_section_id": s_int()},
+            {
+                **_CREATE_UPDATE_FIELDS,
+                "test_case_set_id": s_int(),
+                "test_case_section_id": s_int(),
+                "temp_upload_id": s_str("本對話暫存附件識別碼；若使用者隨訊息上傳附件，系統會自動注入，無需手動提供"),
+            },
             required=["test_case_number", "title"],
         ),
         team_check="resolve",
         resource_team_resolver="create_test_case_scope",
-        projection=_TC_DETAIL,
+        projection=_TC_DETAIL + ("_deep_links",),
         confirmation_action_key="assistant.action.create_test_case",
         warning_key="assistant.warning.confirm_write",
         target_resolver="create",
@@ -212,7 +217,7 @@ TOOLS = [
         ),
         team_check="resolve",
         resource_team_resolver="create_test_case_scope",
-        projection=("success", "created_count", "duplicates", "errors"),
+        projection=("success", "created_count", "duplicates", "errors", "_deep_links"),
         confirmation_action_key="assistant.action.bulk_create_test_cases",
         warning_key="assistant.warning.high_impact",
         target_resolver="batch",
@@ -239,7 +244,7 @@ TOOLS = [
         ),
         team_check="resolve",
         resource_team_resolver="bulk_clone_test_cases",
-        projection=("success", "created_count", "duplicates", "errors"),
+        projection=("success", "created_count", "duplicates", "errors", "_deep_links"),
         confirmation_action_key="assistant.action.bulk_clone_test_cases",
         warning_key="assistant.warning.high_impact",
         target_resolver="batch",
@@ -252,7 +257,8 @@ TOOLS = [
         permission=PermissionType.WRITE,
         risk_level=READ,
         body_schema=body(
-            {"record_ids": s_array(s_int()), "target_test_set_id": s_int()},
+            {                "record_ids": s_array(s_str_or_int("test case local id, lark_record_id, or test_case_number")),
+                "target_test_set_id": s_int()},
             required=["record_ids", "target_test_set_id"],
         ),
         team_check="resolve",
@@ -262,11 +268,12 @@ TOOLS = [
     AssistantTool(
         name="list_test_case_attachments",
         method="GET",
-        path_template="/api/teams/{team_id}/testcases/{test_case_id:int}/attachments",
+        path_template="/api/teams/{team_id}/testcases/{test_case_id}/attachments",
         summary="List attachments on a test case.",
         permission=PermissionType.READ,
         risk_level=READ,
         path_params=("test_case_id",),
+        path_param_schemas={"test_case_id": s_str("test case 的 record_id（可能是 Lark record id 或本地數字 id 的字串形式）")},
         team_check="resolve",
         resource_team_resolver="test_case",
         projection=("files", "count"),
@@ -274,11 +281,12 @@ TOOLS = [
     AssistantTool(
         name="upload_test_case_attachment",
         method="POST",
-        path_template="/api/teams/{team_id}/testcases/{test_case_id:int}/attachments",
+        path_template="/api/teams/{team_id}/testcases/{test_case_id}/attachments",
         summary="Upload a chat-provided file as a test case attachment.",
         permission=PermissionType.WRITE,
         risk_level=REVERSIBLE_WRITE,
         path_params=("test_case_id",),
+        path_param_schemas={"test_case_id": s_str("test case 的 record_id（可能是 Lark record id 或本地數字 id 的字串形式）")},
         multipart_file_param="files",
         team_check="resolve",
         resource_team_resolver="test_case",
@@ -290,12 +298,15 @@ TOOLS = [
     AssistantTool(
         name="delete_test_case_attachment",
         method="DELETE",
-        path_template="/api/teams/{team_id}/testcases/{test_case_id:int}/attachments/{target}",
+        path_template="/api/teams/{team_id}/testcases/{test_case_id}/attachments/{target}",
         summary="Delete a test case attachment.",
         permission=PermissionType.WRITE,
         risk_level=IRREVERSIBLE,
         path_params=("test_case_id", "target"),
-        path_param_schemas={"target": s_str("要刪除的附件檔名（原始上傳時的檔名，非數字索引）")},
+        path_param_schemas={
+            "test_case_id": s_str("test case 的 record_id（可能是 Lark record id 或本地數字 id 的字串形式）"),
+            "target": s_str("要刪除的附件檔名（原始上傳時的檔名，非數字索引）"),
+        },
         team_check="resolve",
         resource_team_resolver="test_case",
         projection=("deleted", "remaining"),
@@ -313,7 +324,7 @@ TOOLS = [
         body_schema=body(
             {
                 "operation": s_str("update_priority|update_tcg", enum=["update_priority", "update_tcg"]),
-                "record_ids": s_array(s_int()),
+                "record_ids": s_array(s_str_or_int("test case local id, lark_record_id, or test_case_number")),
                 "update_data": body({"priority": s_str(), "tcg": s_array(s_str())}),
             },
             required=["operation", "record_ids"],
@@ -335,8 +346,8 @@ TOOLS = [
         body_schema=body(
             {
                 "operation": s_str("update_section|update_test_set", enum=["update_section", "update_test_set"]),
-                "record_ids": s_array(s_int()),
-                "update_data": body({"test_case_section_id": s_int(), "test_case_set_id": s_int()}),
+                "record_ids": s_array(s_str_or_int("test case local id, lark_record_id, or test_case_number")),
+                "update_data": body({"section_id": s_int("target section id for update_section"), "test_set_id": s_int("target test case set id for update_test_set")}),
             },
             required=["operation", "record_ids", "update_data"],
         ),
@@ -354,7 +365,7 @@ TOOLS = [
         summary="Batch-delete multiple test cases permanently.",
         permission=PermissionType.WRITE,
         risk_level=IRREVERSIBLE,
-        body_schema=body({"record_ids": s_array(s_int())}, required=["record_ids"]),
+        body_schema=body({"record_ids": s_array(s_str_or_int("test case local id, lark_record_id, or test_case_number"))}, required=["record_ids"]),
         fixed_body={"operation": "delete"},
         team_check="inject",
         resource_team_resolver="batch_test_cases_same_team",

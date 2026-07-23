@@ -42,6 +42,15 @@ from app.services.assistant.tool_registry import READ, ToolRegistry
 
 logger = logging.getLogger(__name__)
 
+# Batch progress event types emitted during plan-and-chunk workflows.
+_BATCH_EVENT_PLAN_READY = "batch_plan_ready"
+_BATCH_EVENT_CHUNK_GENERATED = "batch_chunk_generated"
+_BATCH_EVENT_CHUNK_PENDING = "batch_chunk_pending"
+_BATCH_EVENT_CHUNK_EXECUTED = "batch_chunk_executed"
+_BATCH_EVENT_COMPLETED = "batch_completed"
+_BATCH_EVENT_PAUSED = "batch_paused"
+_BATCH_EVENT_CANCELLED = "batch_cancelled"
+
 # max_iterations 達上限時的收尾訊息；非 LLM 生成，系統控制路徑固定文案（見 design「上限即終止」）。
 _MAX_ITERATIONS_NOTICE = (
     "已達本次對話可執行的操作次數上限，請查看目前已完成的結果；如需繼續，請再傳一則新訊息。\n"
@@ -61,13 +70,23 @@ _STALE_PRECONFIRM_RE = re.compile(
 )
 
 
+_COMPLETED_INDICATORS_RE = re.compile(
+    r"("
+    r"已(完成|建立|更新|刪除|執行|歸檔|新增|修改|設置|指派|重跑|複製)|"
+    r"成功(完成|執行|建立|更新|刪除)|"
+    r"completed|successfully|has\s+been\s+(created|updated|deleted|archived)"
+    r")",
+    re.IGNORECASE,
+)
+
+
 def _is_stale_preconfirm_prose(text: str) -> bool:
     """True when terminal text only restates 'ready / please confirm' after a write already ran."""
     stripped = (text or "").strip()
     if not stripped:
         return True
-    # Short messages that are pure pre-confirm noise; longer path summaries may mention
-    # "確認" historically but also contain facts — only drop when the whole reply is short.
+    if _COMPLETED_INDICATORS_RE.search(stripped):
+        return False
     if len(stripped) > 280:
         return False
     return bool(_STALE_PRECONFIRM_RE.search(stripped))
@@ -206,6 +225,27 @@ async def _run_llm_loop(
     turn_attachments = await conversation_service.load_attachments_for_turn(turn.id)
     attachments_by_turn = {turn.id: turn_attachments} if turn_attachments else {}
 
+    # 若本 turn 有附件且 LLM 打算用 create_test_case，先把這些暫存檔複製到 test-case
+    # staging 並產生 temp_upload_id，稍後自動注入 create_test_case 的 body。
+    create_case_temp_upload_id: Optional[str] = None
+    if turn_attachments and conversation.scope_type == "team":
+        create_case_temp_upload_id = ids.generate_llm_tool_call_id()[:32]
+        try:
+            attachment_storage.stage_assistant_attachments(
+                conversation_key=conversation.conversation_key,
+                temp_upload_id=create_case_temp_upload_id,
+                relative_paths=[a["relative_path"] for a in turn_attachments],
+                original_names=[a["original_name"] for a in turn_attachments],
+                content_types=[a.get("content_type") for a in turn_attachments],
+            )
+        except Exception as exc:
+            logger.warning(
+                "assistant failed to stage attachments for create_test_case turn_key=%s error=%s",
+                turn_key,
+                type(exc).__name__,
+            )
+            create_case_temp_upload_id = None
+
     if await conversation_service.is_cancel_requested(turn_id=turn.id):
         await _finish_cancelled(conversation_service, conversation=conversation, turn=turn, user_id=user_id)
         return
@@ -338,6 +378,17 @@ async def _run_llm_loop(
 
         # design D4「LLM history 正規化」：一則 response 只處理第一個 tool call，其餘一律丟棄。
         call = result.tool_calls[0]
+        # 若本 turn 有已 staging 的附件，且 LLM 呼叫 create_test_case，一律以伺服器產生的
+        # temp_upload_id 覆蓋，讓「建立 test case 並附加檔案」能在一個 confirm 動作完成。
+        # LLM 無從得知這個 server-random id（schema 說明已註明系統自動注入），若它仍自行帶了
+        # 一個值（例如空字串或憑空杜撰），只用「key 是否存在」判斷會跳過覆蓋，導致附件靜默遺失
+        # ——因此這裡不論 call.arguments 是否已有 temp_upload_id 都強制覆蓋為正確值。
+        if (
+            create_case_temp_upload_id
+            and call.name == "create_test_case"
+            and isinstance(call.arguments, dict)
+        ):
+            call.arguments["temp_upload_id"] = create_case_temp_upload_id
         tool = tools_by_name.get(call.name)
 
         if not await _renew_or_stop(
@@ -400,6 +451,27 @@ async def _run_llm_loop(
                 turn_id=turn.id, event_type="tool_finished",
                 payload={"tool_name": tool.name, "ok": read_result.ok, "http_status": read_result.http_status},
             )
+            if tool.name == "plan_batch" and isinstance(read_result.result_payload.get("plan"), dict):
+                plan = read_result.result_payload["plan"]
+                await conversation_service.append_event(
+                    turn_id=turn.id,
+                    event_type=_BATCH_EVENT_PLAN_READY,
+                    payload={
+                        "batch_job_id": plan.get("batch_job_id"),
+                        "total_targets": plan.get("total_targets"),
+                        "total_chunks": plan.get("total_chunks"),
+                    },
+                )
+            if tool.name == "generate_chunk_actions" and isinstance(read_result.result_payload.get("actions"), list):
+                await conversation_service.append_event(
+                    turn_id=turn.id,
+                    event_type=_BATCH_EVENT_CHUNK_GENERATED,
+                    payload={
+                        "batch_job_id": call.arguments.get("batch_job_id"),
+                        "chunk_id": call.arguments.get("chunk_id"),
+                        "action_count": len(read_result.result_payload["actions"]),
+                    },
+                )
             continue
 
         # write 工具：唯一入口是 prepare_write_tool，成功時只建立 pending，不 inline 執行。
@@ -435,7 +507,7 @@ async def _run_llm_loop(
             for index, action in enumerate(call.arguments.get("actions") or []):
                 if not isinstance(action, dict) or not isinstance(action.get("arguments"), dict):
                     continue  # prepare_write_tool 會以 schema_invalid 安全拒絕
-                child = registry.get(action.get("tool_name"))
+                child = registry.get(str(action.get("tool_name") or ""))
                 if child is None or not child.multipart_file_param:
                     continue
                 resolved = await _resolve_file_ref(
@@ -609,8 +681,8 @@ async def run_confirm_turn(
                     user_id=user_id, conversation_id=conversation.id,
                     turn_id=file_ref["turn_id"], attachment_index=file_ref["attachment_index"],
                 )
-                file_bytes = attachment_storage.resolve_stored_path(uploaded_file.relative_path).read_bytes()
-                multipart_file = (uploaded_file.original_name, file_bytes, uploaded_file.content_type or "application/octet-stream")
+                file_bytes = attachment_storage.resolve_stored_path(str(uploaded_file.relative_path)).read_bytes()
+                multipart_file = (str(uploaded_file.original_name), file_bytes, str(uploaded_file.content_type) or "application/octet-stream")
             except (PendingActionNotFoundError, OSError):
                 await _finalize_confirm_as_failed(
                     conversation_service, conversation=conversation, turn=turn, pending_action=pending_action,
@@ -625,10 +697,10 @@ async def run_confirm_turn(
                         user_id=user_id, conversation_id=conversation.id,
                         turn_id=file_ref["turn_id"], attachment_index=file_ref["attachment_index"],
                     )
-                    file_bytes = attachment_storage.resolve_stored_path(uploaded_file.relative_path).read_bytes()
+                    file_bytes = attachment_storage.resolve_stored_path(str(uploaded_file.relative_path)).read_bytes()
                     multipart_files[int(raw_index)] = (
-                        uploaded_file.original_name, file_bytes,
-                        uploaded_file.content_type or "application/octet-stream",
+                        str(uploaded_file.original_name), file_bytes,
+                        str(uploaded_file.content_type) or "application/octet-stream",
                     )
             except (PendingActionNotFoundError, OSError, KeyError, TypeError, ValueError):
                 await _finalize_confirm_as_failed(
@@ -671,10 +743,31 @@ async def run_confirm_turn(
             conversation_id=conversation.id, turn=turn, action_id=pending_action.id, user_id=user_id,
             outcome_status=exec_result.outcome_status, tool_result_payload=exec_result.result_payload,
             http_status=exec_result.http_status,
+            tool_name=tool.name,
+            tool_arguments=execution_payload.get("body_params") or {},
         )
         if not finalized:
             return
         write_finalized = True
+
+        # Emit batch chunk execution progress for batch_execute_actions completions.
+        if tool.name == "batch_execute_actions" and isinstance(exec_result.result_payload, dict):
+            payload = exec_result.result_payload
+            results = payload.get("results") or []
+            succeeded = sum(1 for r in results if r.get("outcome") == "succeeded")
+            failed = sum(1 for r in results if r.get("outcome") == "failed")
+            unknown = sum(1 for r in results if r.get("outcome") not in ("succeeded", "failed"))
+            await conversation_service.append_event(
+                turn_id=turn.id,
+                event_type=_BATCH_EVENT_CHUNK_EXECUTED,
+                payload={
+                    "total": payload.get("total") or len(results),
+                    "succeeded_count": succeeded,
+                    "failed_count": failed,
+                    "unknown_count": unknown,
+                    "overall_status": exec_result.outcome_status,
+                },
+            )
 
         if exec_result.outcome_status != ToolExecutionOutcome.SUCCEEDED:
             await conversation_service.complete_continuation_turn(
