@@ -1,0 +1,5 @@
+[tools]
+python = "3.12.10"
+
+[env]
+UV_PYTHON = { value = "{{ tools.python.path }}", tools = true }
