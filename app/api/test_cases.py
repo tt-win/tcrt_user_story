@@ -64,6 +64,10 @@ from app.services.attachment_storage import (
 )
 from app.config import settings
 from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
+from app.services.knowledge.hooks import (
+    enqueue_test_case_sync,
+    enqueue_test_cases_bulk,
+)
 
 router = APIRouter(prefix="/teams/{team_id}/testcases", tags=["test-cases"])
 
@@ -926,6 +930,23 @@ async def create_test_case(
             details=audit_context,
         )
 
+        # Knowledge graph sync: enqueue upsert (fire-and-forget) with full
+        # entity payload so the worker has the embedding text.
+        tc_payload = {
+            "test_case_number": audit_context.get("test_case_number", ""),
+            "title": audit_context.get("title", ""),
+            "priority": getattr(case, "priority", None),
+            "precondition": getattr(case, "precondition", "") or "",
+            "steps": getattr(case, "steps", "") or "",
+            "expected_result": getattr(case, "expected_result", "") or "",
+            "team_id": team_id,
+            "test_case_set_id": getattr(case, "test_case_set_id", None),
+        }
+        await enqueue_test_case_sync(
+            audit_context.get("test_case_number", ""),
+            payload=tc_payload,
+        )
+
         return response
     except HTTPException:
         raise
@@ -1310,6 +1331,9 @@ async def update_test_case(
                 "record_id": item.id,
                 "test_case_number": item.test_case_number,
                 "title": item.title,
+                "precondition": item.precondition or "",
+                "steps": item.steps or "",
+                "expected_result": item.expected_result or "",
                 "changed_fields": changed_fields,
                 "changed": changed,
                 "cleanup_summary": cleanup_summary,
@@ -1338,6 +1362,21 @@ async def update_test_case(
                     "cleanup_summary": audit_context.get("cleanup_summary"),
                 },
             )
+
+        # Knowledge graph sync: enqueue upsert (fire-and-forget) with full
+        # entity payload so the worker has the embedding text.
+        uk_payload = {
+            "test_case_number": audit_context.get("test_case_number", ""),
+            "title": audit_context.get("title", ""),
+            "precondition": audit_context.get("precondition", ""),
+            "steps": audit_context.get("steps", ""),
+            "expected_result": audit_context.get("expected_result", ""),
+            "team_id": team_id,
+        }
+        await enqueue_test_case_sync(
+            audit_context.get("test_case_number", ""),
+            payload=uk_payload,
+        )
 
         return response
     except HTTPException:
@@ -1930,6 +1969,13 @@ async def delete_test_case(
             detail=f"刪除測試案例失敗: {str(e)}",
         )
 
+    # Knowledge graph sync: enqueue delete (fire-and-forget, outside try/except so
+    # audit log failures don’t prevent KG cleanup).
+    await enqueue_test_case_sync(
+        audit_context.get("test_case_number", ""),
+        operation="delete",
+    )
+
 
 # 依測試案例編號取得單筆（含附件）
 @router.get("/by-number/{test_case_number}", response_model=TestCaseResponse)
@@ -2247,6 +2293,15 @@ async def bulk_create_test_cases(
                 },
             )
 
+        # Knowledge graph sync: bulk enqueue all created test case numbers.
+        if audit_context and audit_context.get("created_items"):
+            test_case_numbers = [
+                item["test_case_number"]
+                for item in audit_context["created_items"]
+                if item.get("test_case_number")
+            ]
+            await enqueue_test_cases_bulk(test_case_numbers)
+
         return response
     except Exception as e:
         return BulkCreateResponse(success=False, created_count=0, errors=[str(e)])
@@ -2354,6 +2409,12 @@ def run_bulk_clone_sync(sync_db: Session, team_id: int, request: BulkCloneReques
                     "title": new_title,
                     "source_record_id": it.source_record_id,
                     "source_test_case_number": src.test_case_number,
+                    "priority": src.priority.value if hasattr(src.priority, "value") else src.priority,
+                    "precondition": src.precondition or "",
+                    "steps": src.steps or "",
+                    "expected_result": src.expected_result or "",
+                    "team_id": team_id,
+                    "test_case_set_id": src.test_case_set_id,
                 }
             )
         except Exception as e:
@@ -2411,6 +2472,10 @@ async def bulk_clone_test_cases(
                     "cloned_items": audit_context["cloned_items"],
                 },
             )
+
+        # Knowledge graph sync: bulk enqueue all cloned test case items with full payload.
+        if audit_context and audit_context.get("cloned_items"):
+            await enqueue_test_cases_bulk(audit_context["cloned_items"])
 
         return response
     except Exception as e:
@@ -2854,5 +2919,20 @@ async def batch_operation_test_cases(
             action_brief=log_context["action_brief"],
             details=log_context["details"],
         )
+
+        # Knowledge graph sync: enqueue all affected test case numbers.
+        # operation determines upsert vs delete; section/priority/tcg/set
+        # changes all count as upsert.
+        affected_numbers = [
+            item["test_case_number"]
+            for item in log_context["details"].get("deleted_items")
+            or log_context["details"].get("updated_items")
+            or log_context["details"].get("moved_items")
+            or []
+            if item.get("test_case_number")
+        ]
+        if affected_numbers:
+            kg_op = "delete" if log_context["action_type"] == ActionType.DELETE else "upsert"
+            await enqueue_test_cases_bulk(affected_numbers, operation=kg_op)
 
     return response

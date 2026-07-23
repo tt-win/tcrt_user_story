@@ -11,6 +11,7 @@
     const MAX_PENDING_NOTICES = 100;
     const STREAM_URL = '/api/admin/system-logs/stream';
     const RUNTIME_SETTINGS_URL = '/api/admin/system-runtime-settings';
+    const KNOWLEDGE_HEALTH_URL = '/api/knowledge/health';
 
     class SystemLogsPage {
         constructor() {
@@ -42,6 +43,8 @@
             this.bindEvents();
             this.settingsPanel = new RuntimeSettingsPanel(this);
             this.settingsPanel.init();
+            this.knowledgePanel = new KnowledgeGraphPanel(this);
+            this.knowledgePanel.init();
             this.connect();
         }
 
@@ -351,6 +354,243 @@
             if (this.abortController) this.abortController.abort();
             if (this.elements.main) this.elements.main.classList.add('d-none');
             if (this.elements.unauthorized) this.elements.unauthorized.classList.remove('d-none');
+        }
+    }
+
+    /**
+     * Knowledge Graph 分頁（openspec: add-knowledge-graph-integration）。
+     * 顯示 Qdrant / Neo4j 連線狀態、collection 列表、backfill 進度。
+     * 純資料導向：所有顯示文字走 i18n，DOM 落地用 textContent / createTextNode。
+     */
+    class KnowledgeGraphPanel {
+        constructor(page) {
+            this.page = page;
+            this.elements = {};
+            this.state = {
+                status: 'idle', // 'idle' | 'loading' | 'loaded' | 'error'
+                data: null,
+                error: null,
+            };
+        }
+
+        init() {
+            const byId = (id) => document.getElementById(id);
+            this.elements = {
+                tabButton: byId('knowledgeGraphTabBtn'),
+                refreshBtn: byId('kgRefreshBtn'),
+                generatedAt: byId('kgGeneratedAt'),
+                disabledBanner: byId('kgDisabledBanner'),
+                loading: byId('kgLoading'),
+                error: byId('kgError'),
+                content: byId('kgContent'),
+                qdrantStatus: byId('kgQdrantStatus'),
+                qdrantUrl: byId('kgQdrantUrl'),
+                qdrantCollections: byId('kgQdrantCollections'),
+                neo4jStatus: byId('kgNeo4jStatus'),
+                neo4jUri: byId('kgNeo4jUri'),
+                neo4jDatabase: byId('kgNeo4jDatabase'),
+                backfillRows: byId('kgBackfillRows'),
+            };
+            this.elements.tabButton.addEventListener('shown.bs.tab', () => {
+                this.load();
+            });
+            this.elements.refreshBtn.addEventListener('click', () => {
+                this.load();
+            });
+        }
+
+        async load() {
+            this.showLoading();
+            try {
+                const response = await this.page.authClient.fetch(KNOWLEDGE_HEALTH_URL);
+                if (!response.ok) {
+                    if (response.status === 503) {
+                        this.state.status = 'loaded';
+                        this.state.data = { enabled: false };
+                        this.render();
+                        return;
+                    }
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const data = await response.json();
+                this.state.status = 'loaded';
+                this.state.data = data;
+                this.state.error = null;
+            } catch (err) {
+                this.state.status = 'error';
+                this.state.error = err && err.message ? err.message : String(err);
+            }
+            this.render();
+        }
+
+        showLoading() {
+            this.state.status = 'loading';
+            this.elements.loading.classList.remove('d-none');
+            this.elements.error.classList.add('d-none');
+            this.elements.content.classList.add('d-none');
+            this.elements.disabledBanner.classList.add('d-none');
+        }
+
+        render() {
+            const state = this.state;
+            this.elements.loading.classList.toggle('d-none', state.status !== 'loading');
+            this.elements.error.classList.toggle('d-none', state.status !== 'error');
+
+            if (state.status === 'error') {
+                this.elements.content.classList.add('d-none');
+                this.elements.disabledBanner.classList.add('d-none');
+                return;
+            }
+
+            const data = state.data || {};
+            if (!data.enabled) {
+                this.elements.content.classList.add('d-none');
+                this.elements.disabledBanner.classList.remove('d-none');
+                this.elements.generatedAt.textContent = '';
+                return;
+            }
+
+            this.elements.disabledBanner.classList.add('d-none');
+            this.elements.content.classList.remove('d-none');
+            this.renderData(data);
+        }
+
+        renderData(data) {
+            const dash = '—';
+            this.elements.generatedAt.textContent = data.generated_at || '';
+
+            const qdrant = (data.components && data.components.qdrant) || {};
+            this.renderStatusBadge(this.elements.qdrantStatus, qdrant.status);
+            this.elements.qdrantUrl.textContent = qdrant.url || dash;
+
+            const configured = qdrant.configured_collections || {};
+            const actual = qdrant.collections || [];
+            this.renderCollections(this.elements.qdrantCollections, configured, actual);
+
+            const neo4j = (data.components && data.components.neo4j) || {};
+            this.renderStatusBadge(this.elements.neo4jStatus, neo4j.status);
+            this.elements.neo4jUri.textContent = neo4j.uri || (
+                neo4j.status === 'not_configured' ? dash : ''
+            );
+            this.elements.neo4jDatabase.textContent = neo4j.database || (
+                neo4j.status === 'not_configured' ? dash : ''
+            );
+
+            this.renderBackfillRows(data.backfill || {});
+        }
+
+        renderStatusBadge(el, status) {
+            const cls = {
+                healthy: 'bg-success',
+                unhealthy: 'bg-danger',
+                degraded: 'bg-warning text-dark',
+                not_configured: 'bg-secondary',
+                disabled: 'bg-secondary',
+                configured: 'bg-info text-dark',
+                unknown: 'bg-secondary',
+            }[status] || 'bg-secondary';
+            el.className = `kg-status-badge badge ${cls}`;
+            el.textContent = status || 'unknown';
+        }
+
+        renderCollections(el, configured, actual) {
+            el.textContent = '';
+            const dash = '—';
+            const configuredKeys = Object.keys(configured || {});
+            if (!configuredKeys.length && !(actual && actual.length)) {
+                el.appendChild(document.createTextNode(dash));
+                return;
+            }
+            const fragment = document.createDocumentFragment();
+            for (const key of configuredKeys) {
+                const name = configured[key];
+                const present = actual && actual.includes(name);
+                const line = document.createElement('div');
+                const code = document.createElement('code');
+                code.textContent = name;
+                if (present) {
+                    const check = document.createElement('span');
+                    check.className = 'kg-collection-ok text-success ms-1';
+                    check.textContent = '✓';
+                    line.appendChild(code);
+                    line.appendChild(check);
+                } else {
+                    const mark = document.createElement('span');
+                    mark.className = 'kg-collection-missing text-muted ms-1';
+                    mark.textContent = '(missing)';
+                    line.appendChild(code);
+                    line.appendChild(mark);
+                }
+                fragment.appendChild(line);
+            }
+            const extras = (actual || []).filter(
+                (name) => !configuredKeys.some((k) => configured[k] === name)
+            );
+            if (extras.length) {
+                const note = document.createElement('div');
+                note.className = 'text-muted small mt-1';
+                note.textContent = `+ ${extras.length} other collection(s)`;
+                fragment.appendChild(note);
+            }
+            el.appendChild(fragment);
+        }
+
+        renderBackfillRows(backfill) {
+            const tbody = this.elements.backfillRows;
+            tbody.textContent = '';
+            const entities = ['test_cases', 'usm_nodes'];
+            const dash = '—';
+            for (const entity of entities) {
+                const row = document.createElement('tr');
+                const entityCell = document.createElement('td');
+                entityCell.appendChild(document.createTextNode(entity));
+                row.appendChild(entityCell);
+
+                const progress = backfill[entity];
+                if (!progress) {
+                    for (let i = 0; i < 4; i += 1) {
+                        const td = document.createElement('td');
+                        td.className = 'text-muted';
+                        td.textContent = dash;
+                        row.appendChild(td);
+                    }
+                } else {
+                    const processed = document.createElement('td');
+                    const total = progress.total_count;
+                    processed.textContent = total
+                        ? `${progress.processed_count} / ${total}`
+                        : `${progress.processed_count}`;
+                    row.appendChild(processed);
+
+                    const lastId = document.createElement('td');
+                    lastId.textContent = progress.last_processed_id !== null
+                        && progress.last_processed_id !== undefined
+                        ? String(progress.last_processed_id)
+                        : dash;
+                    row.appendChild(lastId);
+
+                    const statusCell = document.createElement('td');
+                    const badge = document.createElement('span');
+                    badge.className = `badge ${this.backfillStatusClass(progress.status)}`;
+                    badge.textContent = progress.status;
+                    statusCell.appendChild(badge);
+                    row.appendChild(statusCell);
+
+                    const updatedAt = document.createElement('td');
+                    updatedAt.textContent = progress.updated_at || dash;
+                    row.appendChild(updatedAt);
+                }
+                tbody.appendChild(row);
+            }
+        }
+
+        backfillStatusClass(status) {
+            return {
+                pending: 'bg-secondary',
+                running: 'bg-primary',
+                completed: 'bg-success',
+                failed: 'bg-danger',
+            }[status] || 'bg-secondary';
         }
     }
 

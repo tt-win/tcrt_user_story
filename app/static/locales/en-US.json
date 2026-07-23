@@ -1652,6 +1652,13 @@
       "apply": "Apply",
       "save": "Save",
       "previewTitle": "Confirm Items to Create",
+      "quickGenerate": "Batch Number Generator",
+      "sourceCase": "Source Test Case",
+      "originalTitle": "Source Title",
+      "newNumber": "New Test Case Number",
+      "newTitle": "New Test Case Title",
+      "details": "Details",
+      "confirmSubmit": "Confirm Batch Copy",
       "prefixHint": "Format: alphanumeric + hyphen + digits, e.g. ABC-12345",
       "middleHint": "Three digits 001–999",
       "suffixHint": "Start from the given value, increase by 10; max 990, show error if exceeded",
@@ -3734,7 +3741,8 @@
     "workerLabel": "worker {pid} ({instance})",
     "tabs": {
       "logs": "Logs",
-      "runtimeSettings": "Runtime Settings"
+      "runtimeSettings": "Runtime Settings",
+      "knowledgeGraph": "Knowledge Graph"
     },
     "settings": {
       "perProcessHint": "Shows the settings view of the worker process serving this request; the Logs tab may come from a different worker.",
@@ -3774,6 +3782,27 @@
       "subscriberQueueSize": "Subscriber pending depth",
       "keepaliveSeconds": "Keep-alive interval (seconds)",
       "streamMaxLifetime": "Max stream lifetime (seconds)"
+    },
+    "kg": {
+      "perProcessHint": "Shows the view of the worker process serving this request; other workers may not be in sync yet.",
+      "refresh": "Refresh",
+      "loading": "Loading…",
+      "loadError": "Failed to load Knowledge Graph status. Please try again.",
+      "disabled": "Knowledge Graph is not enabled (KNOWLEDGE_GRAPH_ENABLED=false); status is hidden.",
+      "status": "Status",
+      "url": "URL",
+      "uri": "URI",
+      "database": "Database",
+      "collections": "Collections",
+      "sectionQdrant": "Qdrant (vector database)",
+      "sectionNeo4j": "Neo4j (graph database)",
+      "sectionBackfill": "Backfill (initial bulk load)",
+      "backfillHint": "Backfill must be triggered via CLI (`python -m app.services.knowledge backfill --entity <type>`). This panel only displays current progress and cannot start a backfill from the browser.",
+      "entityType": "Entity",
+      "processed": "Processed",
+      "lastId": "Last processed id",
+      "updatedAt": "Updated at",
+      "noProgress": "No backfill progress yet"
     }
   },
   "assistant": {

@@ -43,6 +43,11 @@
                         type="button" role="tab" aria-controls="runtimeSettingsTabPane" aria-selected="false"
                         data-i18n="systemLogs.tabs.runtimeSettings">Runtime Settings</button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="knowledgeGraphTabBtn" data-bs-toggle="tab" data-bs-target="#knowledgeGraphTabPane"
+                        type="button" role="tab" aria-controls="knowledgeGraphTabPane" aria-selected="false"
+                        data-i18n="systemLogs.tabs.knowledgeGraph">Knowledge Graph</button>
+            </li>
         </ul>
         <div class="tab-content">
         <div class="tab-pane fade show active" id="logsTabPane" role="tabpanel" aria-labelledby="logsTabBtn" tabindex="0">
@@ -174,6 +179,69 @@
             </div>
         </div>
         </div><!-- /#runtimeSettingsTabPane -->
+
+        <div class="tab-pane fade" id="knowledgeGraphTabPane" role="tabpanel" aria-labelledby="knowledgeGraphTabBtn" tabindex="0">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                    <small class="text-muted" data-i18n="systemLogs.kg.perProcessHint">僅顯示處理本請求之 worker process 的視角；多 worker 之間可能尚未同步。</small>
+                    <div class="ms-auto d-flex align-items-center gap-2">
+                        <small class="text-muted" id="kgGeneratedAt"></small>
+                        <button type="button" class="btn btn-secondary btn-sm" id="kgRefreshBtn">
+                            <i class="fas fa-sync-alt me-1"></i><span data-i18n="systemLogs.kg.refresh">重新整理</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="kgDisabledBanner" class="alert alert-secondary d-none" role="alert">
+                    <i class="fas fa-circle-info me-2"></i><span data-i18n="systemLogs.kg.disabled">Knowledge Graph 未啟用（KNOWLEDGE_GRAPH_ENABLED=false），不顯示狀態。</span>
+                </div>
+                <div id="kgLoading" class="text-muted d-none" data-i18n="systemLogs.kg.loading">載入中…</div>
+                <div id="kgError" class="alert alert-danger d-none" role="alert" data-i18n="systemLogs.kg.loadError">載入失敗，請重試。</div>
+
+                <div id="kgContent" class="d-none">
+                    <h6 class="kg-section-title" data-i18n="systemLogs.kg.sectionQdrant">Qdrant（向量資料庫）</h6>
+                    <dl class="row kg-dl mb-3">
+                        <dt class="col-sm-4" data-i18n="systemLogs.kg.status">狀態</dt>
+                        <dd class="col-sm-8"><span id="kgQdrantStatus" class="kg-status-badge"></span></dd>
+                        <dt class="col-sm-4" data-i18n="systemLogs.kg.url">URL</dt>
+                        <dd class="col-sm-8" id="kgQdrantUrl"></dd>
+                        <dt class="col-sm-4" data-i18n="systemLogs.kg.collections">Collections</dt>
+                        <dd class="col-sm-8" id="kgQdrantCollections"></dd>
+                    </dl>
+
+                    <h6 class="kg-section-title" data-i18n="systemLogs.kg.sectionNeo4j">Neo4j（圖形資料庫）</h6>
+                    <dl class="row kg-dl mb-3">
+                        <dt class="col-sm-4" data-i18n="systemLogs.kg.status">狀態</dt>
+                        <dd class="col-sm-8"><span id="kgNeo4jStatus" class="kg-status-badge"></span></dd>
+                        <dt class="col-sm-4" data-i18n="systemLogs.kg.uri">URI</dt>
+                        <dd class="col-sm-8" id="kgNeo4jUri"></dd>
+                        <dt class="col-sm-4" data-i18n="systemLogs.kg.database">Database</dt>
+                        <dd class="col-sm-8" id="kgNeo4jDatabase"></dd>
+                    </dl>
+
+                    <h6 class="kg-section-title" data-i18n="systemLogs.kg.sectionBackfill">Backfill（initial bulk load）</h6>
+                    <p class="text-muted small mb-2" data-i18n="systemLogs.kg.backfillHint">Backfill 需透過 CLI 啟動（`python -m app.services.knowledge backfill --entity <type>`）；此面板僅顯示目前進度，無法從瀏覽器端直接觸發。</p>
+                    <div class="table-responsive">
+                        <table class="table table-sm kg-table align-middle">
+                            <thead>
+                                <tr>
+                                    <th data-i18n="systemLogs.kg.entityType">Entity</th>
+                                    <th data-i18n="systemLogs.kg.processed">Processed</th>
+                                    <th data-i18n="systemLogs.kg.lastId">Last processed id</th>
+                                    <th data-i18n="systemLogs.kg.status">Status</th>
+                                    <th data-i18n="systemLogs.kg.updatedAt">Updated at</th>
+                                </tr>
+                            </thead>
+                            <tbody id="kgBackfillRows">
+                                <tr><td colspan="5" class="text-muted text-center" data-i18n="systemLogs.kg.noProgress">尚無 backfill 紀錄</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div><!-- /#knowledgeGraphTabPane -->
         </div><!-- /.tab-content -->
     </div>
 </div>

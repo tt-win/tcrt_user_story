@@ -67,3 +67,33 @@
     font-size: 0.85rem;
     word-break: break-all;
 }
+
+/* Knowledge Graph 分頁 */
+
+.kg-section-title {
+    color: var(--tr-text-secondary);
+    border-bottom: 1px solid var(--tr-border-light);
+    padding-bottom: 0.25rem;
+    margin-bottom: 0.75rem;
+}
+
+.kg-dl dd {
+    font-family: SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 0.85rem;
+    word-break: break-all;
+}
+
+.kg-status-badge {
+    font-family: SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 0.75rem;
+}
+
+.kg-table {
+    font-family: SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 0.85rem;
+}
+
+.kg-table td {
+    word-break: break-all;
+    vertical-align: middle;
+}

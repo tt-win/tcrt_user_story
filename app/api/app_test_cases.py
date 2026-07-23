@@ -30,6 +30,10 @@ from app.config import PROJECT_ROOT
 from app.database import get_db
 from app.db_access.main import create_main_access_boundary_for_session
 from app.models.app_token import AppTokenPrincipal, SCOPE_TEST_CASE_ADMIN, SCOPE_TEST_CASE_WRITE
+from app.services.knowledge.hooks import (
+    enqueue_test_case_sync,
+    enqueue_test_cases_bulk,
+)
 from app.models.database_models import (
     TestCaseLocal as TestCaseLocalDB,
     TestCaseSection as TestCaseSectionDB,
@@ -211,6 +215,15 @@ async def create_app_test_case(
         f"test_case:{tc.id}",
         {"test_case_number": tc.test_case_number, "title": tc.title, "test_data": json.loads(tc.test_data_json) if tc.test_data_json else []},
     )
+    tc_payload = {
+        "test_case_number": tc.test_case_number,
+        "title": tc.title or "",
+        "precondition": tc.precondition or "",
+        "steps": tc.steps or "",
+        "expected_result": tc.expected_result or "",
+        "team_id": team_id,
+    }
+    await enqueue_test_case_sync(tc.test_case_number, payload=tc_payload)
     return _serialize_test_case(tc)
 
 
@@ -309,6 +322,15 @@ async def update_app_test_case(
         f"test_case:{tc.id}",
         {"test_case_number": tc.test_case_number, "title": tc.title, "test_data": json.loads(tc.test_data_json) if tc.test_data_json else []},
     )
+    uk_payload = {
+        "test_case_number": tc.test_case_number,
+        "title": tc.title or "",
+        "precondition": tc.precondition or "",
+        "steps": tc.steps or "",
+        "expected_result": tc.expected_result or "",
+        "team_id": team_id,
+    }
+    await enqueue_test_case_sync(tc.test_case_number, payload=uk_payload)
     return _serialize_test_case(tc)
 
 
@@ -351,6 +373,7 @@ async def delete_app_test_case(
         f"test_case:{case_id}",
         {"test_case_number": tc.test_case_number, "title": tc.title},
     )
+    await enqueue_test_case_sync(tc.test_case_number, operation="delete")
 
 
 @router.post("/teams/{team_id}/test-cases/batch")
@@ -519,6 +542,19 @@ async def batch_operations_app_test_cases(
             "error_count": response.error_count,
         },
     )
+
+    # Knowledge graph sync: enqueue all affected test case numbers.
+    if _log_context and _log_context.get("details"):
+        affected = set()
+        for key in ("deleted_items", "updated_items", "moved_items"):
+            for item in _log_context["details"].get(key) or []:
+                tcn = item.get("test_case_number")
+                if tcn:
+                    affected.add(tcn)
+        kg_op = "delete" if operation.operation == "delete" else "upsert"
+        if affected:
+            await enqueue_test_cases_bulk(list(affected), operation=kg_op)
+
     return response
 
 
@@ -556,6 +592,11 @@ async def bulk_clone_app_test_cases(
             "error_count": len(response.errors),
         },
     )
+
+    # Knowledge graph sync: all cloned test case items.
+    if _audit_context and _audit_context.get("cloned_items"):
+        await enqueue_test_cases_bulk(_audit_context["cloned_items"])
+
     return response
 
 

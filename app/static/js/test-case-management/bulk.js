@@ -34,6 +34,10 @@ function openTestCaseBatchCopyModal() {
                 original_title: tc.title || '',
                 new_number: tc.test_case_number || '',
                 new_title: tc.title || '',
+                precondition: tc.precondition || '',
+                steps: tc.steps || '',
+                expected_result: tc.expected_result || '',
+                priority: tc.priority || '',
                 selected: false,
                 conflict: false,
                 errors: {}
@@ -131,9 +135,6 @@ function bindBatchCopyModalEvents() {
     // Save：先檢查重複，通過則開預覽
     const saveBtn = document.getElementById('saveBatchCopyBtn');
     if (saveBtn) saveBtn.addEventListener('click', onSaveBatchCopy);
-
-    const confirmBtn = document.getElementById('confirmBatchCopyBtn');
-    if (confirmBtn) confirmBtn.addEventListener('click', confirmBatchCopyRequest);
 }
 
 function getBatchCopySelectedIndexes() {
@@ -142,26 +143,84 @@ function getBatchCopySelectedIndexes() {
     return res;
 }
 
-
 function renderBatchCopyTable() {
     const tbody = document.getElementById('batchCopyTableBody');
     if (!tbody) return;
-    tbody.innerHTML = batchCopyItems.map((it, idx) => `
-        <tr class="${it.conflict ? 'table-danger' : ''}">
-            <td class="text-center">
-                <input type="checkbox" class="form-check-input batch-copy-checkbox" data-idx="${idx}" ${it.selected ? 'checked' : ''}>
-            </td>
-            <td>
-                <div class="d-flex align-items-center gap-2">
-                    <input type="text" class="form-control form-control-sm" value="${escapeHtml(it.new_number)}" data-idx="${idx}" data-field="number" />
-                </div>
-                ${it.errors.number ? `<div class="text-danger small">${escapeHtml(it.errors.number)}</div>` : ''}
-            </td>
-            <td>
-                <input type="text" class="form-control form-control-sm" value="${escapeHtml(it.new_title)}" data-idx="${idx}" data-field="title" />
-            </td>
-        </tr>
-    `).join('');
+
+    let html = '';
+    batchCopyItems.forEach((it, idx) => {
+        const priorityBadgeClass = it.priority === 'HIGH' ? 'bg-danger' : (it.priority === 'LOW' ? 'bg-info' : 'bg-warning text-dark');
+        html += `
+            <tr class="${it.conflict ? 'table-danger' : ''}">
+                <td class="text-center">
+                    <input type="checkbox" class="form-check-input batch-copy-checkbox" data-idx="${idx}" ${it.selected ? 'checked' : ''}>
+                </td>
+                <td>
+                    <span class="badge bg-secondary font-monospace px-2 py-1">${escapeHtml(it.original_number)}</span>
+                </td>
+                <td>
+                    <input type="text" class="form-control form-control-sm font-monospace" value="${escapeHtml(it.new_number)}" data-idx="${idx}" data-field="number" />
+                    ${it.errors.number ? `<div class="text-danger small mt-1">${escapeHtml(it.errors.number)}</div>` : ''}
+                </td>
+                <td>
+                    <input type="text" class="form-control form-control-sm" value="${escapeHtml(it.new_title)}" data-idx="${idx}" data-field="title" />
+                </td>
+                <td class="text-center">
+                    <button type="button" class="btn btn-sm btn-outline-secondary toggle-details-btn py-0 px-2" data-idx="${idx}">
+                        <i class="fas fa-chevron-down me-1" id="toggleIcon_${idx}"></i><span class="small" data-i18n="common.view">查看</span>
+                    </button>
+                </td>
+            </tr>
+            <tr class="d-none bg-light" id="batchCopyDetailsRow_${idx}">
+                <td colspan="5" class="p-3 border-bottom">
+                    <div class="card border border-light-subtle shadow-sm rounded-3 overflow-hidden">
+                        <!-- 卡片頂部資訊列 -->
+                        <div class="card-header bg-white py-2 px-3 d-flex align-items-center justify-content-between border-bottom">
+                            <div class="d-flex align-items-center gap-2 me-3 text-truncate">
+                                <span class="text-muted small fw-semibold" data-i18n="testCase.batchCopy.originalTitle">來源標題:</span>
+                                <span class="small text-dark font-monospace text-truncate" title="${escapeHtml(it.original_title)}">${escapeHtml(it.original_title || '無標題')}</span>
+                            </div>
+                            <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                                <span class="text-muted small fw-semibold" data-i18n="testCase.priority">優先級:</span>
+                                <span class="badge ${priorityBadgeClass}">${escapeHtml(it.priority || 'NORMAL')}</span>
+                            </div>
+                        </div>
+                        <!-- 三欄高度完美對齊內文區塊 -->
+                        <div class="card-body p-3 bg-light-subtle">
+                            <div class="row g-3 align-items-stretch">
+                                <div class="col-md-4 d-flex flex-column">
+                                    <div class="border bg-white rounded-3 flex-grow-1 d-flex flex-column overflow-hidden shadow-sm">
+                                        <div class="px-3 py-2 bg-light border-bottom small fw-bold text-secondary d-flex align-items-center">
+                                            <i class="fas fa-list-ul me-2 text-info"></i><span data-i18n="testCase.preconditions">前置條件</span>
+                                        </div>
+                                        <div class="p-3 text-secondary flex-grow-1" style="white-space: pre-wrap; height: 130px; overflow-y: auto; font-size: 0.84rem; line-height: 1.55;">${it.precondition ? escapeHtml(it.precondition) : '<span class="text-muted fst-italic">無</span>'}</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 d-flex flex-column">
+                                    <div class="border bg-white rounded-3 flex-grow-1 d-flex flex-column overflow-hidden shadow-sm">
+                                        <div class="px-3 py-2 bg-light border-bottom small fw-bold text-secondary d-flex align-items-center">
+                                            <i class="fas fa-shoe-prints me-2 text-primary"></i><span data-i18n="testCase.steps">測試步驟</span>
+                                        </div>
+                                        <div class="p-3 text-secondary flex-grow-1" style="white-space: pre-wrap; height: 130px; overflow-y: auto; font-size: 0.84rem; line-height: 1.55;">${it.steps ? escapeHtml(it.steps) : '<span class="text-muted fst-italic">無</span>'}</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 d-flex flex-column">
+                                    <div class="border bg-white rounded-3 flex-grow-1 d-flex flex-column overflow-hidden shadow-sm">
+                                        <div class="px-3 py-2 bg-light border-bottom small fw-bold text-secondary d-flex align-items-center">
+                                            <i class="fas fa-circle-check me-2 text-success"></i><span data-i18n="testCase.expectedResults">預期結果</span>
+                                        </div>
+                                        <div class="p-3 text-secondary flex-grow-1" style="white-space: pre-wrap; height: 130px; overflow-y: auto; font-size: 0.84rem; line-height: 1.55;">${it.expected_result ? escapeHtml(it.expected_result) : '<span class="text-muted fst-italic">無</span>'}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = html;
 
     // 事件繫結
     tbody.querySelectorAll('.batch-copy-checkbox').forEach(cb => {
@@ -200,6 +259,25 @@ function renderBatchCopyTable() {
             batchCopyItems[idx].new_title = e.target.value;
         });
     });
+
+    tbody.querySelectorAll('.toggle-details-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const targetBtn = e.currentTarget;
+            const idx = targetBtn.getAttribute('data-idx');
+            const row = document.getElementById(`batchCopyDetailsRow_${idx}`);
+            const icon = document.getElementById(`toggleIcon_${idx}`);
+            if (row) {
+                row.classList.toggle('d-none');
+                if (icon) {
+                    if (row.classList.contains('d-none')) {
+                        icon.className = 'fas fa-chevron-down me-1';
+                    } else {
+                        icon.className = 'fas fa-chevron-up me-1';
+                    }
+                }
+            }
+        });
+    });
 }
 
 function markInternalDuplicates() {
@@ -217,15 +295,15 @@ function markInternalDuplicates() {
     }
 }
 
-function onSaveBatchCopy() {
-    // 內部重複
+async function onSaveBatchCopy() {
+    // 內部重複檢查
     markInternalDuplicates();
     if (batchCopyItems.some(it => it.conflict)) {
         AppUtils.showError(window.i18n ? window.i18n.t('errors.duplicateInternal') : '清單內有重複的 Case Number');
         renderBatchCopyTable();
         return;
     }
-    // 外部重複（以目前快取資料檢查）
+    // 外部重複檢查（以目前快取資料檢查）
     const existing = new Set((testCases || []).map(tc => tc.test_case_number).filter(Boolean));
     const externalDup = [];
     batchCopyItems.forEach(it => { if (existing.has(it.new_number)) externalDup.push(it.new_number); });
@@ -236,21 +314,8 @@ function onSaveBatchCopy() {
         return;
     }
 
-    // 預覽
-    const list = document.getElementById('batchCopyPreviewList');
-    if (list) {
-        list.innerHTML = batchCopyItems.map((it, i) => `
-            <tr>
-                <td>${i+1}</td>
-                <td><code>${escapeHtml(it.new_number)}</code></td>
-                <td>${escapeHtml(it.new_title)}</td>
-            </tr>
-        `).join('');
-    }
-    const el = document.getElementById('batchCopyPreviewModal');
-    if (!batchCopyPreviewModalInstance) batchCopyPreviewModalInstance = new bootstrap.Modal(el);
-    if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(el);
-    batchCopyPreviewModalInstance.show();
+    // 直接發送確認複製 API，免去雙重 Modal 冗餘
+    await confirmBatchCopyRequest();
 }
 
 async function confirmBatchCopyRequest() {
@@ -258,10 +323,12 @@ async function confirmBatchCopyRequest() {
         const currentTeam = AppUtils.getCurrentTeam();
         if (!currentTeam || !currentTeam.id) throw new Error(window.i18n ? window.i18n.t('errors.pleaseSelectTeam', {}, '請先選擇團隊') : '請先選擇團隊');
 
-        const btn = document.getElementById('confirmBatchCopyBtn');
-        const originalHtml = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${window.i18n ? window.i18n.t('messages.saving') : '儲存中...'}`;
+        const btn = document.getElementById('saveBatchCopyBtn');
+        const originalHtml = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${window.i18n ? window.i18n.t('messages.saving', {}, '複製中...') : '複製中...'}`;
+        }
 
         const payload = {
             items: batchCopyItems.map(it => ({
@@ -274,8 +341,6 @@ async function confirmBatchCopyRequest() {
             method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
         });
         const data = await resp.json();
-        // 關閉預覽
-        if (batchCopyPreviewModalInstance) batchCopyPreviewModalInstance.hide();
 
         if (!resp.ok || !data || data.success === false) {
             if (data && Array.isArray(data.duplicates) && data.duplicates.length) {
@@ -283,16 +348,12 @@ async function confirmBatchCopyRequest() {
                 const setDup = new Set(data.duplicates);
                 batchCopyItems.forEach(it => { if (setDup.has(it.new_number)) it.conflict = true; });
                 AppUtils.showError((window.i18n ? window.i18n.t('errors.duplicateExternal', {numbers: data.duplicates.join(', ')}) : `與既有 Case Number 衝突：${data.duplicates.join(', ')}`));
-                // 回到編輯
-                if (batchCopyModalInstance) batchCopyModalInstance.show();
                 renderBatchCopyTable();
                 return;
             }
             const msg = (data && data.errors && data.errors.join('; ')) || resp.statusText ||
-                (window.i18n ? window.i18n.t('messages.createFailed', {}, '建立失敗') : '建立失敗');
+                (window.i18n ? window.i18n.t('messages.createFailed', {}, '複製失敗') : '複製失敗');
             AppUtils.showError(msg);
-            // 回到編輯
-            if (batchCopyModalInstance) batchCopyModalInstance.show();
             return;
         }
 
@@ -315,12 +376,11 @@ async function confirmBatchCopyRequest() {
     } catch (e) {
         console.error('confirmBatchCopyRequest error:', e);
         AppUtils.showError(window.i18n ? window.i18n.t('testCase.batchCopy.failed', {}, '批次複製失敗') : '批次複製失敗');
-        if (batchCopyModalInstance) batchCopyModalInstance.show();
     } finally {
-        const btn = document.getElementById('confirmBatchCopyBtn');
+        const btn = document.getElementById('saveBatchCopyBtn');
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = `<i class="fas fa-check me-2"></i>${window.i18n ? window.i18n.t('common.confirm') : '確認'}`;
+            btn.innerHTML = `<i class="fas fa-check me-2"></i><span data-i18n="testCase.batchCopy.confirmSubmit">${window.i18n ? window.i18n.t('testCase.batchCopy.confirmSubmit', {}, '確認批次複製') : '確認批次複製'}</span>`;
         }
     }
 }

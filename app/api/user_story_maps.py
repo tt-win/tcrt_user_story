@@ -42,6 +42,10 @@ from app.auth.permission_service import permission_service
 from app.models.database_models import User, Team
 from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
 from sqlalchemy import insert
+from app.services.knowledge.hooks import (
+    enqueue_usm_node_sync,
+    enqueue_usm_nodes_bulk,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -850,6 +854,13 @@ async def create_map(
     except Exception as exc:
         logger.warning("寫入 USM 創建審計記錄失敗: %s", exc, exc_info=True)
 
+    # Knowledge graph sync: enqueue the root node.
+    created_node_ids = [
+        n.id for n in create_result["response"].get("nodes", []) if n.id
+    ]
+    if created_node_ids:
+        await enqueue_usm_nodes_bulk(created_node_ids)
+
     return UserStoryMapResponse(**create_result["response"])
 
 
@@ -983,6 +994,19 @@ async def update_map(
     except Exception as exc:
         logger.warning("寫入 USM 更新審計記錄失敗: %s", exc, exc_info=True)
 
+    # Knowledge graph sync: enqueue all affected USM node IDs.
+    # `update_map` does delete-all + reinsert on the NodeDB table, so we
+    # re-sync all node_ids from the resulting `processed_nodes`. Each
+    # node gets an upsert; ids that disappeared between old/new states
+    # are detected by the write service's UUID-based point id (the
+    # Qdrant point id is derived from node_id, so a missing node will
+    # simply have no upsert — no orphan in Qdrant).
+    affected_node_ids = [
+        n.get("id") for n in update_result.get("processed_nodes", []) if n.get("id")
+    ]
+    if affected_node_ids:
+        await enqueue_usm_nodes_bulk(affected_node_ids)
+
     return UserStoryMapResponse(**update_result["response"])
 
 
@@ -1008,6 +1032,9 @@ async def delete_map(
             "map_name": map_db.name,
             "team_id": map_db.team_id,
             "node_count": len(map_db.nodes) if map_db.nodes else 0,
+            "node_ids": [
+                n.get("id") for n in (map_db.nodes or []) if isinstance(n, dict) and n.get("id")
+            ],
         }
 
         await usm_db.execute(
@@ -1044,6 +1071,11 @@ async def delete_map(
         )
     except Exception as exc:
         logger.warning("寫入 USM 刪除審計記錄失敗: %s", exc, exc_info=True)
+
+    # Knowledge graph sync: enqueue delete for every node that was on the map.
+    deleted_node_ids = delete_result.get("node_ids") or []
+    if deleted_node_ids:
+        await enqueue_usm_nodes_bulk(deleted_node_ids, operation="delete")
 
     return {"message": "User Story Map deleted successfully"}
 

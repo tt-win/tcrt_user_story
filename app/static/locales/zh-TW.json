@@ -1652,6 +1652,13 @@
       "apply": "套用",
       "save": "儲存",
       "previewTitle": "確認新增清單",
+      "quickGenerate": "快速批次產生單號規則",
+      "sourceCase": "來源測試案例",
+      "originalTitle": "來源標題",
+      "newNumber": "新測試案例編號",
+      "newTitle": "新測試案例標題",
+      "details": "內容細節",
+      "confirmSubmit": "確認批次複製",
       "prefixHint": "格式：字母數字 + 連字符 + 數字，例如 ABC-12345",
       "middleHint": "三位數 001～999",
       "suffixHint": "從起始值開始，以 10 遞增；最大 990，超出將提示錯誤",
@@ -3734,7 +3741,8 @@
     "workerLabel": "worker {pid}（{instance}）",
     "tabs": {
       "logs": "日誌",
-      "runtimeSettings": "運行設定"
+      "runtimeSettings": "運行設定",
+      "knowledgeGraph": "知識圖譜"
     },
     "settings": {
       "perProcessHint": "僅顯示處理本請求之 worker process 的設定視角，日誌分頁的資料可能來自其他 worker。",
@@ -3774,6 +3782,27 @@
       "subscriberQueueSize": "訂閱 pending 深度",
       "keepaliveSeconds": "Keep-alive 間隔（秒）",
       "streamMaxLifetime": "串流最大生命週期（秒）"
+    },
+    "kg": {
+      "perProcessHint": "僅顯示處理本請求之 worker process 的視角；多 worker 之間可能尚未同步。",
+      "refresh": "重新整理",
+      "loading": "載入中…",
+      "loadError": "載入 Knowledge Graph 狀態失敗，請重試。",
+      "disabled": "Knowledge Graph 未啟用（KNOWLEDGE_GRAPH_ENABLED=false），不顯示狀態。",
+      "status": "狀態",
+      "url": "URL",
+      "uri": "URI",
+      "database": "Database",
+      "collections": "Collections",
+      "sectionQdrant": "Qdrant（向量資料庫）",
+      "sectionNeo4j": "Neo4j（圖形資料庫）",
+      "sectionBackfill": "Backfill（initial bulk load）",
+      "backfillHint": "Backfill 需透過 CLI 啟動（`python -m app.services.knowledge backfill --entity <type>`）；此面板僅顯示目前進度，無法從瀏覽器端直接觸發。",
+      "entityType": "Entity",
+      "processed": "Processed",
+      "lastId": "Last processed id",
+      "updatedAt": "Updated at",
+      "noProgress": "尚無 backfill 紀錄"
     }
   },
   "assistant": {

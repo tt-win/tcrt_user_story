@@ -717,6 +717,116 @@ class ReportsConfig(BaseModel):
         return Path(self.root_dir) if self.root_dir else (base_root / "generated_report")
 
 
+class Neo4jConfig(BaseModel):
+    uri: str = ""
+    username: str = "neo4j"
+    password: str = ""
+    database: str = "neo4j"
+    max_connection_pool_size: int = 50
+    connection_timeout: int = 30
+
+    @classmethod
+    def from_env(cls, fallback: "Neo4jConfig | None" = None) -> "Neo4jConfig":
+        fb = fallback or cls()
+        return cls(
+            uri=os.getenv("NEO4J_URI", fb.uri),
+            username=os.getenv("NEO4J_USERNAME", fb.username),
+            password=os.getenv("NEO4J_PASSWORD", fb.password),
+            database=os.getenv("NEO4J_DATABASE", fb.database),
+            max_connection_pool_size=int(
+                os.getenv("NEO4J_MAX_CONNECTION_POOL_SIZE", str(fb.max_connection_pool_size))
+            ),
+            connection_timeout=int(os.getenv("NEO4J_CONNECTION_TIMEOUT", str(fb.connection_timeout))),
+        )
+
+
+class QdrantConfig(BaseModel):
+    url: str = ""
+    api_key: str = ""
+    timeout: int = 30
+    prefer_grpc: bool = False
+    grpc_use_tls: bool = False
+    grpc_tls_ca_cert: str = ""
+    collection_jira_references: str = "jira_references"
+    collection_test_cases: str = "test_cases"
+    collection_usm_nodes: str = "usm_nodes"
+
+    @classmethod
+    def from_env(cls, fallback: "QdrantConfig | None" = None) -> "QdrantConfig":
+        fb = fallback or cls()
+        return cls(
+            url=os.getenv("QDRANT_URL", fb.url),
+            api_key=os.getenv("QDRANT_API_KEY", fb.api_key),
+            timeout=int(os.getenv("QDRANT_TIMEOUT", str(fb.timeout))),
+            prefer_grpc=os.getenv("QDRANT_PREFER_GRPC", str(fb.prefer_grpc)).lower() == "true",
+            grpc_use_tls=os.getenv("QDRANT_GRPC_USE_TLS", str(fb.grpc_use_tls)).lower() == "true",
+            grpc_tls_ca_cert=os.getenv("QDRANT_GRPC_TLS_CA_CERT", fb.grpc_tls_ca_cert),
+            collection_jira_references=os.getenv(
+                "QDRANT_COLLECTION_JIRA_REFERENCES", fb.collection_jira_references
+            ),
+            collection_test_cases=os.getenv("QDRANT_COLLECTION_TEST_CASES", fb.collection_test_cases),
+            collection_usm_nodes=os.getenv("QDRANT_COLLECTION_USM_NODES", fb.collection_usm_nodes),
+        )
+
+
+class EmbeddingConfig(BaseModel):
+    model: str = ""
+    dimensions: int = 1024
+    provider: str = "openrouter"
+    api_key: str = ""
+    batch_size: int = 100
+    max_tokens_per_text: int = 8000
+    cache_path: str = "/tmp/embedding_cache.db"  # Docker-friendly default; set to "none" to disable
+    base_url: str = ""
+    concurrency: int = 1  # number of in-flight embedding requests (1 = sequential)
+
+    @classmethod
+    def from_env(cls, fallback: "EmbeddingConfig | None" = None) -> "EmbeddingConfig":
+        fb = fallback or cls()
+        return cls(
+            model=os.getenv("EMBEDDING_MODEL", fb.model),
+            dimensions=int(os.getenv("EMBEDDING_DIMENSIONS", str(fb.dimensions))),
+            provider=os.getenv("EMBEDDING_PROVIDER", fb.provider),
+            api_key=os.getenv("EMBEDDING_API_KEY", fb.api_key),
+            batch_size=int(os.getenv("EMBEDDING_BATCH_SIZE", str(fb.batch_size))),
+            max_tokens_per_text=int(
+                os.getenv("EMBEDDING_MAX_TOKENS_PER_TEXT", str(fb.max_tokens_per_text))
+            ),
+            cache_path=os.getenv("EMBEDDING_CACHE_PATH", fb.cache_path),
+            base_url=os.getenv("EMBEDDING_BASE_URL", fb.base_url),
+            concurrency=max(1, int(os.getenv("EMBEDDING_CONCURRENCY", str(fb.concurrency)))),
+        )
+
+
+class KnowledgeGraphConfig(BaseModel):
+    enabled: bool = False
+    neo4j: Neo4jConfig = Neo4jConfig()
+    qdrant: QdrantConfig = QdrantConfig()
+    embedding: EmbeddingConfig = EmbeddingConfig()
+    sync_interval_minutes: int = 30
+    backfill_batch_size: int = 100
+    backfill_progress_path: str = "data/knowledge_backfill_progress.json"
+
+    @classmethod
+    def from_env(cls, fallback: "KnowledgeGraphConfig | None" = None) -> "KnowledgeGraphConfig":
+        fb = fallback or cls()
+        return cls(
+            enabled=os.getenv("KNOWLEDGE_GRAPH_ENABLED", str(fb.enabled)).lower() == "true",
+            neo4j=Neo4jConfig.from_env(fb.neo4j),
+            qdrant=QdrantConfig.from_env(fb.qdrant),
+            embedding=EmbeddingConfig.from_env(fb.embedding),
+            sync_interval_minutes=int(
+                os.getenv("KNOWLEDGE_SYNC_INTERVAL_MINUTES", str(fb.sync_interval_minutes))
+            ),
+            backfill_batch_size=int(
+                os.getenv("KNOWLEDGE_BACKFILL_BATCH_SIZE", str(fb.backfill_batch_size))
+            ),
+            backfill_progress_path=os.getenv(
+                "KNOWLEDGE_BACKFILL_PROGRESS_PATH", fb.backfill_progress_path
+            ),
+        )
+
+
 class LogViewerConfig(BaseModel):
     """Super Admin 系統 log viewer 設定（全部為 per-worker 容量）"""
 
@@ -791,6 +901,7 @@ class Settings(BaseModel):
     audit: AuditConfig = AuditConfig()
     usm: UsmConfig = UsmConfig()
     log_viewer: LogViewerConfig = LogViewerConfig()
+    knowledge_graph: KnowledgeGraphConfig = KnowledgeGraphConfig()
 
     @classmethod
     def from_env_and_file(cls, config_path: str = "config.yaml") -> "Settings":
@@ -799,6 +910,16 @@ class Settings(BaseModel):
         if os.path.exists(config_path):
             with open(config_path, "r", encoding="utf-8") as file:
                 config_data = yaml.safe_load(file) or {}
+            # Skip-block: 若 knowledge_graph 未啟用，整段不展開 placeholder
+            kg_enabled_raw = os.getenv("KNOWLEDGE_GRAPH_ENABLED")
+            if kg_enabled_raw is not None:
+                kg_enabled = kg_enabled_raw.strip().lower() in {"1", "true", "yes", "on"}
+            else:
+                kg_block = (config_data or {}).get("knowledge_graph") or {}
+                kg_enabled = bool(kg_block.get("enabled", False))
+            if not kg_enabled and "knowledge_graph" in (config_data or {}):
+                config_data = {**config_data}
+                config_data["knowledge_graph"] = {}
             config_data = _expand_env_placeholders(config_data)
             base_settings = cls(**config_data)
         else:
@@ -818,6 +939,7 @@ class Settings(BaseModel):
             audit=AuditConfig.from_env(base_settings.audit),
             usm=UsmConfig.from_env(base_settings.usm),
             log_viewer=LogViewerConfig.from_env(base_settings.log_viewer),
+            knowledge_graph=KnowledgeGraphConfig.from_env(base_settings.knowledge_graph),
         )
         _warn_container_runtime_configuration(loaded)
         _fail_fast_if_sqlite_without_volume_ack(loaded)

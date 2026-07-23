@@ -154,11 +154,13 @@ from app.api import api_router
 from app.api.system import router as system_router
 from app.api.user_story_maps import router as usm_router
 from app.api.adhoc import router as adhoc_router
+from app.api.knowledge import router as knowledge_router
 
 app.include_router(api_router, prefix="/api")
 app.include_router(system_router)
 app.include_router(usm_router, prefix="/api")
 app.include_router(adhoc_router, prefix="/api")
+app.include_router(knowledge_router)
 
 
 # 前端頁面路由
@@ -483,8 +485,23 @@ async def _run_startup():
         # 背景服務（排程器 + automation ticker）僅由單一 leader 行程執行，
         # 使 web 層可多 worker / 多副本而不重複扇出。
         await _try_become_leader_and_start_background()
+
+        # Knowledge graph sync workers — fired on every replica (no
+        # leader election) so the user-facing latency for an upsert
+        # never depends on which worker handled the API request.
+        await _start_knowledge_graph_sync_workers()
     except Exception as e:
         logging.error(f"啟動服務失敗: {e}")
+
+
+async def _start_knowledge_graph_sync_workers() -> None:
+    """Start the in-memory knowledge graph sync task queue (no-op if disabled)."""
+    try:
+        from app.services.knowledge.hooks import start_sync_workers
+
+        await start_sync_workers()
+    except Exception as e:  # noqa: BLE001
+        logging.error("啟動 Knowledge Graph sync workers 失敗: %s", e)
 
 
 async def _run_shutdown():
@@ -525,6 +542,13 @@ async def _run_shutdown():
             logging.info("Assistant 背景維護 ticker 已停止")
     except Exception as e:  # noqa: BLE001
         logging.error(f"停止 Assistant 背景維護 ticker 失敗: {e}")
+
+    try:
+        from app.services.knowledge.hooks import stop_sync_workers
+
+        await stop_sync_workers()
+    except Exception as e:  # noqa: BLE001
+        logging.error("停止 Knowledge Graph sync workers 失敗: %s", e)
 
     try:
         await audit_service.force_flush()

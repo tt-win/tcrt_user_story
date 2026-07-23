@@ -1645,13 +1645,20 @@
     "validationFailed": "验证失败",
     "viewTestCase": "查看测试案例",
     "batchCopy": {
-      "title": "批次复制",
+      "title": "批量复制",
       "applyPrefix": "替换主单号（Prefix）",
       "applyMiddle": "替换中间号（Middle Code）",
       "applySuffixStart": "替换末尾单号（起始）",
       "apply": "套用",
       "save": "保存",
       "previewTitle": "确认新增列表",
+      "quickGenerate": "快速批量生成单号规则",
+      "sourceCase": "来源测试案例",
+      "originalTitle": "来源标题",
+      "newNumber": "新测试案例编号",
+      "newTitle": "新测试案例标题",
+      "details": "内容细节",
+      "confirmSubmit": "确认批量复制",
       "prefixHint": "格式：字母数字 + 连字符 + 数字，例如 ABC-12345",
       "middleHint": "三位数 001～999",
       "suffixHint": "从起始值开始，以 10 递增；最大 990，超出将提示错误",
@@ -3734,7 +3741,8 @@
     "workerLabel": "worker {pid}（{instance}）",
     "tabs": {
       "logs": "日志",
-      "runtimeSettings": "运行设置"
+      "runtimeSettings": "运行设置",
+      "knowledgeGraph": "知识图谱"
     },
     "settings": {
       "perProcessHint": "仅显示处理本请求的 worker 进程的设置视角，日志分页的数据可能来自其他 worker。",
@@ -3774,6 +3782,27 @@
       "subscriberQueueSize": "订阅 pending 深度",
       "keepaliveSeconds": "Keep-alive 间隔（秒）",
       "streamMaxLifetime": "流最大生命周期（秒）"
+    },
+    "kg": {
+      "perProcessHint": "仅显示处理本请求的 worker 进程的视角；多个 worker 之间可能尚未同步。",
+      "refresh": "刷新",
+      "loading": "加载中…",
+      "loadError": "加载知识图谱状态失败，请重试。",
+      "disabled": "知识图谱未启用（KNOWLEDGE_GRAPH_ENABLED=false），不显示状态。",
+      "status": "状态",
+      "url": "URL",
+      "uri": "URI",
+      "database": "Database",
+      "collections": "Collections",
+      "sectionQdrant": "Qdrant（向量数据库）",
+      "sectionNeo4j": "Neo4j（图数据库）",
+      "sectionBackfill": "Backfill（initial bulk load）",
+      "backfillHint": "Backfill 需要通过 CLI 启动（`python -m app.services.knowledge backfill --entity <type>`）；此面板仅显示当前进度，无法从浏览器端直接触发。",
+      "entityType": "Entity",
+      "processed": "Processed",
+      "lastId": "Last processed id",
+      "updatedAt": "Updated at",
+      "noProgress": "暂无 backfill 记录"
     }
   },
   "assistant": {
