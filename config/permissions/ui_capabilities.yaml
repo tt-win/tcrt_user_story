@@ -28,9 +28,9 @@ pages:
       pm-btn-reset:     { feature: user_management, action: reset_password }
       pm-role-select:   { feature: user_management, action: change_role }
       pm-active-toggle: { feature: user_management, action: toggle_active }
-      # AI 助手設定入口（原掛在 team_management 的「數據與記錄」選單，
-      # 隨助手設定改掛載於組織與系統設定頁面而搬移至此）
-      assistantAdminLink: { feature: organization_management, action: manage }
+      # AI 助手設定分頁（原掛在 team_management 的「數據與記錄」選單，後改為
+      # organization-management 頁面的獨立連結，現改為與其餘分頁同層級的第 6 個分頁）
+      tab-assistant-admin: { feature: organization_management, action: manage }
 
   team_management:
     components:
