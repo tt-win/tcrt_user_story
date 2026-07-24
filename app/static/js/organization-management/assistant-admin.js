@@ -240,7 +240,7 @@
     document.getElementById('aaSkillSort').value = s.sort_order != null ? s.sort_order : 0;
     document.getElementById('aaSkillEnabled').checked = s.is_enabled !== false;
     document.getElementById('aaSkillReset').classList.toggle('d-none', isNew || !s.is_builtin);
-    document.getElementById('aaSkillDelete').classList.toggle('d-none', isNew || !!s.is_builtin);
+    document.getElementById('aaSkillDelete').classList.toggle('d-none', isNew);
     document.getElementById('aaSkillEditorTitle').textContent = isNew
       ? t('assistantAdmin.newSkill', 'New skill')
       : t('assistantAdmin.editSkill', 'Edit skill') + ': ' + (s.skill_id || '');
@@ -479,9 +479,23 @@
   }
 
   async function deleteSkill() {
-    if (!state.editingId || state.isBuiltin) return;
-    if (!window.confirm(t('assistantAdmin.confirmDelete', 'Delete skill') + ' ' + state.editingId + '?')) {
-      return;
+    if (!state.editingId) return;
+    const isBuiltin = !!state.isBuiltin;
+    const firstConfirm = window.confirm(
+      t('assistantAdmin.confirmDelete', 'Delete skill') + ' ' + state.editingId + '?'
+    );
+    if (!firstConfirm) return;
+    // Builtin skills can be re-inserted by the "Restore factory
+    // (overwrite builtins)" action, but the user must acknowledge the
+    // distinction before we send the request.
+    if (isBuiltin) {
+      const secondConfirm = window.confirm(
+        t(
+          'assistantAdmin.confirmDeleteBuiltin',
+          'This is a builtin skill. It will be removed from the database until the next "Restore factory (overwrite builtins)" re-inserts it. Continue?'
+        )
+      );
+      if (!secondConfirm) return;
     }
     try {
       const resp = await authFetch(
@@ -498,6 +512,7 @@
       showEditor(false);
       setBanner(t('assistantAdmin.deleted', 'Deleted') + ': ' + state.editingId, false);
       state.editingId = null;
+      state.isBuiltin = false;
       await loadSkills();
     } catch (e) {
       setBanner(String(e.message || e), true);

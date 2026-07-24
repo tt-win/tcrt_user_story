@@ -605,6 +605,14 @@ async def update_skill(
 
 
 async def delete_skill(boundary: MainAccessBoundary, skill_id: str) -> None:
+    """Permanently delete a skill row (custom or builtin).
+
+    Builtin skills CAN be deleted — the caller is Super Admin and the
+    UI is expected to show a strong confirmation. On the next
+    ``restore(overwrite-builtins)`` a deleted builtin row is re-inserted
+    by :func:`restore`, so the deletion is reversible via the factory
+    restore flow.
+    """
     async def _op(session: AsyncSession) -> None:
         result = await session.execute(
             select(AssistantSkillRow).where(AssistantSkillRow.skill_id == skill_id).limit(1)
@@ -612,8 +620,6 @@ async def delete_skill(boundary: MainAccessBoundary, skill_id: str) -> None:
         row = result.scalar_one_or_none()
         if row is None:
             raise ContentStoreError("not_found", "skill not found")
-        if row.is_builtin:
-            raise ContentStoreError("builtin_delete_forbidden", "builtin skills cannot be deleted; disable or reset")
         await session.delete(row)
 
     await boundary.run_write(_op)

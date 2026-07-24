@@ -158,14 +158,30 @@ def test_non_super_admin_forbidden(content_env):
     ).status_code == 403
 
 
-def test_builtin_delete_forbidden_and_custom_crud(content_env):
+def test_builtin_delete_allowed_and_custom_crud(content_env):
     content_env["set_user"](UserRole.SUPER_ADMIN, content_env["super_id"])
     client = TestClient(app)
     # seed
     assert client.get("/api/admin/assistant/skills").status_code == 200
 
-    bad = client.delete("/api/admin/assistant/skills/assign-run-items-by-case-prefix")
-    assert bad.status_code == 409
+    # Builtin skills CAN be deleted from the database. The UI gates this with
+    # a second confirmation, but the API itself permits it: Super Admin is
+    # trusted to understand the consequence (next overwrite-builtins restore
+    # re-inserts the row).
+    deleted_builtin = client.delete("/api/admin/assistant/skills/assign-run-items-by-case-prefix")
+    assert deleted_builtin.status_code == 200, deleted_builtin.text
+    body = deleted_builtin.json()
+    assert body.get("ok") is True
+    assert body.get("was_builtin") is True
+    assert body.get("skill_id") == "assign-run-items-by-case-prefix"
+
+    # Re-seed for downstream tests (the row must come back via the
+    # overwrite-builtins restore path).
+    restore = client.post(
+        "/api/admin/assistant/restore",
+        json={"mode": "overwrite-builtins", "confirm": True},
+    )
+    assert restore.status_code == 200, restore.text
 
     created = client.post(
         "/api/admin/assistant/skills",

@@ -3980,7 +3980,13 @@
     "thinkingReviewing": "Reviewing results…",
     "thinkingAlmost": "Almost there…",
     "thinkingStarting": "Thinking…",
-    "thinkingRunningTool": "Running: {tool}"
+    "thinkingRunningTool": "Running: {tool}",
+    "code": {
+      "copy": "Copy",
+      "copyTitle": "Copy code",
+      "copied": "Copied",
+      "copyFailed": "Copy failed"
+    }
   },
   "assistantAdmin": {
     "tabTitle": "AI Assistant Settings",
@@ -4008,6 +4014,7 @@
     "triggersLabel": "Triggers (comma-separated)",
     "bodyLabel": "Body (Markdown)",
     "confirmOverwrite": "Overwrite System Prompt and all builtin skill bodies from factory? Enabled flags are kept. Custom skills are not deleted.",
+    "confirmDeleteBuiltin": "This is a builtin skill. It will be removed from the database until the next \"Restore factory (overwrite builtins)\" re-inserts it. Continue?",
     "loadFailed": "Load failed"
   }
 }

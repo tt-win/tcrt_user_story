@@ -51,7 +51,6 @@ class RestoreBody(BaseModel):
 def _http_from_store(exc: store.ContentStoreError) -> HTTPException:
     code_map = {
         "prompt_stale": 409,
-        "builtin_delete_forbidden": 409,
         "skill_exists": 409,
         "not_found": 404,
         "confirm_required": 400,
@@ -264,6 +263,10 @@ async def delete_skill(
     current_user: User = Depends(require_super_admin()),
     boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
+    # Capture was_builtin BEFORE deletion so audit reflects what was removed;
+    # the store call is the only path that mutates the row.
+    was_builtin = await store.get_skill_admin(boundary, skill_id)
+    is_builtin_flag = bool(was_builtin.get("is_builtin")) if was_builtin else False
     try:
         await store.delete_skill(boundary, skill_id)
     except store.ContentStoreError as exc:
@@ -273,11 +276,18 @@ async def delete_skill(
         user=current_user,
         action_type=ActionType.DELETE,
         resource_id=f"assistant-skill:{skill_id}",
-        brief=f"Deleted assistant skill {skill_id}",
-        details={"skill_id": skill_id},
+        brief=(
+            f"Deleted {'builtin' if is_builtin_flag else 'custom'} assistant skill {skill_id}"
+            + (" (factory restore will re-insert)" if is_builtin_flag else "")
+        ),
+        details={
+            "skill_id": skill_id,
+            "was_builtin": is_builtin_flag,
+            "reversible_via": "overwrite-builtins restore" if is_builtin_flag else None,
+        },
         severity=AuditSeverity.WARNING,
     )
-    return {"ok": True, "skill_id": skill_id}
+    return {"ok": True, "skill_id": skill_id, "was_builtin": is_builtin_flag}
 
 
 @router.post("/skills/{skill_id}/reset")

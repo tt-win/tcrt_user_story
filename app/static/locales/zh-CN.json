@@ -3980,7 +3980,13 @@
     "thinkingReviewing": "整理工具结果…",
     "thinkingAlmost": "即将完成…",
     "thinkingStarting": "思考中…",
-    "thinkingRunningTool": "执行中：{tool}"
+    "thinkingRunningTool": "执行中：{tool}",
+    "code": {
+      "copy": "复制",
+      "copyTitle": "复制代码",
+      "copied": "已复制",
+      "copyFailed": "复制失败"
+    }
   },
   "assistantAdmin": {
     "tabTitle": "AI 助手设置",
@@ -4008,6 +4014,7 @@
     "triggersLabel": "触发词（逗号分隔）",
     "bodyLabel": "内容（Markdown）",
     "confirmOverwrite": "要以原厂设置覆盖 System Prompt 与所有内置 Skill 内容吗？会保留启用状态，不会删除自定义 Skill。",
+    "confirmDeleteBuiltin": "这是内置 Skill，删除后下次执行「还原原厂设置（覆盖内置 Skill）」会自动重新加入。确定要删除吗？",
     "loadFailed": "加载失败"
   }
 }

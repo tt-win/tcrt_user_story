@@ -504,6 +504,96 @@ const AssistantWidget = (() => {
     return `<p>${_assistantEscapeHtml(rawText || '').replace(/\n/g, '<br>')}</p>`;
   }
 
+  /**
+   * Wrap every <pre> block in a positioned container and attach a "Copy" button
+   * (Slack/Notion-style: button sits in the top-right corner of the box, code
+   * itself is unchanged). Triggered after both the initial render and the
+   * post-lib-load re-render.
+   *
+   * The button reads `<pre><code>` text content (not the HTML), strips a
+   * trailing newline that marked.js leaves behind, and uses
+   * navigator.clipboard.writeText when available, falling back to a hidden
+   * textarea + execCommand for older / insecure-context browsers.
+   */
+  function decorateCodeBlocks(scope) {
+    if (!scope || typeof scope.querySelectorAll !== 'function') return;
+    const pres = scope.querySelectorAll('pre');
+    if (!pres.length) return;
+    for (const pre of pres) {
+      if (pre.closest && pre.closest('.tcrt-assistant-code-wrap')) continue;
+      const wrap = el('<div class="tcrt-assistant-code-wrap"></div>');
+      const btn = el(
+        '<button type="button" class="tcrt-assistant-code-copy-btn"' +
+          ' data-i18n-title="assistant.code.copyTitle"' +
+          ' data-i18n-aria-label="assistant.code.copyTitle"' +
+          ' aria-label="Copy code"></button>'
+      );
+      btn.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">' +
+        '<rect x="9" y="9" width="11" height="11" rx="2" ry="2"></rect>' +
+        '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>' +
+        '</svg>';
+      const labelDefault = t('assistant.code.copy', {}, 'Copy');
+      btn.appendChild(document.createTextNode(labelDefault));
+      btn.addEventListener('click', async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const code = pre.querySelector('code');
+        const text = ((code ? code.textContent : pre.textContent) || '').replace(/\n$/, '');
+        const ok = await copyTextToClipboard(text);
+        flashCopyState(btn, ok);
+      });
+      pre.parentNode && pre.parentNode.insertBefore(wrap, pre);
+      wrap.appendChild(pre);
+      wrap.appendChild(btn);
+      if (window.i18n && typeof window.i18n.retranslate === 'function') {
+        window.i18n.retranslate(wrap);
+      }
+    }
+  }
+
+  function flashCopyState(btn, ok) {
+    const okKey = 'assistant.code.copied';
+    const failKey = 'assistant.code.copyFailed';
+    const key = ok ? okKey : failKey;
+    const fallback = ok ? 'Copied' : 'Copy failed';
+    const original = btn.textContent;
+    btn.textContent = t(key, {}, fallback);
+    btn.classList.add(ok ? 'is-success' : 'is-error');
+    setTimeout(() => {
+      btn.textContent = t('assistant.code.copy', {}, 'Copy');
+      btn.classList.remove('is-success', 'is-error');
+      // suppress unused-original warning while keeping the var for parity
+      void original;
+    }, 1500);
+  }
+
+  async function copyTextToClipboard(text) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (e) {
+        // fall through to legacy path
+      }
+    }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      ta.style.pointerEvents = 'none';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand && document.execCommand('copy');
+      document.body.removeChild(ta);
+      return !!ok;
+    } catch (e) {
+      return false;
+    }
+  }
+
   /* ---------------- DOM 建構 ---------------- */
 
   function scrollToBottom() {
@@ -964,11 +1054,13 @@ const AssistantWidget = (() => {
     if (typing) typing.remove();
     const textWrap = el('<div class="tcrt-assistant-text"></div>');
     textWrap.innerHTML = renderMarkdown(text);
+    decorateCodeBlocks(textWrap);
     bubble.appendChild(textWrap);
     scrollToBottom();
     void ensureMarkdownLibs().then(() => {
       if (mdLibsReady && textWrap.isConnected) {
         textWrap.innerHTML = renderMarkdown(text);
+        decorateCodeBlocks(textWrap);
       }
     });
   }

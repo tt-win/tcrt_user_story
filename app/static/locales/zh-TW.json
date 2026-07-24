@@ -3980,7 +3980,13 @@
     "thinkingReviewing": "整理工具結果…",
     "thinkingAlmost": "即將完成…",
     "thinkingStarting": "思考中…",
-    "thinkingRunningTool": "執行中：{tool}"
+    "thinkingRunningTool": "執行中：{tool}",
+    "code": {
+      "copy": "複製",
+      "copyTitle": "複製程式碼",
+      "copied": "已複製",
+      "copyFailed": "複製失敗"
+    }
   },
   "assistantAdmin": {
     "tabTitle": "AI 助手設定",
@@ -4008,6 +4014,7 @@
     "triggersLabel": "觸發詞（逗號分隔）",
     "bodyLabel": "內容（Markdown）",
     "confirmOverwrite": "要以原廠設定覆寫 System Prompt 與所有內建 Skill 內容嗎？會保留啟用狀態，不會刪除自訂 Skill。",
+    "confirmDeleteBuiltin": "這是內建 Skill，刪除後下次執行「還原原廠設定（覆寫內建 Skill）」會自動重新加入。確定要刪除嗎？",
     "loadFailed": "載入失敗"
   }
 }

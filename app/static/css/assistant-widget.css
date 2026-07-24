@@ -349,6 +349,73 @@
 .tcrt-assistant-bubble p { margin: 0 0 6px; }
 .tcrt-assistant-bubble p:last-child { margin-bottom: 0; }
 .tcrt-assistant-bubble ul { margin: 4px 0; padding-left: 18px; }
+/* Markdown fenced code blocks: bordered box (Slack/Notion style) with a
+   one-click copy button anchored in the top-right corner. The button
+   does not alter <pre>/<code> content; it's a sibling of <pre>. */
+.tcrt-assistant-code-wrap {
+  position: relative;
+  margin: 6px 0;
+}
+.tcrt-assistant-bubble pre {
+  background: var(--tr-bg-sidebar);
+  border: 1px solid var(--tr-border-light);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  overflow-x: auto;
+  white-space: pre;
+  word-break: normal;
+  color: var(--tr-text-primary, inherit);
+}
+.tcrt-assistant-bubble pre code {
+  background: transparent;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+.tcrt-assistant-code-copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  background: var(--tr-bg-card, #fff);
+  color: var(--tr-text-secondary, #555);
+  border: 1px solid var(--tr-border-light);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity .15s ease, background .15s ease, color .15s ease;
+}
+.tcrt-assistant-code-wrap:hover .tcrt-assistant-code-copy-btn,
+.tcrt-assistant-code-copy-btn:focus {
+  opacity: 1;
+}
+.tcrt-assistant-code-copy-btn:hover {
+  background: var(--tr-bg-sidebar);
+  color: var(--tr-text-primary, #222);
+}
+.tcrt-assistant-code-copy-btn svg {
+  width: 12px;
+  height: 12px;
+}
+.tcrt-assistant-code-copy-btn.is-success {
+  color: var(--tr-success, #198754);
+  border-color: var(--tr-success, #198754);
+  opacity: 1;
+}
+.tcrt-assistant-code-copy-btn.is-error {
+  color: var(--tr-danger, #dc3545);
+  border-color: var(--tr-danger, #dc3545);
+  opacity: 1;
+}
 .tcrt-assistant-table-wrap { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 6px 0; }
 .tcrt-assistant-bubble table {
   border-collapse: collapse;
