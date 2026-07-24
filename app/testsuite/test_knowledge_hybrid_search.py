@@ -208,3 +208,49 @@ async def test_search_options_defaults() -> None:
     assert opts.team_id is None
     assert opts.include_graph_expansion is True
     assert "test_cases" in opts.collections
+
+
+@pytest.mark.asyncio
+async def test_graph_expansion_timeout_fallback(
+    search_service: HybridSearchService, fake_qdrant: FakeQdrantSearch, fake_neo4j: FakeNeo4j
+) -> None:
+    import asyncio
+
+    fake_qdrant.search_results = {
+        "test_cases": [
+            {"id": "p1", "score": 0.9, "payload": {"test_case_number": "TCG-001", "title": "Slow Test"}},
+        ],
+    }
+
+    async def slow_execute_read(cypher: str, parameters: dict | None = None) -> list[dict]:
+        await asyncio.sleep(0.3)  # exceed 150ms timeout
+        return [{"rel": "DERIVED_FROM", "other": {"ticket_key": "TCG-999"}}]
+
+    fake_neo4j.execute_read = slow_execute_read  # type: ignore[assignment]
+
+    results = await search_service.hybrid_search("slow test")
+    assert len(results) == 1
+    assert results[0].source == "semantic"  # fallback to semantic when timed out
+
+
+@pytest.mark.asyncio
+async def test_fetch_related_supports_key_and_node_id(
+    search_service: HybridSearchService, fake_neo4j: FakeNeo4j
+) -> None:
+    queries_run: list[str] = []
+
+    async def mock_execute_read(cypher: str, parameters: dict | None = None) -> list[dict]:
+        queries_run.append(cypher)
+        if "USMNode" in cypher:
+            return [{"rel": "PARENT_OF", "other": {"node_id": "usm_child_1", "title": "Child"}}]
+        return []
+
+    fake_neo4j.execute_read = mock_execute_read  # type: ignore[assignment]
+
+    related = await search_service._fetch_related("usm_node", "usm_parent_1", depth=1)
+    assert len(related) == 1
+    assert related[0].entity_type == "usm_node"
+    assert related[0].entity_id == "usm_child_1"
+    assert related[0].relationship == "PARENT_OF"
+    assert any("u.node_id = $id OR u.id = $id" in q for q in queries_run)
+

@@ -94,6 +94,8 @@ def _row_to_usm_node_dict(
         "node_type": row.node_type,
         "map_id": row.map_id,
         "map_name": map_name or "",
+        "parent_id": row.parent_id or "",
+        "level": row.level or 0,
         "as_a": row.as_a or "",
         "i_want": row.i_want or "",
         "so_that": row.so_that or "",

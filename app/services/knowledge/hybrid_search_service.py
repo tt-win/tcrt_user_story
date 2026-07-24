@@ -95,7 +95,13 @@ class HybridSearchService:
         # Step 3: optional graph expansion
         if opts.include_graph_expansion and semantic_results and self._neo4j_configured():
             try:
-                await self._expand_with_graph(semantic_results, opts.graph_depth)
+                import asyncio
+                await asyncio.wait_for(
+                    self._expand_with_graph(semantic_results, opts.graph_depth),
+                    timeout=0.15,
+                )
+            except asyncio.TimeoutError:
+                LOGGER.warning("Graph expansion timed out (>150ms), proceeding with semantic results")
             except Exception as exc:  # noqa: BLE001
                 LOGGER.warning("Graph expansion failed: %s", exc)
 
@@ -134,7 +140,8 @@ class HybridSearchService:
         if not self._neo4j_configured():
             return empty
         cypher = """
-        MATCH (t:JiraTicket {ticket_key: $key})
+        MATCH (t:JiraTicket)
+        WHERE t.ticket_key = $key OR t.key = $key
         OPTIONAL MATCH (t)-[:DESCRIBES]->(f:Feature)
         OPTIONAL MATCH (f)<-[:TESTS]-(existing_tc:TestCase)
         OPTIONAL MATCH (t)-[:BLOCKS|RELATES_TO]-(related:JiraTicket)
@@ -229,22 +236,25 @@ class HybridSearchService:
     ) -> list[RelatedEntity]:
         if entity_type == "jira_ticket":
             cypher = """
-            MATCH (t:JiraTicket {ticket_key: $id})
-            OPTIONAL MATCH (t)-[r:BLOCKS|RELATES_TO|HAS_SUBTASK|EPIC_CONTAINS|DESCRIBES]-(other)
+            MATCH (t:JiraTicket)
+            WHERE t.ticket_key = $id OR t.key = $id
+            OPTIONAL MATCH (t)-[r:BLOCKS|RELATES_TO|HAS_SUBTASK|EPIC_CONTAINS|DESCRIBES|OWNS]-(other)
             RETURN type(r) as rel, other
             LIMIT 20
             """
         elif entity_type == "test_case":
             cypher = """
-            MATCH (tc:TestCase {test_case_number: $id})
-            OPTIONAL MATCH (tc)-[r:DERIVED_FROM|TESTS|DEPENDS_ON]-(other)
+            MATCH (tc:TestCase)
+            WHERE tc.test_case_number = $id OR tc.id = $id OR tc.id = toInteger($id)
+            OPTIONAL MATCH (tc)-[r:DERIVED_FROM|TESTS|DEPENDS_ON|CONTAINS_TC]-(other)
             RETURN type(r) as rel, other
             LIMIT 20
             """
         elif entity_type == "usm_node":
             cypher = """
-            MATCH (u:USMNode {node_id: $id})
-            OPTIONAL MATCH (u)-[r:PARENT_OF|REFERENCES|MAPS_TO|RELATED_TO]-(other)
+            MATCH (u:USMNode)
+            WHERE u.node_id = $id OR u.id = $id
+            OPTIONAL MATCH (u)-[r:PARENT_OF|REFERENCES|MAPS_TO|RELATED_TO|HAS_NODE]-(other)
             RETURN type(r) as rel, other
             LIMIT 20
             """
@@ -276,9 +286,9 @@ class HybridSearchService:
     @staticmethod
     def _node_to_entity_type(node: Any) -> str:
         # node is a dict; check for type markers in payload
-        if "ticket_key" in node:
+        if "ticket_key" in node or "key" in node:
             return "jira_ticket"
-        if "test_case_number" in node:
+        if "test_case_number" in node or "test_case_id" in node:
             return "test_case"
         if "node_id" in node:
             return "usm_node"
@@ -288,7 +298,7 @@ class HybridSearchService:
 
     @staticmethod
     def _node_to_entity_id(node: Any) -> str:
-        for key in ("ticket_key", "test_case_number", "node_id", "feature_id"):
+        for key in ("ticket_key", "key", "test_case_number", "id", "node_id", "feature_id"):
             if key in node:
                 return str(node[key])
         return ""
