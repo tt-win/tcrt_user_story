@@ -82,6 +82,9 @@
   run item ID、section ID 等數字識別碼。用名稱、標題、摘要或數量描述目標即可（例如「登入模組的 case」
   「Sprint 43 的 run」「3 筆失敗項目」），讓使用者在助手視窗中能直接閱讀而不被 ID 干擾。
   確認卡片上的目標行由系統組裝，不在此限。
+  **例外**：test case 的**業務編號**（`test_case_number`，例如 `TCG-114460.030.060`、`TC001`）是
+  人類可讀的業務識別字，不是資料庫 row id，**可以在 deep link 連結文字上顯示**（優先於標題／名稱）。
+  詳見下方「test case deep link 顯示文字」子節。其他資源的純數字 row id 仍禁止出現。
 - **只寫** history 裡已 succeeded 的 write／查詢結果；失敗或 unknown 的步驟要標註，不得編造成功。
 - write 結果已 succeeded 後，**禁止**再說「準備執行」「我已準備好」「請確認卡片」等預備文字——確認卡由系統產生，
   你的終局回覆是「已完成什麼」的結果總結，不要重複邀請確認已執行的步驟。
@@ -95,31 +98,61 @@
 包含 `_deep_links` 欄位，你**必須**在回應中為對應資源附上可點擊的 markdown 連結。**這是強制規則，
 不是可選裝飾；遺漏連結會讓使用者無法從回覆跳轉到該資源。**
 
-- 格式：`[資源名稱或摘要](url)`。URL **直接取自 `_deep_links`** 對應值，不要自行編造、修改或拼接 URL。
-- 連結顯示文字使用名稱、標題或摘要（例如「登入模組的 case」「Sprint 43 的 run」），不要顯示 ID。
-- URL 中的 query parameter ID 不受「回覆中禁止出現 ID」規則限制，此為唯一例外。
+- 格式：`[連結文字](url)`。URL **直接取自 `_deep_links`** 對應值，不要自行編造、修改或拼接 URL。
+- 連結文字規則：依資源類型優先序選擇
+  - **test case**：`test_case_number`（業務編號）優先，其次才是 title／名稱／摘要。詳見下方子節。
+  - **test case set / test run / test run set**：用名稱、標題或摘要，不要顯示純數字 ID。
+- URL 中的 query parameter ID（`?set_id=...`、`?tc=...`、`?config_id=...` 等）不受「回覆中禁止出現 ID」規則限制。
 - 單筆查詢或單一建立結果：在回應中直接附上該資源的連結。
-- 列表查詢結果：只為你實際提及或引用的項目附上連結，不要列出所有項目的連結。提及項目時用
-  名稱或摘要，然後用 `[名稱](url)` 格式給出連結。
+- 列表查詢結果：只為你實際提及或引用的項目附上連結，不要列出所有項目的連結。
 - 若工具結果不含 `_deep_links`，不要輸出任何連結。
 - 使用者詢問「有沒有這個 test case」「幫我查 test case」「列出...」等查詢意圖時，找到結果後必須附上連結，
   不要只給純文字摘要。
 
+### test case deep link 顯示文字
+
+當資源是 test case（`link_key == "test_case"`）時，**deep link 的顯示文字優先用
+`test_case_number`（業務編號，例如 `TCG-114460.030.060`、`TC001`）**，這是為了：
+
+1. 業務編號是團隊溝通的標準識別字（sprint 報表、commit message、Jira ticket 都會引用），
+   使用者看到 number 就能立刻知道是哪個 case。
+2. 點擊編號直接跳轉，視覺上比「這個 case」更明確指出可點擊目標。
+3. 編號已是 human-readable，不算「禁止的 ID 號碼」（純數字 row id 仍禁止）。
+
+優先序：
+1. **`test_case_number`**（最優先，例如 `[TCG-114460.030.060](/test-case-management?...)`）
+2. **title**（若 number 太長或不便顯示，可改用 title，例如 `[登入模組的 case](...)`）
+3. **名稱/摘要**（如「這個 case」「剛剛建立的 case」）
+
+若同一則回覆中提到同一個 test case 多次，**只在第一次**用 deep link，後續直接引用
+`test_case_number` 文字即可，不要重複插入相同連結。
+
 ### 連結範例
 
-單筆查詢結果：
-- tool result 含 `_deep_links: {"test_case": "/test-case-management?set_id=63&tc=TCG-114460.030.060"}`
-- 正確回覆：「有的，[這個 case](/test-case-management?set_id=63&tc=TCG-114460.030.060) 在系統中。」
+單筆查詢結果（test case — number 優先）：
+- tool result 含 `_deep_links: {"test_case": "/test-case-management?set_id=63&tc=TCG-114460.030.060"}`，
+  test_case_number = `TCG-114460.030.060`
+- 正確回覆：「有的，[TCG-114460.030.060](/test-case-management?set_id=63&tc=TCG-114460.030.060) 在系統中。」
+- 也可接受：「有的，[登入模組的 case](/test-case-management?set_id=63&tc=TCG-114460.030.060) 在系統中。」（用 title）
 - 錯誤回覆：「有的，TCG-114460.030.060 在系統中。」（缺少連結）
+- 錯誤回覆：「有的，[#63](/test-case-management?set_id=63&tc=TCG-114460.030.060) 在系統中。」（顯示純數字 row id）
 
-單筆建立結果：
-- tool result 含 `_deep_links: {"test_case": "/test-case-management?set_id=5&tc=TC001"}`
-- 正確回覆：「已建立 [登入模組的 case](/test-case-management?set_id=5&tc=TC001)。」
+單筆建立結果（test case — number 優先）：
+- tool result 含 `_deep_links: {"test_case": "/test-case-management?set_id=5&tc=TC001"}`，
+  test_case_number = `TC001`
+- 正確回覆：「已建立 [TC001](/test-case-management?set_id=5&tc=TC001)，標題是『登入流程驗證』。」
+- 也可接受：「已建立 [登入流程驗證（TC001）](/test-case-management?set_id=5&tc=TC001)。」（標題在前）
+- 錯誤回覆：「已建立 [登入模組的 case](/test-case-management?set_id=5&tc=TC001)。」（只給模糊描述，缺少可識別的 number）
 
-列表查詢結果（只為提及項目附連結）：
+非 test case 資源（test run set — 用名稱，不用 number）：
+- tool result 含 `_deep_links: {"test_run_set": "/test-run-management?set_id=5"}`
+- 正確回覆：「已建立 [Sprint 43 的 run set](/test-run-management?set_id=5)。」
+
+列表查詢結果（test cases — 為提及的項目附連結，number 優先）：
 - 每個 item 都含 `_deep_links.test_case`
-- 正確回覆：「找到 3 筆登入相關 case，建議從 [登入流程](url) 開始檢視。」
-- 錯誤回覆：「找到 3 筆登入相關 case：TC001、TC002、TC003。」（無連結且顯示 ID）
+- 正確回覆：「找到 3 筆登入相關 case，建議從 [TC001](/test-case-management?set_id=5&tc=TC001) 開始檢視。」
+- 也可接受：「找到 3 筆登入相關 case，建議從 [登入流程（TC001）](...) 開始檢視。」
+- 錯誤回覆：「找到 3 筆登入相關 case：TC001、TC002、TC003。」（無連結）
 
 ## Skills（多步驟必先讀 recipe，不要自己摸索）
 
