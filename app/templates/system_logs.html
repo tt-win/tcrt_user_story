@@ -48,6 +48,11 @@
                         type="button" role="tab" aria-controls="knowledgeGraphTabPane" aria-selected="false"
                         data-i18n="systemLogs.tabs.knowledgeGraph">Knowledge Graph</button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="knowledgeQueryLogTabBtn" data-bs-toggle="tab" data-bs-target="#knowledgeQueryLogTabPane"
+                        type="button" role="tab" aria-controls="knowledgeQueryLogTabPane" aria-selected="false"
+                        data-i18n="systemLogs.tabs.knowledgeQueryLog">Knowledge Query Log</button>
+            </li>
         </ul>
         <div class="tab-content">
         <div class="tab-pane fade show active" id="logsTabPane" role="tabpanel" aria-labelledby="logsTabBtn" tabindex="0">
@@ -242,6 +247,72 @@
             </div>
         </div>
         </div><!-- /#knowledgeGraphTabPane -->
+
+        <div class="tab-pane fade" id="knowledgeQueryLogTabPane" role="tabpanel" aria-labelledby="knowledgeQueryLogTabBtn" tabindex="0">
+        <div class="card">
+            <div class="card-body py-2">
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                    <select id="kqlSourceFilter" class="form-select form-select-sm log-toolbar-item" data-i18n-aria-label="systemLogs.kql.filterSource" aria-label="Source">
+                        <option value="" data-i18n="systemLogs.kql.filterAllSources">全部來源</option>
+                        <option value="assistant" data-i18n="systemLogs.kql.sourceAssistant">assistant</option>
+                        <option value="qa_helper" data-i18n="systemLogs.kql.sourceQaHelper">qa_helper</option>
+                        <option value="api" data-i18n="systemLogs.kql.sourceApi">api</option>
+                    </select>
+                    <select id="kqlStatusFilter" class="form-select form-select-sm log-toolbar-item" data-i18n-aria-label="systemLogs.kql.filterStatus" aria-label="Status">
+                        <option value="" data-i18n="systemLogs.kql.filterAllStatuses">全部狀態</option>
+                        <option value="success" data-i18n="systemLogs.kql.statusSuccess">success</option>
+                        <option value="degraded" data-i18n="systemLogs.kql.statusDegraded">degraded</option>
+                    </select>
+                    <input type="text" id="kqlQueryTextFilter" class="form-control form-control-sm log-toolbar-item"
+                           data-i18n-placeholder="systemLogs.kql.queryTextPlaceholder" placeholder="查詢文字">
+                    <input type="number" id="kqlTeamIdFilter" class="form-control form-control-sm log-toolbar-item" placeholder="team_id">
+                    <div class="ms-auto d-flex align-items-center gap-2">
+                        <small class="text-muted" id="kqlGeneratedAt"></small>
+                        <button type="button" class="btn btn-secondary btn-sm" id="kqlRefreshBtn">
+                            <i class="fas fa-sync-alt me-1"></i><span data-i18n="systemLogs.kql.refresh">重新整理</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="kqlLoading" class="text-muted d-none" data-i18n="systemLogs.kql.loading">載入中…</div>
+                <div id="kqlError" class="alert alert-danger d-none" role="alert" data-i18n="systemLogs.kql.loadError">載入失敗，請重試。</div>
+
+                <div id="kqlContent" class="d-none">
+                    <div class="table-responsive">
+                        <table class="table table-sm kql-table align-middle">
+                            <thead>
+                                <tr>
+                                    <th data-i18n="systemLogs.kql.colTimestamp">時間</th>
+                                    <th data-i18n="systemLogs.kql.colSource">來源</th>
+                                    <th data-i18n="systemLogs.kql.colOperation">操作</th>
+                                    <th data-i18n="systemLogs.kql.colStatus">狀態</th>
+                                    <th data-i18n="systemLogs.kql.colUser">使用者</th>
+                                    <th data-i18n="systemLogs.kql.colQuery">查詢</th>
+                                    <th data-i18n="systemLogs.kql.colTeam">team</th>
+                                    <th data-i18n="systemLogs.kql.colResults">筆數</th>
+                                    <th data-i18n="systemLogs.kql.colDuration">耗時</th>
+                                </tr>
+                            </thead>
+                            <tbody id="kqlRows">
+                                <tr><td colspan="9" class="text-muted text-center" data-i18n="systemLogs.kql.noRecords">尚無查詢記錄</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mt-2">
+                        <small class="text-muted" id="kqlCount"></small>
+                        <div class="btn-group btn-group-sm" role="group" id="kqlPager">
+                            <button type="button" class="btn btn-outline-secondary kql-pager-btn" id="kqlPrevPage" disabled>
+                                <i class="fas fa-chevron-left me-1"></i> <span data-i18n="systemLogs.kql.prev">上一頁</span>
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary kql-pager-btn" id="kqlNextPage" disabled>
+                                <span data-i18n="systemLogs.kql.next">下一頁</span> <i class="fas fa-chevron-right ms-1"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div><!-- /#knowledgeQueryLogTabPane -->
         </div><!-- /.tab-content -->
     </div>
 </div>

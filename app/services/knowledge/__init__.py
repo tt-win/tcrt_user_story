@@ -53,7 +53,9 @@ _neo4j_client: "Neo4jClient | None" = None
 _embedding_service: "EmbeddingService | None" = None
 _write_service: "KnowledgeWriteService | None" = None
 _hybrid_search: "HybridSearchService | None" = None
+_retrieval_service: Any = None
 _task_queue: Any = None  # Union[KnowledgeSyncTaskQueue, NullKnowledgeSyncTaskQueue]
+_query_log_service: Any = None
 
 
 def get_qdrant_client() -> "QdrantKnowledgeClient":
@@ -110,6 +112,15 @@ def get_hybrid_search() -> "HybridSearchService":
     return _hybrid_search
 
 
+def get_retrieval_service() -> Any:
+    global _retrieval_service
+    if _retrieval_service is None:
+        from app.services.knowledge.retrieval_service import KnowledgeRetrievalService
+
+        _retrieval_service = KnowledgeRetrievalService()
+    return _retrieval_service
+
+
 def get_task_queue() -> Any:
     """取得 task queue。若知識圖譜停用，回傳 NullKnowledgeSyncTaskQueue。"""
     global _task_queue
@@ -127,12 +138,25 @@ def get_task_queue() -> Any:
     return _task_queue
 
 
+def get_query_log_service() -> Any:
+    """取得 knowledge_query_logs 寫入器 singleton（fail-safe 緩衝／批次 flush）。"""
+    global _query_log_service
+    if _query_log_service is None:
+        from app.services.knowledge.query_log_service import KnowledgeQueryLogService
+
+        _query_log_service = KnowledgeQueryLogService()
+    return _query_log_service
+
+
 def reset_singletons_for_test() -> None:
     """測試用：重置所有 singleton。"""
-    global _qdrant_client, _neo4j_client, _embedding_service, _write_service, _hybrid_search, _task_queue
+    global _qdrant_client, _neo4j_client, _embedding_service, _write_service, _hybrid_search, _retrieval_service, _task_queue, _query_log_service
     _qdrant_client = None
     _neo4j_client = None
     _embedding_service = None
     _write_service = None
     _hybrid_search = None
+    _retrieval_service = None
     _task_queue = None
+    _query_log_service = None
+

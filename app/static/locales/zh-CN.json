@@ -3742,7 +3742,36 @@
     "tabs": {
       "logs": "日志",
       "runtimeSettings": "运行设置",
-      "knowledgeGraph": "知识图谱"
+      "knowledgeGraph": "知识图谱",
+      "knowledgeQueryLog": "知识图谱查询记录"
+    },
+    "kql": {
+      "filterSource": "来源",
+      "filterStatus": "状态",
+      "filterAllSources": "全部来源",
+      "filterAllStatuses": "全部状态",
+      "sourceAssistant": "assistant",
+      "sourceQaHelper": "qa_helper",
+      "sourceApi": "api",
+      "statusSuccess": "success",
+      "statusDegraded": "degraded",
+      "queryTextPlaceholder": "查询文字",
+      "refresh": "刷新",
+      "loading": "加载中…",
+      "loadError": "加载查询记录失败，请重试。",
+      "noRecords": "暂无查询记录",
+      "colTimestamp": "时间",
+      "colSource": "来源",
+      "colOperation": "操作",
+      "colStatus": "状态",
+      "colUser": "用户",
+      "colQuery": "查询",
+      "colTeam": "team",
+      "colResults": "条数",
+      "colDuration": "耗时",
+      "prev": "上一页",
+      "next": "下一页",
+      "count": "共 {total} 条，第 {page} / {total_pages} 页"
     },
     "settings": {
       "perProcessHint": "仅显示处理本请求的 worker 进程的设置视角，日志分页的数据可能来自其他 worker。",

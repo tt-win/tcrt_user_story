@@ -134,19 +134,37 @@ class QdrantKnowledgeClient:
         score_threshold: float | None = None,
         query_filter: qmodels.Filter | None = None,
     ) -> list[dict[str, Any]]:
+        """Vector similarity search.
+
+        Uses ``query_points`` (qdrant-client >=1.12); the legacy ``.search`` API
+        was removed in recent clients and would raise AttributeError at runtime.
+        """
         client = await self._get_client()
-        results = await client.search(
-            collection_name=collection,
-            query_vector=query_vector,
-            limit=limit,
-            score_threshold=score_threshold,
-            query_filter=query_filter,
-            with_payload=True,
-            with_vectors=False,
-        )
+        # Prefer query_points (current API); fall back to search for older clients.
+        if hasattr(client, "query_points"):
+            response = await client.query_points(
+                collection_name=collection,
+                query=query_vector,
+                limit=limit,
+                score_threshold=score_threshold,
+                query_filter=query_filter,
+                with_payload=True,
+                with_vectors=False,
+            )
+            points = getattr(response, "points", None) or []
+        else:
+            points = await client.search(
+                collection_name=collection,
+                query_vector=query_vector,
+                limit=limit,
+                score_threshold=score_threshold,
+                query_filter=query_filter,
+                with_payload=True,
+                with_vectors=False,
+            )
         return [
             {"id": str(r.id), "score": r.score, "payload": r.payload or {}}
-            for r in results
+            for r in points
         ]
 
     async def scroll(

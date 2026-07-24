@@ -490,6 +490,16 @@ async def _run_startup():
         # leader election) so the user-facing latency for an upsert
         # never depends on which worker handled the API request.
         await _start_knowledge_graph_sync_workers()
+
+        # knowledge_query_logs 背景 flush task：buffer 為 process-local，
+        # 每個 worker 各跑自己的 flush（不經 leader election），否則 non-leader
+        # worker 的查詢會卡在 in-memory 永遠寫不進 audit DB。
+        try:
+            from app.services.knowledge import get_query_log_service
+
+            get_query_log_service().start()
+        except Exception as query_log_err:  # noqa: BLE001
+            logging.warning("啟動 knowledge_query_log 背景 flush 失敗: %s", query_log_err)
     except Exception as e:
         logging.error(f"啟動服務失敗: {e}")
 
@@ -555,6 +565,17 @@ async def _run_shutdown():
         await cleanup_audit_database()
     except Exception as e:
         logging.error(f"關閉審計資料庫失敗: {e}")
+
+    # knowledge_query_logs 寫入器 flush：以獨立 try/except 呼叫，避免 audit flush 拋錯
+    # 連帶跳過本器 flush（design.md D3）。
+    try:
+        from app.services.knowledge import get_query_log_service
+
+        # stop() 會先取消 background task、再做最後一次 force_flush。
+        # 若在 background flush 已被關閉、只殘留 force_flush 的情境下也安全。
+        await get_query_log_service().stop()
+    except Exception as e:  # noqa: BLE001
+        logging.error("Knowledge graph query log 關機 flush 失敗: %s", e)
 
     # 釋放背景服務 leader 鎖（行程異常結束時連線/檔案關閉亦會自動釋放；此處為正常關閉的明確釋放）
     try:

@@ -778,8 +778,86 @@ class ToolExecutor:
     # Read tool（inline 執行；唯一可 inline 執行的 risk level）
     # ------------------------------------------------------------------ #
 
-    async def _run_local_read_tool(self, tool: AssistantTool, arguments: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        """In-process skill/catalog tools：讀 main DB（enabled only），不打 ASGI。"""
+    async def _enrich_result_team_names(self, results: list[Any]) -> None:
+        """Fill missing/placeholder team_name from main DB Team table (in-place)."""
+        from app.models.database_models import Team
+
+        need_ids: set[int] = set()
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            raw_id = item.get("team_id")
+            name = item.get("team_name")
+            if raw_id is None or raw_id == "unknown":
+                continue
+            try:
+                tid = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            if not name or name == f"Team-{tid}" or name == "Team-unknown":
+                need_ids.add(tid)
+        if not need_ids:
+            return
+
+        async def _load(session: AsyncSession) -> dict[int, str]:
+            rows = (await session.execute(select(Team.id, Team.name).where(Team.id.in_(list(need_ids))))).all()
+            return {int(r.id): str(r.name) for r in rows if r.name}
+
+        try:
+            names = await self.main_boundary.run_read(_load)
+        except Exception:  # noqa: BLE001
+            logger.exception("failed to enrich knowledge result team names")
+            return
+
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            try:
+                tid = int(item.get("team_id"))
+            except (TypeError, ValueError):
+                continue
+            if tid in names:
+                item["team_name"] = names[tid]
+                meta = item.get("metadata")
+                if isinstance(meta, dict):
+                    meta["team_name"] = names[tid]
+
+    async def _resolve_username(self, user_id: int | None) -> str | None:
+        """從 main DB 查詢 user.username（觀測性記錄用）。
+
+        失敗 MUST NOT 影響查詢行為；返回 None 表示「無法取得 username」，
+        call site 仍會繼續記錄並把 username 留空。輕量 SQL（User.id 主鍵），
+        不快取：觀測性欄位的鮮度比微秒級 cache 重要。
+        """
+        if user_id is None:
+            return None
+        try:
+            from app.models.database_models import User
+            from sqlalchemy import select
+
+            async def _q(session):
+                return (await session.execute(
+                    select(User.username).where(User.id == user_id)
+                )).scalar_one_or_none()
+
+            return await self.main_boundary.run_read(_q)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("resolve username for user_id=%s failed: %s", user_id, exc)
+            return None
+
+    async def _run_local_read_tool(
+        self,
+        tool: AssistantTool,
+        arguments: dict[str, Any],
+        team_id: int | None = None,
+        user_id: int | None = None,
+        *,
+        llm_tool_call_id: str | None = None,
+        conversation_id: str | None = None,
+        turn_key: str | None = None,
+        username: str | None = None,
+    ) -> tuple[int, dict[str, Any]]:
+        """In-process skill/catalog/knowledge tools：不打 ASGI。"""
         if tool.name == "list_skills":
             skills = await list_enabled_skills(self.main_boundary)
             return 200, {"skills": skills, "count": len(skills)}
@@ -789,7 +867,204 @@ class ToolExecutor:
             if skill is None:
                 return 404, {"detail": f"unknown skill_id: {skill_id}"}
             return 200, skill
+        if tool.name == "get_test_case_global":
+            from app.models.database_models import Team, TestCaseLocal, TestCaseSection, TestCaseSet
+
+            number = str(arguments.get("test_case_number", "")).strip()
+            if not number:
+                return 200, {"status": "success", "found": False, "message": "test_case_number is required."}
+
+            allowed_team_ids_detail: list[int] = []
+            if user_id is not None:
+                try:
+                    allowed_team_ids_detail = await permission_service.get_user_accessible_teams(user_id)
+                except Exception:  # noqa: BLE001
+                    logger.exception(
+                        "get_test_case_global: failed to resolve accessible teams user_id=%s", user_id
+                    )
+                    allowed_team_ids_detail = []
+            if not allowed_team_ids_detail:
+                return 200, {
+                    "status": "success",
+                    "found": False,
+                    "message": "No accessible teams for this lookup.",
+                }
+
+            async def _get_one(session: AsyncSession) -> Any | None:
+                stmt = (
+                    select(
+                        TestCaseLocal.id,
+                        TestCaseLocal.test_case_number,
+                        TestCaseLocal.title,
+                        TestCaseLocal.priority,
+                        TestCaseLocal.precondition,
+                        TestCaseLocal.steps,
+                        TestCaseLocal.expected_result,
+                        TestCaseLocal.team_id,
+                        TestCaseLocal.test_case_set_id,
+                        TestCaseSet.name.label("set_name"),
+                        Team.name.label("team_name"),
+                        TestCaseSection.name.label("section_name"),
+                    )
+                    .join(TestCaseSet, TestCaseLocal.test_case_set_id == TestCaseSet.id, isouter=True)
+                    .join(Team, TestCaseLocal.team_id == Team.id, isouter=True)
+                    .join(
+                        TestCaseSection,
+                        TestCaseLocal.test_case_section_id == TestCaseSection.id,
+                        isouter=True,
+                    )
+                    .where(
+                        TestCaseLocal.test_case_number == number,
+                        TestCaseLocal.team_id.in_(allowed_team_ids_detail),
+                    )
+                    .limit(1)
+                )
+                return (await session.execute(stmt)).first()
+
+            row = await self.main_boundary.run_read(_get_one)
+            if row is None:
+                return 200, {
+                    "status": "success",
+                    "found": False,
+                    "test_case_number": number,
+                    "message": f"Test case {number} not found in accessible teams.",
+                }
+            priority = row.priority.value if hasattr(row.priority, "value") else row.priority
+            return 200, {
+                "status": "success",
+                "found": True,
+                "record_id": row.id,
+                "test_case_number": row.test_case_number,
+                "title": row.title or "",
+                "priority": priority,
+                "precondition": row.precondition or "",
+                "steps": row.steps or "",
+                "expected_result": row.expected_result or "",
+                "team_id": row.team_id,
+                "team_name": row.team_name or f"Team-{row.team_id}",
+                "set_id": row.test_case_set_id,
+                "set_name": row.set_name or "",
+                "section_name": row.section_name or "",
+            }
+        if tool.name == "search_knowledge":
+            from app.services.knowledge import get_retrieval_service
+            from app.audit.database import KnowledgeQuerySource
+
+            query = str(arguments.get("query", ""))
+            # Fail closed: missing user_id or empty access set → no cross-team scan.
+            allowed_team_ids: list[int] = []
+            if user_id is not None:
+                try:
+                    allowed_team_ids = await permission_service.get_user_accessible_teams(user_id)
+                except Exception:  # noqa: BLE001
+                    logger.exception("search_knowledge: failed to resolve accessible teams user_id=%s", user_id)
+                    allowed_team_ids = []
+            res = await get_retrieval_service().search_knowledge(
+                query=query,
+                primary_team_id=team_id,
+                allowed_team_ids=allowed_team_ids,
+                context={
+                    "source": KnowledgeQuerySource.ASSISTANT.value,
+                    "user_id": user_id,
+                    "username": username,
+                    "conversation_id": conversation_id,
+                    "turn_key": turn_key,
+                    "llm_tool_call_id": llm_tool_call_id,
+                },
+            )
+            # Enrich team_name from main DB when payload only has team_id (common for USM).
+            if isinstance(res, dict) and res.get("results"):
+                await self._enrich_result_team_names(res["results"])
+            return 200, res
+        if tool.name == "search_test_cases_global":
+            from sqlalchemy import or_
+
+            from app.models.database_models import Team, TestCaseLocal, TestCaseSet
+
+            query = str(arguments.get("query", "")).strip()
+            if not query:
+                return 200, {"status": "success", "results": [], "total": 0}
+
+            raw_limit = arguments.get("limit", 20)
+            limit = min(int(raw_limit) if raw_limit else 20, 50)
+
+            # Fail closed: unknown access set → empty results, never scan all teams.
+            allowed_team_ids_sql: list[int] = []
+            if user_id is not None:
+                try:
+                    allowed_team_ids_sql = await permission_service.get_user_accessible_teams(user_id)
+                except Exception:  # noqa: BLE001
+                    logger.exception("search_test_cases_global: failed to resolve accessible teams user_id=%s", user_id)
+                    allowed_team_ids_sql = []
+
+            if not allowed_team_ids_sql:
+                return 200, {"status": "success", "results": [], "total": 0}
+
+            pattern = f"%{query}%"
+
+            async def _search(session: AsyncSession) -> list[Any]:
+                stmt = (
+                    select(
+                        TestCaseLocal.test_case_number,
+                        TestCaseLocal.title,
+                        TestCaseLocal.priority,
+                        TestCaseLocal.team_id,
+                        TestCaseLocal.test_case_set_id,
+                        TestCaseSet.name.label("set_name"),
+                        Team.name.label("team_name"),
+                    )
+                    .join(TestCaseSet, TestCaseLocal.test_case_set_id == TestCaseSet.id, isouter=True)
+                    .join(Team, TestCaseLocal.team_id == Team.id, isouter=True)
+                    .where(
+                        or_(
+                            TestCaseLocal.title.ilike(pattern),
+                            TestCaseLocal.test_case_number.ilike(pattern),
+                        ),
+                        TestCaseLocal.team_id.in_(allowed_team_ids_sql),
+                    )
+                    .limit(limit)
+                )
+                return list((await session.execute(stmt)).all())
+
+            rows = await self.main_boundary.run_read(_search)
+
+            results = [
+                {
+                    "test_case_number": r.test_case_number,
+                    "title": r.title,
+                    "priority": r.priority.value if hasattr(r.priority, "value") else r.priority,
+                    "team_id": r.team_id,
+                    "team_name": r.team_name or f"Team-{r.team_id}",
+                    "set_id": r.test_case_set_id,
+                    "set_name": r.set_name or "",
+                }
+                for r in rows
+            ]
+            return 200, {"status": "success", "results": results, "total": len(results)}
+        if tool.name == "analyze_knowledge_impact":
+            from app.services.knowledge import get_retrieval_service
+            from app.audit.database import KnowledgeQuerySource
+
+            entity_type = str(arguments.get("entity_type", ""))
+            entity_id = str(arguments.get("entity_id", ""))
+            # Global scope: still resolve accessible teams for defense-in-depth logging;
+            # impact analysis itself remains read-only graph (team filter is best-effort).
+            res = await get_retrieval_service().analyze_impact(
+                entity_type=entity_type,
+                entity_id=entity_id,
+                team_id=team_id,
+                context={
+                    "source": KnowledgeQuerySource.ASSISTANT.value,
+                    "user_id": user_id,
+                    "username": username,
+                    "conversation_id": conversation_id,
+                    "turn_key": turn_key,
+                    "llm_tool_call_id": llm_tool_call_id,
+                },
+            )
+            return 200, res
         return 500, {"detail": f"local tool handler missing for {tool.name}"}
+
 
     async def run_read_tool(
         self,
@@ -830,15 +1105,31 @@ class ToolExecutor:
         )
         try:
             if tool.execution_mode == "local":
+                # 觀測性記錄需要 username；conversation 物件沒有 username 欄位，
+                # 從 main DB 依 user_id 解析（_resolve_username 失敗時不影響查詢）。
+                resolved_username = await self._resolve_username(user_id)
                 status_code, payload = await self._run_local_read_tool(
-                    tool, {**query_params, **body_params, **path_params}
+                    tool,
+                    {**query_params, **body_params, **path_params},
+                    team_id=conversation.team_id,
+                    user_id=user_id,
+                    llm_tool_call_id=llm_tool_call_id,
+                    conversation_id=str(getattr(conversation, "conversation_key", "") or "") or None,
+                    turn_key=str(getattr(turn, "id", "") or getattr(turn, "turn_key", "") or "") or None,
+                    username=resolved_username,
                 )
+
             else:
                 status_code, payload = await self._loopback(
                     tool, team_id=resolved_team, path_params=path_params, query_params=query_params,
                     body_params=body_params, jwt=jwt, conversation_key=conversation.conversation_key,
                 )
         except Exception:  # noqa: BLE001
+            logger.exception(
+                "assistant read tool transport failure tool=%s conversation_key=%s",
+                tool.name,
+                conversation.conversation_key,
+            )
             safe_error = "The service could not be reached."
             await conversation_service.finish_read_tool_journal(
                 journal_id=journal_id, status="unknown", http_status=None, error_message=safe_error

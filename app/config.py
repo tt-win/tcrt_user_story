@@ -653,6 +653,13 @@ class AuditConfig(BaseModel):
     max_buffer_size: int = 10000
     excluded_fields: list = ["password", "token", "secret", "key"]
     debug_sql: bool = False
+    # 知識圖譜 / RAG 查詢記錄（knowledge_query_logs）專屬設定。
+    # knowledge_query_log_enabled 預設隨 knowledge_graph.enabled；不啟用知識圖譜時
+    # 即使本旗標為 True 也不會寫入（雙保險）。
+    knowledge_query_log_enabled: bool = True
+    knowledge_query_log_retention_days: int = 30
+    knowledge_query_log_max_size_chars: int = 16384
+    knowledge_query_log_batch_size: int = 50
 
     @classmethod
     def from_env(cls, fallback: "AuditConfig" = None) -> "AuditConfig":
@@ -670,6 +677,28 @@ class AuditConfig(BaseModel):
             ),
             excluded_fields=fallback.excluded_fields if fallback else ["password", "token", "secret", "key"],
             debug_sql=os.getenv("AUDIT_DEBUG_SQL", str(fallback.debug_sql if fallback else False)).lower() == "true",
+            knowledge_query_log_enabled=os.getenv(
+                "KNOWLEDGE_QUERY_LOG_ENABLED",
+                str(fallback.knowledge_query_log_enabled if fallback else True),
+            ).lower() == "true",
+            knowledge_query_log_retention_days=int(
+                os.getenv(
+                    "KNOWLEDGE_QUERY_LOG_RETENTION_DAYS",
+                    str(fallback.knowledge_query_log_retention_days if fallback else 30),
+                )
+            ),
+            knowledge_query_log_max_size_chars=int(
+                os.getenv(
+                    "KNOWLEDGE_QUERY_LOG_MAX_SIZE_CHARS",
+                    str(fallback.knowledge_query_log_max_size_chars if fallback else 16384),
+                )
+            ),
+            knowledge_query_log_batch_size=int(
+                os.getenv(
+                    "KNOWLEDGE_QUERY_LOG_BATCH_SIZE",
+                    str(fallback.knowledge_query_log_batch_size if fallback else 50),
+                )
+            ),
         )
 
 

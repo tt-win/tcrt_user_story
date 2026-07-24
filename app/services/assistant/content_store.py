@@ -241,7 +241,37 @@ def format_catalog_markdown(skills: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+# Injected when a DB-seeded system prompt lacks tool-routing guidance.
+# ensure_seeded is insert-only, so factory system.md changes do not auto-roll out.
+# Soft routing: LLM picks the simplest path; knowledge graph is optional for semantic cases.
+_TOOL_ROUTING_BLOCK = """
+## Tool routing (overrides earlier rigid knowledge-first rules if any)
+
+Pick the simplest tool that answers the question:
+- Known test case number + need full content (steps / expected_result / precondition): use `get_test_case_global`.
+- Exact keyword or number search / list / which team has this case: use `search_test_cases_global`.
+- Semantic or fuzzy discovery (feature ownership when keywords are unclear): use `search_knowledge`; if degraded or empty, then `search_test_cases_global`.
+- Do **not** route simple number/title lookups through the knowledge graph first.
+- Label team attribution with `team_name` / `team_id` when present.
+""".strip()
+
+
+def ensure_tool_routing_rules(template: str) -> str:
+    """Ensure stale DB prompts carry soft tool-routing (not forced knowledge-first)."""
+    soft_markers = ("get_test_case_global", "依問題類型", "simplest tool")
+    if any(m in template for m in soft_markers) and "get_test_case_global" in template:
+        return template
+    # Always append soft routing so it overrides older forced knowledge-first text in context.
+    return f"{template.rstrip()}\n\n{_TOOL_ROUTING_BLOCK}\n"
+
+
+# Backward-compatible alias used by older tests/call sites.
+def ensure_knowledge_search_rules(template: str) -> str:
+    return ensure_tool_routing_rules(template)
+
+
 def assemble_system_prompt_text(template: str, catalog_md: str) -> str:
+    template = ensure_tool_routing_rules(template)
     if SKILL_CATALOG_TOKEN in template:
         return template.replace(SKILL_CATALOG_TOKEN, catalog_md, 1)
     logger.warning("system prompt missing %s; appending catalog block", SKILL_CATALOG_TOKEN)

@@ -261,7 +261,7 @@
 .qa-helper-markdown-preview td {
   border: 1px solid var(--qa-helper-border, #dee2e6);
   padding: 0.45rem 0.65rem;
-  text-align: left;
+  text-align: left !important;
 }
 
 .qa-helper-markdown-preview thead th {
