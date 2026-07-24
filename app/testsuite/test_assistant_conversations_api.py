@@ -463,3 +463,18 @@ def test_write_tool_rejects_sub_resource_from_another_team(conv_db):
     boundary = get_main_access_boundary()
     cases = asyncio.run(boundary.run_read(_get_cases))
     assert len(cases) == 0
+
+
+def test_batch_delete_conversations_endpoint(conv_db):
+    client = _client()
+    r1 = client.post("/api/assistant/conversations", json={"scope_type": "global"}, headers=HEADERS)
+    r2 = client.post("/api/assistant/conversations", json={"scope_type": "global"}, headers=HEADERS)
+    cid1 = r1.json()["id"]
+    cid2 = r2.json()["id"]
+
+    resp = client.post("/api/assistant/conversations/batch-delete", json={"conversation_ids": [cid1, cid2]}, headers=HEADERS)
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["deleted_count"] == 2
+    assert set(data["deleted_ids"]) == {cid1, cid2}
+

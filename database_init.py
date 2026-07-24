@@ -130,7 +130,7 @@ TARGET_LABELS = {
 }
 TARGET_REQUIRED_TABLES = {
     "main": MAIN_REQUIRED_TABLES,
-    "audit": ["audit_logs"],
+    "audit": ["audit_logs", "knowledge_query_logs"],
     "usm": ["user_story_maps", "user_story_map_nodes"],
 }
 TARGET_CRITICAL_TABLES = {

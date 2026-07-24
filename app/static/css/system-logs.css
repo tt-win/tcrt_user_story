@@ -97,3 +97,19 @@
     word-break: break-all;
     vertical-align: middle;
 }
+
+/* 知識圖譜查詢記錄分頁：固定寬度避免 disabled 變形、與其他控制項間距 */
+#kqlPager {
+    gap: 0.5rem;
+}
+
+.kql-pager-btn {
+    min-width: 5.5rem;
+    justify-content: center;
+    display: inline-flex;
+    align-items: center;
+}
+
+#kqlPager.hidden-pager {
+    visibility: hidden;
+}

@@ -13,6 +13,8 @@ from typing import Any
 
 # tool_name -> (link_key, url_template, field_map)
 # field_map: {placeholder_in_template: field_name_in_source_data}
+# field_map values may use dotted paths (e.g. "metadata.test_case_set_id") for
+# nested-field access; see _resolve_field in _build_single.
 _LINK_RULES: dict[str, tuple[str, str, dict[str, str]]] = {
     # --- create / restart (IDs from result or args) ---
     "create_test_case": (
@@ -61,6 +63,14 @@ _LINK_RULES: dict[str, tuple[str, str, dict[str, str]]] = {
         "/test-run-management?set_id={set_id}",
         {"set_id": "id"},
     ),
+    # --- global read (cross-team) ---
+    # get_test_case_global returns a flat dict with `set_id` (from
+    # TestCaseLocal.test_case_set_id) and `test_case_number` already present.
+    "get_test_case_global": (
+        "test_case",
+        "/test-case-management?set_id={set_id}&tc={tc}",
+        {"set_id": "set_id", "tc": "test_case_number"},
+    ),
 }
 
 # Tools where the ID source is tool_arguments (body_params) instead of result.
@@ -84,8 +94,10 @@ _ARGS_LINK_RULES: dict[str, tuple[str, str, dict[str, str]]] = {
 }
 
 # Tools whose result is a list of items — each item gets its own _deep_links.
-# tool_name -> (link_key, url_template, field_map)
-_LIST_LINK_RULES: dict[str, tuple[str, str, dict[str, str]]] = {
+# tool_name -> (link_key, url_template, field_map[, entity_type_filter])
+#   entity_type_filter (optional 4th element): {"field": str, "value": str};
+#   when present, only items where item[field] == value receive _deep_links.
+_LIST_LINK_RULES: dict[str, tuple[str, str, dict[str, str]] | tuple[str, str, dict[str, str], dict[str, str]]] = {
     "list_test_cases": (
         "test_case",
         "/test-case-management?set_id={set_id}&tc={tc}",
@@ -116,6 +128,22 @@ _LIST_LINK_RULES: dict[str, tuple[str, str, dict[str, str]]] = {
         "/test-run-execution?config_id={config_id}",
         {"config_id": "config_id"},
     ),
+    "search_test_cases_global": (
+        "test_case",
+        "/test-case-management?set_id={set_id}&tc={tc}",
+        {"set_id": "set_id", "tc": "test_case_number"},
+    ),
+    # search_knowledge returns heterogeneous entity types (test_case / usm_node /
+    # jira_ticket). Only test_case entities have a TCRT page to deep-link to;
+    # non-test_case items must be skipped. IDs live in `metadata` (dotted path).
+    # The 4th tuple element is an optional entity_type_filter — see
+    # build_list_deep_links for the skip rule.
+    "search_knowledge": (
+        "test_case",
+        "/test-case-management?set_id={set_id}&tc={tc}",
+        {"set_id": "metadata.test_case_set_id", "tc": "metadata.test_case_number"},
+        {"field": "entity_type", "value": "test_case"},
+    ),
 }
 
 # Fields that are string identifiers (not int-castable).
@@ -123,10 +151,16 @@ _STRING_ID_FIELDS = frozenset({"test_case_number"})
 
 
 def _safe_id(field_name: str, raw: Any) -> str | None:
-    """Validate and URL-encode a single ID value."""
+    """Validate and URL-encode a single ID value.
+
+    *field_name* is the original (possibly dotted) field name. The check against
+    ``_STRING_ID_FIELDS`` uses the last path segment so dotted paths
+    (e.g. ``metadata.test_case_number``) still recognise string IDs.
+    """
     if raw is None:
         return None
-    if field_name in _STRING_ID_FIELDS:
+    leaf_name = field_name.rsplit(".", 1)[-1]
+    if leaf_name in _STRING_ID_FIELDS:
         safe = str(raw)
     else:
         try:
@@ -136,13 +170,30 @@ def _safe_id(field_name: str, raw: Any) -> str | None:
     return urllib.parse.quote(str(safe), safe="")
 
 
+def _resolve_field(source: dict[str, Any], field_name: str) -> Any:
+    """Resolve a field by name, supporting dotted paths (e.g. ``metadata.x``)."""
+    if "." not in field_name:
+        return source.get(field_name)
+    parts = field_name.split(".")
+    val: Any = source
+    for part in parts:
+        if not isinstance(val, dict):
+            return None
+        val = val.get(part)
+    return val
+
+
 def _build_single(
     link_key: str, url_template: str, field_map: dict[str, str], source: dict[str, Any],
 ) -> dict[str, str] | None:
-    """Build a single deep link dict from *source*."""
+    """Build a single deep link dict from *source*.
+
+    Field names in *field_map* may be dotted paths (``metadata.foo``) for
+    nested-field access; flat names fall through to ``source.get(name)``.
+    """
     fmt_kwargs: dict[str, str] = {}
     for placeholder, field_name in field_map.items():
-        encoded = _safe_id(field_name, source.get(field_name))
+        encoded = _safe_id(field_name, _resolve_field(source, field_name))
         if encoded is None:
             return None
         fmt_kwargs[placeholder] = encoded
@@ -187,13 +238,18 @@ def build_list_deep_links(
     rule = _LIST_LINK_RULES.get(tool_name)
     if rule is None:
         return False
-    link_key, url_template, field_map = rule
+    # Backward-compatible unpack: existing rules are 3-tuple, new rules
+    # may carry an optional 4th element `entity_type_filter`.
+    link_key, url_template, field_map = rule[:3]
+    entity_type_filter = rule[3] if len(rule) > 3 else None
 
     items: list[Any] | None = None
     if isinstance(result_payload, list):
         items = result_payload
     elif isinstance(result_payload, dict) and isinstance(result_payload.get("items"), list):
         items = result_payload["items"]
+    elif isinstance(result_payload, dict) and isinstance(result_payload.get("results"), list):
+        items = result_payload["results"]
 
     if items is None:
         return False
@@ -202,6 +258,9 @@ def build_list_deep_links(
     for item in items:
         if not isinstance(item, dict):
             continue
+        if entity_type_filter is not None:
+            if item.get(entity_type_filter["field"]) != entity_type_filter["value"]:
+                continue
         links = _build_single(link_key, url_template, field_map, item)
         if links:
             item["_deep_links"] = links

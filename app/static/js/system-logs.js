@@ -12,6 +12,7 @@
     const STREAM_URL = '/api/admin/system-logs/stream';
     const RUNTIME_SETTINGS_URL = '/api/admin/system-runtime-settings';
     const KNOWLEDGE_HEALTH_URL = '/api/knowledge/health';
+    const KNOWLEDGE_QUERY_LOGS_URL = '/api/admin/knowledge-query-logs';
 
     class SystemLogsPage {
         constructor() {
@@ -45,6 +46,8 @@
             this.settingsPanel.init();
             this.knowledgePanel = new KnowledgeGraphPanel(this);
             this.knowledgePanel.init();
+            this.knowledgeQueryLogPanel = new KnowledgeQueryLogPanel(this);
+            this.knowledgeQueryLogPanel.init();
             this.connect();
         }
 
@@ -780,6 +783,278 @@
             );
             banner.classList.toggle('d-none', comparison !== 'mismatch');
             unknownNote.classList.toggle('d-none', comparison !== 'unknown');
+        }
+    }
+
+    /**
+     * Knowledge Graph Query Log 分頁（openspec: log-knowledge-graph-queries）。
+     * 顯示 /api/admin/knowledge-query-logs（Super Admin only）分頁結果。
+     * 純資料導向：所有顯示文字走 i18n，DOM 落地用 textContent / createElement。
+     */
+    class KnowledgeQueryLogPanel {
+        static debounce(fn, wait) {
+            let timer = null;
+            return function debounced(...args) {
+                if (timer) clearTimeout(timer);
+                timer = setTimeout(() => fn.apply(this, args), wait);
+            };
+        }
+
+        constructor(page) {
+            this.page = page;
+            this.elements = {};
+            this.state = {
+                status: 'idle',
+                data: null,
+                error: null,
+                page: 1,
+                pageSize: 50,
+                total: 0,
+            };
+            this.filters = { source: '', status: '', queryText: '', teamId: '' };
+        }
+
+        init() {
+            const byId = (id) => document.getElementById(id);
+            this.elements = {
+                tabButton: byId('knowledgeQueryLogTabBtn'),
+                refreshBtn: byId('kqlRefreshBtn'),
+                sourceFilter: byId('kqlSourceFilter'),
+                statusFilter: byId('kqlStatusFilter'),
+                queryTextFilter: byId('kqlQueryTextFilter'),
+                teamIdFilter: byId('kqlTeamIdFilter'),
+                loading: byId('kqlLoading'),
+                error: byId('kqlError'),
+                content: byId('kqlContent'),
+                rows: byId('kqlRows'),
+                count: byId('kqlCount'),
+                prev: byId('kqlPrevPage'),
+                next: byId('kqlNextPage'),
+                pager: byId('kqlPager'),
+                generatedAt: byId('kqlGeneratedAt'),
+            };
+            this.elements.tabButton.addEventListener('shown.bs.tab', () => {
+                this.load();
+            });
+            this.elements.refreshBtn.addEventListener('click', () => {
+                this.state.page = 1;
+                this.load();
+            });
+            this.elements.sourceFilter.addEventListener('change', () => {
+                this.filters.source = this.elements.sourceFilter.value;
+                this.state.page = 1;
+                this.load();
+            });
+            this.elements.statusFilter.addEventListener('change', () => {
+                this.filters.status = this.elements.statusFilter.value;
+                this.state.page = 1;
+                this.load();
+            });
+            this.elements.queryTextFilter.addEventListener('input', KnowledgeQueryLogPanel.debounce(() => {
+                this.filters.queryText = this.elements.queryTextFilter.value.trim();
+                this.state.page = 1;
+                this.load();
+            }, 300));
+            this.elements.teamIdFilter.addEventListener('input', KnowledgeQueryLogPanel.debounce(() => {
+                this.filters.teamId = this.elements.teamIdFilter.value.trim();
+                this.state.page = 1;
+                this.load();
+            }, 300));
+            this.elements.prev.addEventListener('click', () => {
+                if (this.state.page > 1) {
+                    this.state.page -= 1;
+                    this.load();
+                }
+            });
+            this.elements.next.addEventListener('click', () => {
+                const totalPages = Math.ceil(this.state.total / this.state.pageSize);
+                if (this.state.page < totalPages) {
+                    this.state.page += 1;
+                    this.load();
+                }
+            });
+        }
+
+        async load() {
+            this.showLoading();
+            try {
+                const params = new URLSearchParams();
+                params.set('page', String(this.state.page));
+                params.set('page_size', String(this.state.pageSize));
+                if (this.filters.source) params.set('source', this.filters.source);
+                if (this.filters.status) params.set('status', this.filters.status);
+                if (this.filters.queryText) params.set('query_text', this.filters.queryText);
+                if (this.filters.teamId) params.set('team_id', this.filters.teamId);
+                const url = `${KNOWLEDGE_QUERY_LOGS_URL}?${params}`;
+                const response = await this.page.authClient.fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const data = await response.json();
+                this.state.status = 'loaded';
+                this.state.data = data;
+                this.state.total = data.total || 0;
+                this.state.error = null;
+                this.elements.generatedAt.textContent = new Date().toISOString();
+            } catch (err) {
+                this.state.status = 'error';
+                this.state.error = err && err.message ? err.message : String(err);
+            }
+            this.render();
+        }
+
+        showLoading() {
+            this.state.status = 'loading';
+            this.elements.loading.classList.remove('d-none');
+            this.elements.error.classList.add('d-none');
+            this.elements.content.classList.add('d-none');
+        }
+
+        render() {
+            const state = this.state;
+            this.elements.loading.classList.toggle('d-none', state.status !== 'loading');
+            this.elements.error.classList.toggle('d-none', state.status !== 'error');
+            if (state.status === 'error') {
+                this.elements.content.classList.add('d-none');
+                return;
+            }
+            if (state.status !== 'loaded') {
+                return;
+            }
+            this.elements.content.classList.remove('d-none');
+            this.renderData(state.data);
+        }
+
+        renderData(data) {
+            this.renderRows(data.items || []);
+            const totalPages = Math.ceil(this.state.total / this.state.pageSize);
+            const params = {
+                total: this.state.total,
+                page: this.state.page,
+                total_pages: totalPages,
+            };
+            const t = window.i18n && window.i18n.t
+                ? (k, p) => window.i18n.t(k, p)
+                : null;
+            Core.applyI18nText(this.elements.count, 'systemLogs.kql.count', params, t);
+            this.elements.prev.disabled = this.state.page <= 1;
+            this.elements.next.disabled = this.state.page >= totalPages;
+            // 只有 1 頁時整個 pager 用 visibility:hidden 保留 layout 高度，
+            // 避免兩顆 disabled 按鈕擠在一起造成「兩個長條重疊」的視覺噪音。
+            const pager = this.elements.pager;
+            if (pager) {
+                pager.classList.toggle("hidden-pager", totalPages <= 1);
+            }
+        }
+
+        renderRows(items) {
+            const tbody = this.elements.rows;
+            tbody.textContent = '';
+            if (!items.length) {
+                const tr = document.createElement('tr');
+                const td = document.createElement('td');
+                td.colSpan = 9;
+                td.className = 'text-muted text-center';
+                td.setAttribute('data-i18n', 'systemLogs.kql.noRecords');
+                td.textContent = (window.i18n && window.i18n.t)
+                    ? window.i18n.t('systemLogs.kql.noRecords')
+                    : '尚無查詢記錄';
+                tr.appendChild(td);
+                tbody.appendChild(tr);
+                return;
+            }
+            const fragment = document.createDocumentFragment();
+            for (const item of items) {
+                fragment.appendChild(this.buildRow(item));
+            }
+            tbody.appendChild(fragment);
+        }
+
+        buildRow(item) {
+            const tr = document.createElement('tr');
+            tr.appendChild(this._cell(this._formatTimestamp(item.timestamp)));
+            tr.appendChild(this._cell(item.source || ''));
+            tr.appendChild(this._cell(item.operation || ''));
+            const statusTd = document.createElement('td');
+            const statusBadge = document.createElement('span');
+            statusBadge.className = `badge ${this.statusClass(item.status)}`;
+            statusBadge.textContent = item.status || '';
+            statusTd.appendChild(statusBadge);
+            tr.appendChild(statusTd);
+            tr.appendChild(this._cell(item.username || ''));
+            const queryTd = document.createElement('td');
+            const querySpan = document.createElement('span');
+            querySpan.className = 'kql-query-text';
+            querySpan.title = item.query_text || '';
+            querySpan.textContent = this._truncate(item.query_text || '', 80);
+            queryTd.appendChild(querySpan);
+            tr.appendChild(queryTd);
+            // team 欄：primary_team_id + allowed_team_ids 同時顯示。
+            // 單一 team scope 查詢 → "team_id"；全域查詢（primary 為 null）→ "跨 N 隊" + tooltip 列舉。
+            tr.appendChild(this._buildTeamCell(item));
+            tr.appendChild(this._cell(item.result_count !== null && item.result_count !== undefined ? String(item.result_count) : ''));
+            tr.appendChild(this._cell(item.duration_ms !== null && item.duration_ms !== undefined ? `${item.duration_ms}ms` : ''));
+            return tr;
+        }
+
+        _buildTeamCell(item) {
+            const td = document.createElement('td');
+            const primary = item.primary_team_id;
+            const allowed = Array.isArray(item.allowed_team_ids) ? item.allowed_team_ids : null;
+            if (primary !== null && primary !== undefined) {
+                td.textContent = String(primary);
+                if (allowed && allowed.length > 1) {
+                    const extras = allowed.filter((t) => t !== primary);
+                    if (extras.length) {
+                        const tip = document.createElement('span');
+                        tip.className = 'text-muted ms-1';
+                        tip.textContent = `+${extras.length}`;
+                        tip.title = `allowed: ${extras.join(', ')}`;
+                        td.appendChild(tip);
+                    }
+                }
+                return td;
+            }
+            if (allowed && allowed.length > 0) {
+                const badge = document.createElement('span');
+                badge.className = 'badge bg-info text-dark';
+                badge.textContent = `跨 ${allowed.length} 隊`;
+                badge.title = allowed.join(', ');
+                td.appendChild(badge);
+                return td;
+            }
+            td.textContent = '';
+            td.className = 'text-muted';
+            return td;
+        }
+
+        _cell(text) {
+            const td = document.createElement('td');
+            td.textContent = text;
+            return td;
+        }
+
+        statusClass(status) {
+            if (status === 'success') return 'bg-success';
+            if (status === 'degraded') return 'bg-warning text-dark';
+            return 'bg-secondary';
+        }
+
+        _truncate(s, n) {
+            if (!s) return '';
+            return s.length > n ? `${s.slice(0, n)}…` : s;
+        }
+
+        _formatTimestamp(ts) {
+            if (!ts) return '';
+            try {
+                if (window.CoreDateTime && typeof window.CoreDateTime.formatDateTime === 'function') {
+                    return window.CoreDateTime.formatDateTime(ts);
+                }
+            } catch (_e) {
+                // ignore
+            }
+            return String(ts);
         }
     }
 

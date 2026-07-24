@@ -459,3 +459,108 @@ def test_qa_ai_helper_v3_text_followup_migration_skips_non_mysql(monkeypatch) ->
     module.downgrade()
 
     assert alter_calls == []
+
+
+def _load_audit_migration_module(file_name: str, module_name: str):
+    migration_path = Path(__file__).resolve().parents[2] / "alembic_audit" / "versions" / file_name
+    spec = importlib.util.spec_from_file_location(module_name, migration_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_knowledge_query_logs_widen_migration_alters_all_mysql_columns(monkeypatch) -> None:
+    module = _load_audit_migration_module(
+        "b1c2d3e4f506_widen_knowledge_query_logs.py",
+        "alembic_audit_b1c2d3e4f506",
+    )
+    upgrade_calls: list[tuple[str, str, dict[str, object]]] = []
+    downgrade_calls: list[tuple[str, str, dict[str, object]]] = []
+    state = {"phase": "upgrade"}
+
+    def _fake_alter(table_name, column_name, **kwargs):
+        target = upgrade_calls if state["phase"] == "upgrade" else downgrade_calls
+        target.append((table_name, column_name, kwargs))
+
+    monkeypatch.setattr(
+        module,
+        "op",
+        SimpleNamespace(
+            get_bind=lambda: SimpleNamespace(dialect=SimpleNamespace(name="mysql")),
+            alter_column=_fake_alter,
+        ),
+    )
+
+    module.upgrade()
+
+    assert [
+        (table_name, column_name, kwargs["existing_nullable"])
+        for table_name, column_name, kwargs in upgrade_calls
+    ] == list(module._COLUMNS)
+    assert all(
+        isinstance(kwargs["existing_type"], sqltypes.Text) for _, _, kwargs in upgrade_calls
+    )
+    assert all(
+        kwargs["type_"].__class__.__name__.upper() == "MEDIUMTEXT"
+        for _, _, kwargs in upgrade_calls
+    )
+
+    state["phase"] = "downgrade"
+    module.downgrade()
+
+    assert [
+        (table_name, column_name, kwargs["existing_nullable"])
+        for table_name, column_name, kwargs in downgrade_calls
+    ] == list(module._COLUMNS)
+    # 還原方向：existing_type 必須是 MEDIUMTEXT（因為剛被升級），目標回到 TEXT
+    assert all(
+        kwargs["existing_type"].__class__.__name__.upper() == "MEDIUMTEXT"
+        for _, _, kwargs in downgrade_calls
+    )
+    assert all(
+        kwargs["type_"].__class__.__name__.upper() == "TEXT"
+        for _, _, kwargs in downgrade_calls
+    )
+
+
+def test_knowledge_query_logs_widen_migration_skips_non_mysql(monkeypatch) -> None:
+    module = _load_audit_migration_module(
+        "b1c2d3e4f506_widen_knowledge_query_logs.py",
+        "alembic_audit_b1c2d3e4f506_non_mysql",
+    )
+    alter_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    monkeypatch.setattr(
+        module,
+        "op",
+        SimpleNamespace(
+            get_bind=lambda: SimpleNamespace(dialect=SimpleNamespace(name="sqlite")),
+            alter_column=lambda *args, **kwargs: alter_calls.append((args, kwargs)),
+        ),
+    )
+
+    module.upgrade()
+    module.downgrade()
+
+    assert alter_calls == []
+
+
+def test_knowledge_query_logs_migration_declares_mediumtext_on_mysql() -> None:
+    """新建立的 `20260724_knowledge_query_logs` 應在 MySQL 上直接建出 MEDIUMTEXT，
+    避免新部署仍要先建 TEXT、再被 catch-up migration 升級的雙重成本。"""
+    from sqlalchemy.dialects import mysql as mysql_dialect
+    from sqlalchemy.schema import CreateTable
+
+    from app.audit.database import KnowledgeQueryLogTable
+
+    ddl = str(CreateTable(KnowledgeQueryLogTable.__table__).compile(dialect=mysql_dialect.dialect()))
+    for column_name in (
+        "query_text",
+        "allowed_team_ids",
+        "process",
+        "results_summary",
+        "error",
+    ):
+        assert f"{column_name} MEDIUMTEXT" in ddl, ddl

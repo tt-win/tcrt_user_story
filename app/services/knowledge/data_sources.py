@@ -83,10 +83,15 @@ def _row_to_test_case_dict(
 def _row_to_usm_node_dict(
     row: UserStoryMapNodeDB,
     map_name: str | None,
+    team_id: int | None = None,
 ) -> dict[str, Any]:
-    """Convert a UserStoryMapNodeDB ORM row to the dict shape expected by backfill."""
+    """Convert a UserStoryMapNodeDB ORM row to the dict shape expected by backfill.
+
+    ``team_id`` comes from the parent User Story Map so Qdrant payloads support
+    authorized-team filters (MatchAny on team_id) during RAG search.
+    """
     jira_tickets_attr = getattr(row, "jira_tickets", None) or []
-    return {
+    payload: dict[str, Any] = {
         "id": row.id,  # internal DB PK — used for keyset pagination
         "node_id": row.node_id,
         "title": row.title or "",
@@ -101,6 +106,9 @@ def _row_to_usm_node_dict(
         "so_that": row.so_that or "",
         "jira_tickets": list(jira_tickets_attr),
     }
+    if team_id is not None:
+        payload["team_id"] = int(team_id)
+    return payload
 
 
 # ---- stream functions ----
@@ -196,7 +204,7 @@ async def fetch_usm_nodes(
             _limit: int = batch_size,
         ) -> list[dict[str, Any]]:
             stmt = (
-                select(UserStoryMapNodeDB, UserStoryMapDB.name)
+                select(UserStoryMapNodeDB, UserStoryMapDB.name, UserStoryMapDB.team_id)
                 .join(UserStoryMapDB, UserStoryMapDB.id == UserStoryMapNodeDB.map_id)
                 .order_by(UserStoryMapNodeDB.id.asc())
                 .limit(_limit)
@@ -206,8 +214,8 @@ async def fetch_usm_nodes(
             result = await session.execute(stmt)
             rows = result.all()
             return [
-                _row_to_usm_node_dict(node, map_name)
-                for node, map_name in rows
+                _row_to_usm_node_dict(node, map_name, team_id=map_team_id)
+                for node, map_name, map_team_id in rows
             ]
 
         batch = await boundary.run_read(_op)
@@ -262,7 +270,7 @@ async def fetch_usm_node_by_id(
 
     async def _op(session: AsyncSession) -> dict[str, Any] | None:
         stmt = (
-            select(UserStoryMapNodeDB, UserStoryMapDB.name)
+            select(UserStoryMapNodeDB, UserStoryMapDB.name, UserStoryMapDB.team_id)
             .join(UserStoryMapDB, UserStoryMapDB.id == UserStoryMapNodeDB.map_id)
             .where(UserStoryMapNodeDB.node_id == node_id)
         )
@@ -270,8 +278,8 @@ async def fetch_usm_node_by_id(
         row = result.first()
         if not row:
             return None
-        node, map_name = row
-        return _row_to_usm_node_dict(node, map_name)
+        node, map_name, map_team_id = row
+        return _row_to_usm_node_dict(node, map_name, team_id=map_team_id)
 
     return await boundary.run_read(_op)
 

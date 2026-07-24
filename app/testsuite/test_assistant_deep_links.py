@@ -271,3 +271,182 @@ class TestCreateTestCaseTempUploadId:
         body_schema = tool.body_schema
         prop = body_schema["properties"]["temp_upload_id"]
         assert prop["type"] == "string"
+
+
+class TestGetTestCaseGlobal:
+    """Tests for extend-assistant-deep-links-global: get_test_case_global rule."""
+
+    def test_basic(self):
+        result = {"set_id": 63, "test_case_number": "TCG-114460.030.060", "title": "X"}
+        links = build_deep_links("get_test_case_global", result, {})
+        assert links == {"test_case": "/test-case-management?set_id=63&tc=TCG-114460.030.060"}
+
+    def test_missing_set_id(self):
+        links = build_deep_links("get_test_case_global", {"test_case_number": "TC001"}, {})
+        assert links == {}
+
+    def test_missing_test_case_number(self):
+        links = build_deep_links("get_test_case_global", {"set_id": 5}, {})
+        assert links == {}
+
+
+class TestSearchTestCasesGlobalList:
+    """Tests for search_test_cases_global {results:[...]} envelope rule."""
+
+    def test_injects_per_item(self):
+        payload = {
+            "status": "success",
+            "total": 2,
+            "results": [
+                {"test_case_number": "TC001", "set_id": 5, "title": "A"},
+                {"test_case_number": "TC002", "set_id": 5, "title": "B"},
+            ],
+        }
+        assert build_list_deep_links("search_test_cases_global", payload) is True
+        assert payload["results"][0]["_deep_links"] == {"test_case": "/test-case-management?set_id=5&tc=TC001"}
+        assert payload["results"][1]["_deep_links"] == {"test_case": "/test-case-management?set_id=5&tc=TC002"}
+
+    def test_set_id_none_skips_item(self):
+        payload = {
+            "status": "success",
+            "total": 2,
+            "results": [
+                {"test_case_number": "TC001", "set_id": 5, "title": "A"},
+                {"test_case_number": "ORPHAN", "set_id": None, "title": "no set"},
+            ],
+        }
+        build_list_deep_links("search_test_cases_global", payload)
+        assert "_deep_links" in payload["results"][0]
+        assert "_deep_links" not in payload["results"][1]
+
+    def test_special_chars_in_number(self):
+        payload = {
+            "results": [{"test_case_number": "TCG 1&2", "set_id": 3, "title": "X"}],
+        }
+        build_list_deep_links("search_test_cases_global", payload)
+        assert "tc=TCG%201%262" in payload["results"][0]["_deep_links"]["test_case"]
+
+
+class TestSearchKnowledgeList:
+    """Tests for search_knowledge rule: entity_type filter + nested metadata."""
+
+    def test_test_case_entity_gets_link(self):
+        payload = {
+            "status": "success",
+            "fallback_recommended": False,
+            "results": [
+                {
+                    "entity_type": "test_case",
+                    "entity_id": "TCG-1",
+                    "title": "A",
+                    "metadata": {"test_case_set_id": 3, "test_case_number": "TCG-1"},
+                },
+            ],
+        }
+        build_list_deep_links("search_knowledge", payload)
+        assert payload["results"][0]["_deep_links"] == {"test_case": "/test-case-management?set_id=3&tc=TCG-1"}
+
+    def test_non_test_case_entities_skipped(self):
+        payload = {
+            "results": [
+                {"entity_type": "usm_node", "entity_id": "USM-1", "title": "X", "metadata": {}},
+                {"entity_type": "jira_ticket", "entity_id": "JIRA-1", "title": "Y", "metadata": {}},
+            ],
+        }
+        build_list_deep_links("search_knowledge", payload)
+        for item in payload["results"]:
+            assert "_deep_links" not in item
+
+    def test_mixed_entities_only_test_case_linked(self):
+        payload = {
+            "results": [
+                {"entity_type": "usm_node", "entity_id": "USM-1", "metadata": {}},
+                {"entity_type": "test_case", "entity_id": "TCG-2", "metadata": {"test_case_set_id": 7, "test_case_number": "TCG-2"}},
+            ],
+        }
+        build_list_deep_links("search_knowledge", payload)
+        assert "_deep_links" not in payload["results"][0]
+        assert payload["results"][1]["_deep_links"] == {"test_case": "/test-case-management?set_id=7&tc=TCG-2"}
+
+    def test_test_case_without_metadata_skipped(self):
+        payload = {
+            "results": [{"entity_type": "test_case", "entity_id": "TCG-9", "title": "X"}],
+        }
+        build_list_deep_links("search_knowledge", payload)
+        assert "_deep_links" not in payload["results"][0]
+
+
+class TestResultsEnvelope:
+    """Generic {results:[...]} envelope support in build_list_deep_links."""
+
+    def test_results_key_recognized(self):
+        payload = {"status": "ok", "results": [{"test_case_number": "X", "set_id": 1, "title": "t"}]}
+        # search_test_cases_global rule applies; verifies envelope handler picks up
+        # the list even when not called via a known tool.
+        assert build_list_deep_links("search_test_cases_global", payload) is True
+
+    def test_no_results_no_items_returns_false(self):
+        payload = {"status": "ok"}
+        assert build_list_deep_links("search_test_cases_global", payload) is False
+
+
+class TestDottedPathResolution:
+    """_build_single / _resolve_field dotted-path support."""
+
+    def test_flat_still_works(self):
+        links = build_deep_links("get_test_case", {"test_case_set_id": 5, "test_case_number": "TC001"}, {})
+        assert links == {"test_case": "/test-case-management?set_id=5&tc=TC001"}
+
+    def test_dotted_metadata_resolved(self):
+        from app.services.assistant.deep_links import _resolve_field, _build_single
+        src = {"metadata": {"test_case_set_id": 9, "test_case_number": "TCG-9"}}
+        assert _resolve_field(src, "metadata.test_case_set_id") == 9
+        assert _resolve_field(src, "metadata.test_case_number") == "TCG-9"
+        assert _resolve_field(src, "metadata.missing") is None
+        result = _build_single(
+            "test_case",
+            "/test-case-management?set_id={set_id}&tc={tc}",
+            {"set_id": "metadata.test_case_set_id", "tc": "metadata.test_case_number"},
+            src,
+        )
+        assert result == {"test_case": "/test-case-management?set_id=9&tc=TCG-9"}
+
+    def test_dotted_through_non_dict_returns_none(self):
+        from app.services.assistant.deep_links import _resolve_field
+        # metadata is a list, not a dict → resolve must return None, not raise.
+        assert _resolve_field({"metadata": []}, "metadata.foo") is None
+        assert _resolve_field({"metadata": "str"}, "metadata.foo") is None
+
+
+class TestHistoryCompactionResultsEnvelope:
+    """history_builder._struct_compact_tool_content must preserve _deep_links
+    for the {results:[...]} envelope (used by search_test_cases_global /
+    search_knowledge)."""
+
+    def test_results_envelope_preserves_sampled_links(self):
+        import json as _json
+        from app.services.assistant.history_builder import _struct_compact_tool_content
+        data = {
+            "status": "success",
+            "total": 2,
+            "truncated": False,
+            "source_count": 2,
+            "returned_count": 2,
+            "results": [
+                {
+                    "test_case_number": "TC001",
+                    "set_id": 5,
+                    "_deep_links": {"test_case": "/test-case-management?set_id=5&tc=TC001"},
+                },
+                {
+                    "test_case_number": "TC002",
+                    "set_id": 5,
+                    "_deep_links": {"test_case": "/test-case-management?set_id=5&tc=TC002"},
+                },
+            ],
+        }
+        compacted = _json.loads(_struct_compact_tool_content(_json.dumps(data, ensure_ascii=False)))
+        assert compacted["compacted"] is True
+        assert compacted["source_count"] == 2
+        assert compacted["id_sample"] == ["TC001", "TC002"]
+        assert compacted["_deep_links"] == {"test_case": "/test-case-management?set_id=5&tc=TC001"}

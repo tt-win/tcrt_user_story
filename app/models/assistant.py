@@ -18,6 +18,15 @@ class ConversationCreateRequest(BaseModel):
     title: Optional[str] = None
 
 
+class ConversationBatchDeleteRequest(BaseModel):
+    conversation_ids: list[int] = Field(..., min_items=1)
+
+
+class ConversationBatchDeleteResponse(BaseModel):
+    deleted_count: int
+    deleted_ids: list[int]
+
+
 class ConversationResponse(BaseModel):
     id: int
     conversation_key: str

@@ -276,10 +276,11 @@ def test_row_to_usm_node_dict_shape() -> None:
         so_that="y",
         jira_tickets=["A", "B"],
     )
-    out = _row_to_usm_node_dict(row, "Map1")
+    out = _row_to_usm_node_dict(row, "Map1", team_id=7)
     assert out["node_id"] == "usm-1"
     assert out["map_name"] == "Map1"
     assert out["jira_tickets"] == ["A", "B"]
+    assert out["team_id"] == 7
 
 
 # ---- fetch streams ----

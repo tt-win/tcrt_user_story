@@ -124,6 +124,51 @@ def test_audit_legacy_varchar_enum_schema_is_treated_as_compatible(tmp_path: Pat
                 "CREATE INDEX ix_audit_logs_event_code_timestamp ON audit_logs (event_code, timestamp)",
             ):
                 conn.execute(text(ddl))
+            # knowledge_query_logs 為 audit 資料庫當前 baseline 的一員，legacy 既有 DB
+            # 若曾手動建表（少見，但部分舊部署可能在升級前手動建過）也應被視為相容；
+            # 本測試建立其對應的 table + indexes 以貼合當前 metadata 形狀。
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE knowledge_query_logs (
+                        id INTEGER NOT NULL,
+                        timestamp DATETIME NOT NULL,
+                        query_id VARCHAR(64),
+                        source VARCHAR(32) NOT NULL,
+                        operation VARCHAR(16) NOT NULL,
+                        status VARCHAR(16) NOT NULL,
+                        user_id INTEGER,
+                        username VARCHAR(100),
+                        conversation_id VARCHAR(64),
+                        turn_key VARCHAR(128),
+                        llm_tool_call_id VARCHAR(128),
+                        query_text TEXT,
+                        primary_team_id INTEGER,
+                        allowed_team_ids TEXT,
+                        top_k INTEGER,
+                        score_threshold FLOAT,
+                        fallback_recommended SMALLINT,
+                        degrade_reason VARCHAR(128),
+                        duration_ms INTEGER,
+                        result_count INTEGER,
+                        process TEXT,
+                        results_summary TEXT,
+                        error TEXT,
+                        schema_version SMALLINT NOT NULL DEFAULT 1,
+                        PRIMARY KEY (id)
+                    )
+                    """
+                )
+            )
+            for ddl in (
+                "CREATE INDEX ix_knowledge_query_logs_timestamp ON knowledge_query_logs (timestamp)",
+                "CREATE INDEX ix_knowledge_query_logs_query_id ON knowledge_query_logs (query_id)",
+                "CREATE INDEX ix_knowledge_query_logs_source_timestamp ON knowledge_query_logs (source, timestamp)",
+                "CREATE INDEX ix_knowledge_query_logs_status_timestamp ON knowledge_query_logs (status, timestamp)",
+                "CREATE INDEX ix_knowledge_query_logs_primary_team_timestamp ON knowledge_query_logs (primary_team_id, timestamp)",
+                "CREATE INDEX ix_knowledge_query_logs_user_timestamp ON knowledge_query_logs (user_id, timestamp)",
+            ):
+                conn.execute(text(ddl))
     finally:
         engine.dispose()
 
@@ -231,6 +276,46 @@ def test_managed_test_database_helper_supports_auxiliary_targets(
         assert required_tables.issubset(set(inspector.get_table_names()))
     finally:
         dispose_managed_test_database(database_bundle)
+
+
+def test_audit_knowledge_query_logs_chain_widens_to_mediumtext_on_mysql(
+    tmp_path: Path,
+) -> None:
+    """模擬 production 場景：audit DB 已跑過 `20260724_knowledge_query_logs`（建出 TEXT 5 個欄位），
+    升上新的 catch-up migration `b1c2d3e4f506` 後 chain 仍合法、欄位仍在；SQLite 上 MySQL-only
+    catch-up 為 no-op，但 chain 不應因此中斷。本測試同時確保 9 個 audit revision 串接無分叉。"""
+    db_path = tmp_path / "audit_knowledge_query_logs_chain.db"
+    database_url = _sqlite_url(db_path)
+
+    # 第一階段：升級到中段，模擬已部署的 `20260724_knowledge_query_logs` TEXT 狀態
+    upgrade_database(
+        revision="20260724_knowledge_query_logs",
+        database_url=database_url,
+        target_name="audit",
+    )
+
+    engine = get_sync_engine_for_target("audit", database_url=database_url)
+    try:
+        assert "knowledge_query_logs" in set(inspect(engine).get_table_names())
+    finally:
+        engine.dispose()
+
+    # 第二階段：再升到 head（catch-up `b1c2d3e4f506` 對 SQLite 是 no-op，MySQL 才會改欄位型別）
+    upgrade_database(database_url=database_url, target_name="audit")
+
+    engine = get_sync_engine_for_target("audit", database_url=database_url)
+    try:
+        columns = {c["name"]: c for c in inspect(engine).get_columns("knowledge_query_logs")}
+        for column_name in (
+            "query_text",
+            "allowed_team_ids",
+            "process",
+            "results_summary",
+            "error",
+        ):
+            assert columns[column_name]["nullable"] is True
+    finally:
+        engine.dispose()
 
 
 @pytest.mark.asyncio
