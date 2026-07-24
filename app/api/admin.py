@@ -5,11 +5,13 @@ from typing import Any
 import os
 import time
 import logging
-from sqlalchemy import func, select
+from sqlalchemy import and_, desc, func, select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import require_super_admin
 from app.db_access.main import MainAccessBoundary, get_main_access_boundary
+from app.db_access.audit import AuditAccessBoundary, get_audit_access_boundary
+from app.audit.database import KnowledgeQueryLogTable
 from app.models.database_models import TestCaseLocal, TestRunItem, User
 
 logger = logging.getLogger(__name__)
@@ -428,3 +430,118 @@ async def get_system_runtime_settings(
     except Exception as audit_exc:  # audit 失敗不阻斷快照回應
         logger.error(f"runtime settings audit 寫入失敗: {audit_exc}")
     return JSONResponse(content=snapshot, headers=_NO_STORE_HEADERS)
+
+
+# ---------------------------------------------------------------------------
+# Super Admin 知識圖譜查詢記錄（openspec: log-knowledge-graph-queries）
+# 唯讀、自寫分頁查詢與條件 builder，不重用 audit_service.query_logs / _build_conditions。
+# ---------------------------------------------------------------------------
+
+
+def _build_knowledge_query_log_conditions(
+    *,
+    source: str | None,
+    status: str | None,
+    team_id: int | None,
+    user_id: int | None,
+    start_time: datetime | None,
+    end_time: datetime | None,
+    query_text: str | None,
+) -> list[Any]:
+    conditions: list[Any] = []
+    if source:
+        conditions.append(KnowledgeQueryLogTable.source == source)
+    if status:
+        conditions.append(KnowledgeQueryLogTable.status == status)
+    if team_id is not None:
+        conditions.append(KnowledgeQueryLogTable.primary_team_id == team_id)
+    if user_id is not None:
+        conditions.append(KnowledgeQueryLogTable.user_id == user_id)
+    if start_time:
+        conditions.append(KnowledgeQueryLogTable.timestamp >= start_time)
+    if end_time:
+        conditions.append(KnowledgeQueryLogTable.timestamp <= end_time)
+    if query_text:
+        # SQLite/PostgreSQL/MySQL 皆支援 ilike (PostgreSQL/SQLite) / lower like (MySQL)
+        # 採 ilike 即可（SQLAlchemy 在 MySQL 會 fall back to LIKE LOWER()）
+        conditions.append(KnowledgeQueryLogTable.query_text.ilike(f"%{query_text}%"))
+    return conditions
+
+
+@router.get("/knowledge-query-logs", include_in_schema=False)
+async def list_knowledge_query_logs(
+    source: str | None = Query(None, description="assistant / qa_helper / api"),
+    status: str | None = Query(None, description="success / degraded"),
+    team_id: int | None = Query(None),
+    user_id: int | None = Query(None),
+    start_time: datetime | None = Query(None),
+    end_time: datetime | None = Query(None),
+    query_text: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    current_user: User = Depends(require_super_admin()),
+    boundary: AuditAccessBoundary = Depends(get_audit_access_boundary),
+) -> JSONResponse:
+    """知識圖譜 / RAG 查詢記錄（知識圖譜觀測性，Super Admin only）。"""
+
+    async def _query(session: AsyncSession) -> tuple[list[KnowledgeQueryLogTable], int]:
+        conditions = _build_knowledge_query_log_conditions(
+            source=source,
+            status=status,
+            team_id=team_id,
+            user_id=user_id,
+            start_time=start_time,
+            end_time=end_time,
+            query_text=query_text,
+        )
+        count_stmt = select(func.count()).select_from(KnowledgeQueryLogTable)
+        if conditions:
+            count_stmt = count_stmt.where(and_(*conditions))
+        total = (await session.execute(count_stmt)).scalar() or 0
+
+        list_stmt = select(KnowledgeQueryLogTable)
+        if conditions:
+            list_stmt = list_stmt.where(and_(*conditions))
+        list_stmt = list_stmt.order_by(desc(KnowledgeQueryLogTable.timestamp))
+        offset = (page - 1) * page_size
+        list_stmt = list_stmt.offset(offset).limit(page_size)
+        result = await session.execute(list_stmt)
+        return list(result.scalars().all()), int(total)
+
+    records, total = await boundary.run_read(_query)
+    items = [record.to_dict() for record in records]
+    total_pages = (total + page_size - 1) // page_size if total else 0
+    return JSONResponse(
+        content={
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+        },
+        headers=_NO_STORE_HEADERS,
+    )
+
+
+@router.get("/knowledge-query-logs/{log_id}", include_in_schema=False)
+async def get_knowledge_query_log(
+    log_id: int,
+    current_user: User = Depends(require_super_admin()),
+    boundary: AuditAccessBoundary = Depends(get_audit_access_boundary),
+) -> JSONResponse:
+    """單筆詳情。"""
+
+    async def _fetch(session: AsyncSession) -> KnowledgeQueryLogTable | None:
+        return (
+            await session.execute(
+                select(KnowledgeQueryLogTable).where(KnowledgeQueryLogTable.id == log_id)
+            )
+        ).scalar_one_or_none()
+
+    record = await boundary.run_read(_fetch)
+    if record is None:
+        raise HTTPException(status_code=404, detail="knowledge query log not found")
+    return JSONResponse(
+        content=record.to_dict(),
+        headers=_NO_STORE_HEADERS,
+    )

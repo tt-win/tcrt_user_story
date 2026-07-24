@@ -29,6 +29,10 @@ from .database import (
     cleanup_audit_database,
     audit_health_check,
     AuditLogTable,
+    KnowledgeQueryLogTable,
+    KnowledgeQuerySource,
+    KnowledgeQueryOperation,
+    KnowledgeQueryStatus,
     create_audit_tables,
     drop_audit_tables
 )
@@ -62,6 +66,10 @@ __all__ = [
     'cleanup_audit_database', 
     'audit_health_check',
     'AuditLogTable',
+    'KnowledgeQueryLogTable',
+    'KnowledgeQuerySource',
+    'KnowledgeQueryOperation',
+    'KnowledgeQueryStatus',
     'create_audit_tables',
     'drop_audit_tables',
     

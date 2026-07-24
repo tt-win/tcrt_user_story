@@ -15,10 +15,16 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.auth.dependencies import get_current_user, require_admin
+from app.audit.database import (
+    KnowledgeQueryOperation,
+    KnowledgeQuerySource,
+    KnowledgeQueryStatus,
+)
 from app.services.knowledge import (
     is_knowledge_graph_enabled,
     get_knowledge_graph_config,
     get_hybrid_search,
+    get_query_log_service,
     get_write_service,
 )
 
@@ -31,6 +37,78 @@ async def _require_admin_dep(_user: Any = Depends(require_admin())) -> Any:
     return _user
 
 
+async def _record_api_search(
+    *,
+    user: Any,
+    query_text: str,
+    top_k: int,
+    score_threshold: float | None,
+    team_id: int | None,
+    result_payload: dict[str, Any],
+    started: float,
+    error: str | None = None,
+) -> None:
+    """admin /api/knowledge/search 端點專用：guard 一筆記錄。"""
+    try:
+        results = result_payload.get("results") or []
+        await get_query_log_service().record(
+            source=KnowledgeQuerySource.API,
+            operation=KnowledgeQueryOperation.SEARCH,
+            status=(
+                KnowledgeQueryStatus.SUCCESS
+                if error is None
+                else KnowledgeQueryStatus.DEGRADED
+            ),
+            query_text=query_text,
+            user_id=getattr(user, "id", None),
+            username=getattr(user, "username", None),
+            primary_team_id=team_id,
+            top_k=top_k,
+            score_threshold=score_threshold,
+            result_count=len(results) if isinstance(results, list) else None,
+            duration_ms=int((__import__("time").time() - started) * 1000),
+            process={"endpoint": "search", "via": "api"},
+            results_summary=results if isinstance(results, list) else None,
+            error=error,
+        )
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.warning("/api/knowledge/search 觀測性記錄失敗（已吞）：%s", exc, exc_info=True)
+
+
+async def _record_api_impact(
+    *,
+    user: Any,
+    entity_type: str,
+    entity_id: str,
+    team_id: int | None,
+    result_payload: dict[str, Any],
+    started: float,
+    error: str | None = None,
+) -> None:
+    try:
+        results = result_payload.get("results") or []
+        await get_query_log_service().record(
+            source=KnowledgeQuerySource.API,
+            operation=KnowledgeQueryOperation.IMPACT,
+            status=(
+                KnowledgeQueryStatus.SUCCESS
+                if error is None
+                else KnowledgeQueryStatus.DEGRADED
+            ),
+            query_text=f"{entity_type}:{entity_id}",
+            user_id=getattr(user, "id", None),
+            username=getattr(user, "username", None),
+            primary_team_id=team_id,
+            result_count=len(results) if isinstance(results, list) else None,
+            duration_ms=int((__import__("time").time() - started) * 1000),
+            process={"endpoint": "impact", "via": "api"},
+            results_summary=results if isinstance(results, list) else None,
+            error=error,
+        )
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.warning("/api/knowledge/impact 觀測性記錄失敗（已吞）：%s", exc, exc_info=True)
+
+
 @router.get("/search")
 async def search(
     q: str = Query(..., min_length=1),
@@ -40,7 +118,20 @@ async def search(
     _user: Any = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Hybrid search across Qdrant + Neo4j."""
+    import time as _time
+
+    started = _time.time()
     if not is_knowledge_graph_enabled():
+        await _record_api_search(
+            user=_user,
+            query_text=q,
+            top_k=top_k,
+            score_threshold=None,
+            team_id=team_id,
+            result_payload={"results": []},
+            started=started,
+            error="knowledge_graph_disabled",
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Knowledge graph is not enabled",
@@ -48,15 +139,38 @@ async def search(
     colls = [c.strip() for c in collections.split(",")] if collections else None
     # Note: team_id filtering enforced inside HybridSearch via options
     search_svc = get_hybrid_search()
-    results = await search_svc.hybrid_search(
-        query=q,
-        options={
-            "top_k": top_k,
-            "team_id": team_id,
-            "collections": colls,
-        },
+    try:
+        results = await search_svc.hybrid_search(
+            query=q,
+            options={
+                "top_k": top_k,
+                "team_id": team_id,
+                "collections": colls,
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        await _record_api_search(
+            user=_user,
+            query_text=q,
+            top_k=top_k,
+            score_threshold=None,
+            team_id=team_id,
+            result_payload={"results": []},
+            started=started,
+            error=f"exception:{type(exc).__name__}",
+        )
+        raise
+    payload = {"results": [r.model_dump() for r in results]}
+    await _record_api_search(
+        user=_user,
+        query_text=q,
+        top_k=top_k,
+        score_threshold=None,
+        team_id=team_id,
+        result_payload=payload,
+        started=started,
     )
-    return {"results": [r.model_dump() for r in results]}
+    return payload
 
 
 @router.get("/impact/{entity_type}/{entity_id}")
@@ -67,18 +181,51 @@ async def impact(
     _user: Any = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Impact analysis: find affected entities via graph traversal."""
+    import time as _time
+
+    started = _time.time()
     if not is_knowledge_graph_enabled():
+        await _record_api_impact(
+            user=_user,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            team_id=None,
+            result_payload={"results": []},
+            started=started,
+            error="knowledge_graph_disabled",
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Knowledge graph is not enabled",
         )
     search_svc = get_hybrid_search()
-    results = await search_svc.impact_analysis(
+    try:
+        results = await search_svc.impact_analysis(
+            entity_type=entity_type,
+            entity_id=entity_id,
+            depth=depth,
+        )
+    except Exception as exc:  # noqa: BLE001
+        await _record_api_impact(
+            user=_user,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            team_id=None,
+            result_payload={"results": []},
+            started=started,
+            error=f"exception:{type(exc).__name__}",
+        )
+        raise
+    payload = {"results": results}
+    await _record_api_impact(
+        user=_user,
         entity_type=entity_type,
         entity_id=entity_id,
-        depth=depth,
+        team_id=None,
+        result_payload=payload,
+        started=started,
     )
-    return {"results": results}
+    return payload
 
 
 @router.post("/backfill", deprecated=True)

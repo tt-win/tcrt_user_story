@@ -5,11 +5,13 @@
 支援 SQLite 和 PostgreSQL，具備自動重連和連線池管理功能。
 """
 
+import json
 import logging
-from typing import Optional, AsyncGenerator
+from enum import Enum
+from typing import Any, Optional, AsyncGenerator
 from contextlib import asynccontextmanager
 
-from sqlalchemy import Column, DateTime, Enum as SQLEnum, Index, Integer, String, SmallInteger, event, text
+from sqlalchemy import Column, DateTime, Enum as SQLEnum, Float, Index, Integer, String, SmallInteger, Text as SqlText, event, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import SQLAlchemyError
@@ -276,6 +278,148 @@ class AuditLogTable(AuditBase):
                 f"action={self.action_type}, resource={self.resource_type}:{self.resource_id})>")
 
 
+# ---------------------------------------------------------------------------
+# Knowledge graph / RAG query log (openspec: log-knowledge-graph-queries)
+# ---------------------------------------------------------------------------
+
+
+class KnowledgeQuerySource(str, Enum):
+    """Knowledge graph / RAG 查詢來源標籤。"""
+
+    ASSISTANT = "assistant"
+    QA_HELPER = "qa_helper"
+    API = "api"
+
+
+class KnowledgeQueryOperation(str, Enum):
+    """Knowledge graph / RAG 查詢類型。"""
+
+    SEARCH = "search"
+    IMPACT = "impact"
+
+
+class KnowledgeQueryStatus(str, Enum):
+    """Knowledge graph / RAG 查詢結果狀態。"""
+
+    SUCCESS = "success"
+    DEGRADED = "degraded"
+
+
+def _knowledge_query_enum_values(enum_cls: Any) -> list[str]:
+    return [item.value for item in enum_cls]
+
+
+class KnowledgeQueryLogTable(AuditBase):
+    """知識圖譜 / RAG 查詢的觀測性記錄表。
+
+    設計目標：純觀測性疊加。不存結果全文 snippet；跨 SQLite / MySQL 8 / PostgreSQL 16
+    可攜（JSON 採 ``MediumText``+``json.dumps``、列舉採 ``native_enum=False``）；time-stamp
+    採 client-side ``default=func.now()`` 且 migration 不寫 ``server_default``，避免
+    alembic ``compare_server_default`` 判 drift。
+    """
+
+    __tablename__ = "knowledge_query_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, nullable=False, default=func.now(), index=True)
+    query_id = Column(String(64), nullable=True, index=True)
+
+    source = Column(
+        SQLEnum(
+            KnowledgeQuerySource,
+            values_callable=lambda values: _knowledge_query_enum_values(KnowledgeQuerySource),
+            native_enum=False,
+        ),
+        nullable=False,
+    )
+    operation = Column(
+        SQLEnum(
+            KnowledgeQueryOperation,
+            values_callable=lambda values: _knowledge_query_enum_values(KnowledgeQueryOperation),
+            native_enum=False,
+        ),
+        nullable=False,
+    )
+    status = Column(
+        SQLEnum(
+            KnowledgeQueryStatus,
+            values_callable=lambda values: _knowledge_query_enum_values(KnowledgeQueryStatus),
+            native_enum=False,
+        ),
+        nullable=False,
+    )
+
+    # 發起者
+    user_id = Column(Integer, nullable=True)
+    username = Column(String(100), nullable=True)
+    conversation_id = Column(String(64), nullable=True)
+    turn_key = Column(String(128), nullable=True)
+    llm_tool_call_id = Column(String(128), nullable=True)
+
+    # 查詢內容
+    query_text = Column(Text, nullable=True)
+    primary_team_id = Column(Integer, nullable=True)
+    allowed_team_ids = Column(Text, nullable=True)  # JSON 序列化 list[int]
+    top_k = Column(Integer, nullable=True)
+    score_threshold = Column(Float, nullable=True)
+    fallback_recommended = Column(SmallInteger, nullable=True)
+    degrade_reason = Column(String(128), nullable=True)
+
+    # 結果統計與診斷
+    duration_ms = Column(Integer, nullable=True)
+    result_count = Column(Integer, nullable=True)
+    process = Column(Text, nullable=True)  # JSON 序列化 dict：dual_route、per-collection 計數、graph 展開/逾時、斷路器狀態
+    results_summary = Column(Text, nullable=True)  # JSON 序列化 list[dict]，每筆精簡
+    error = Column(Text, nullable=True)
+    schema_version = Column(SmallInteger, nullable=False, default=1)
+
+    def __repr__(self) -> str:
+        return (
+            f"<KnowledgeQueryLog(id={self.id}, source={self.source}, operation={self.operation}, "
+            f"status={self.status}, ts={self.timestamp})>"
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        ts = self.timestamp
+        if hasattr(ts, "isoformat"):
+            ts = ts.isoformat()
+        return {
+            "id": self.id,
+            "timestamp": ts,
+            "query_id": self.query_id,
+            "source": self.source.value if hasattr(self.source, "value") else self.source,
+            "operation": self.operation.value if hasattr(self.operation, "value") else self.operation,
+            "status": self.status.value if hasattr(self.status, "value") else self.status,
+            "user_id": self.user_id,
+            "username": self.username,
+            "conversation_id": self.conversation_id,
+            "turn_key": self.turn_key,
+            "llm_tool_call_id": self.llm_tool_call_id,
+            "query_text": self.query_text,
+            "primary_team_id": self.primary_team_id,
+            "allowed_team_ids": _safe_json_loads(str(self.allowed_team_ids) if self.allowed_team_ids is not None else None),
+            "top_k": self.top_k,
+            "score_threshold": self.score_threshold,
+            "fallback_recommended": self.fallback_recommended,
+            "degrade_reason": self.degrade_reason,
+            "duration_ms": self.duration_ms,
+            "result_count": self.result_count,
+            "process": _safe_json_loads(str(self.process) if self.process is not None else None),
+            "results_summary": _safe_json_loads(str(self.results_summary) if self.results_summary is not None else None),
+            "error": self.error,
+            "schema_version": self.schema_version,
+        }
+
+
+def _safe_json_loads(raw: Optional[str]) -> Any:
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 # 索引定義（提升查詢效能）
 # 複合索引
 Index('idx_audit_time_team', AuditLogTable.timestamp, AuditLogTable.team_id)
@@ -286,6 +430,12 @@ Index('idx_audit_username_time', AuditLogTable.username, AuditLogTable.timestamp
 Index('idx_audit_role_time', AuditLogTable.role, AuditLogTable.timestamp)
 Index('idx_audit_action_time', AuditLogTable.action_type, AuditLogTable.timestamp)
 Index('ix_audit_logs_event_code_timestamp', AuditLogTable.event_code, AuditLogTable.timestamp)
+
+# Knowledge query log 複合索引：對應 admin /api/admin/knowledge-query-logs 常見查詢模式
+Index('ix_knowledge_query_logs_source_timestamp', KnowledgeQueryLogTable.source, KnowledgeQueryLogTable.timestamp)
+Index('ix_knowledge_query_logs_status_timestamp', KnowledgeQueryLogTable.status, KnowledgeQueryLogTable.timestamp)
+Index('ix_knowledge_query_logs_primary_team_timestamp', KnowledgeQueryLogTable.primary_team_id, KnowledgeQueryLogTable.timestamp)
+Index('ix_knowledge_query_logs_user_timestamp', KnowledgeQueryLogTable.user_id, KnowledgeQueryLogTable.timestamp)
 
 
 async def create_audit_tables() -> None:

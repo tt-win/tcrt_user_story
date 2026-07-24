@@ -525,8 +525,12 @@ const AssistantWidget = (() => {
       <section class="tcrt-assistant-panel" id="tcrt-assistant-panel" role="dialog" aria-modal="false" data-i18n-aria-label="assistant.title" aria-label="${_assistantEscapeHtml(t('assistant.title', {}, 'TCRT Assistant'))}">
         <header class="tcrt-assistant-head">
           <span class="tcrt-assistant-title" data-i18n="assistant.title">${_assistantEscapeHtml(t('assistant.title', {}, 'TCRT Assistant'))}</span>
-          <span class="tcrt-assistant-team-badge" id="tcrt-assistant-team-badge"></span>
           <span class="tcrt-assistant-spacer"></span>
+          <label class="tcrt-assistant-head-auto-toggle" id="tcrt-assistant-auto-toggle-wrap" title="自動同意模式 (已關閉)">
+            <i class="fas fa-bolt tcrt-assistant-auto-icon" aria-hidden="true"></i>
+            <input type="checkbox" id="tcrt-assistant-auto-cb" class="tcrt-assistant-auto-input" />
+            <span class="tcrt-assistant-toggle-slider"></span>
+          </label>
           <button class="tcrt-assistant-icon-btn" type="button" id="tcrt-assistant-history-btn" data-i18n-title="assistant.historyTitleGlobal" data-i18n-aria-label="assistant.historyTitleGlobal" title="${_assistantEscapeHtml(t('assistant.historyTitleGlobal', {}, 'Recent conversations'))}" aria-label="${_assistantEscapeHtml(t('assistant.historyTitleGlobal', {}, 'Recent conversations'))}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-9-9 9 9 0 0 1 9 9Z"/></svg>
           </button>
@@ -540,7 +544,25 @@ const AssistantWidget = (() => {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
           </button>
           <div class="tcrt-assistant-history-menu" id="tcrt-assistant-history-menu">
-            <div class="tcrt-assistant-hm-title" id="tcrt-assistant-hm-title" data-i18n="assistant.historyTitleGlobal"></div>
+            <div class="tcrt-assistant-hm-header-row">
+              <div class="tcrt-assistant-hm-title" id="tcrt-assistant-hm-title" data-i18n="assistant.historyTitleGlobal"></div>
+              <input type="text" class="tcrt-assistant-hm-search" id="tcrt-assistant-hm-search" placeholder="搜尋對話..." />
+              <button class="tcrt-assistant-hm-batch-btn" type="button" id="tcrt-assistant-hm-batch-toggle">
+                <i class="fas fa-list-check" aria-hidden="true"></i>
+                <span>多選</span>
+              </button>
+            </div>
+            <div class="tcrt-assistant-hm-batch-bar" id="tcrt-assistant-hm-batch-bar" style="display:none">
+              <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="tcrt-assistant-hm-select-all" /> 全選</label>
+              <button class="tcrt-assistant-hm-batch-btn tcrt-assistant-btn-danger" type="button" id="tcrt-assistant-hm-delete-sel" disabled>刪除選取 (0)</button>
+            </div>
+            <div class="tcrt-assistant-hm-confirm-banner" id="tcrt-assistant-hm-confirm-banner" style="display:none">
+              <span class="tcrt-assistant-hm-confirm-msg"></span>
+              <div class="tcrt-assistant-hm-confirm-acts">
+                <button class="tcrt-assistant-hm-batch-btn tcrt-assistant-btn-danger" type="button" id="tcrt-assistant-hm-confirm-yes">確認刪除</button>
+                <button class="tcrt-assistant-hm-batch-btn" type="button" id="tcrt-assistant-hm-confirm-no">取消</button>
+              </div>
+            </div>
             <div id="tcrt-assistant-hm-list"></div>
             <button class="tcrt-assistant-hm-new" type="button" id="tcrt-assistant-hm-new-btn" data-i18n="assistant.newConversation">${_assistantEscapeHtml(t('assistant.newConversation', {}, 'New conversation'))}</button>
           </div>
@@ -559,7 +581,7 @@ const AssistantWidget = (() => {
             </button>
           </div>
           <div class="tcrt-assistant-composer-hint">
-            <span data-i18n="assistant.enterHint">${_assistantEscapeHtml(t('assistant.enterHint', {}, 'Enter to send · Shift+Enter for new line'))}</span>
+            <span class="tcrt-assistant-enter-hint" data-i18n="assistant.enterHint">${_assistantEscapeHtml(t('assistant.enterHint', {}, 'Enter to send · Shift+Enter for new line'))}</span>
             <span class="tcrt-assistant-lock" id="tcrt-assistant-lock-hint"></span>
           </div>
         </footer>
@@ -579,6 +601,7 @@ const AssistantWidget = (() => {
     expandBtnEl = root.querySelector('#tcrt-assistant-expand-btn');
 
     wireEvents();
+    renderAutoApproveBtn();
     mounted = true;
 
     if (window.i18n && typeof window.i18n.retranslate === 'function') window.i18n.retranslate(root);
@@ -1060,6 +1083,24 @@ const AssistantWidget = (() => {
     if (cancelBtn) cancelBtn.addEventListener('click', () => void handleCancelAction(actionId, card));
   }
 
+  function isAutoApproveEnabled() {
+    return localStorage.getItem('tcrt_assistant_auto_approve') === 'true';
+  }
+
+  function toggleAutoApprove() {
+    const next = !isAutoApproveEnabled();
+    localStorage.setItem('tcrt_assistant_auto_approve', next ? 'true' : 'false');
+    renderAutoApproveBtn();
+  }
+
+  function renderAutoApproveBtn() {
+    const cb = root.querySelector('#tcrt-assistant-auto-cb');
+    const wrap = root.querySelector('#tcrt-assistant-auto-toggle-wrap');
+    const enabled = isAutoApproveEnabled();
+    if (cb) cb.checked = enabled;
+    if (wrap) wrap.setAttribute('title', enabled ? '自動同意模式 (已開啟)' : '自動同意模式 (已關閉)');
+  }
+
   function renderLiveConfirmCard(assistantNode, actionId, summary) {
     const tier = confirmTier(summary.risk_level);
     const card = buildConfirmCardNode(summary, tier);
@@ -1068,6 +1109,12 @@ const AssistantWidget = (() => {
     hasUnresolvedConfirm = true;
     refreshLockState();
     attachConfirmCardHandlers(card, actionId);
+    if (tier !== 'warning' && isAutoApproveEnabled()) {
+      setTimeout(() => {
+        const confirmBtn = card.querySelector('[data-act="confirm"]');
+        if (confirmBtn && !confirmBtn.disabled) confirmBtn.click();
+      }, 150);
+    }
     return card;
   }
 
@@ -1549,89 +1596,128 @@ const AssistantWidget = (() => {
   }
 
   async function createConversation(teamId) {
-    const body = teamId != null ? { scope_type: 'team', team_id: teamId } : { scope_type: 'global' };
+    const body = { scope_type: 'global' };
     return fetchJson('/api/assistant/conversations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   }
 
   async function listRelevantConversations(teamId) {
     const data = await fetchJson('/api/assistant/conversations?limit=20');
     if (!data) return [];
-    return data.filter((c) => (teamId != null ? c.team_id === teamId : c.scope_type === 'global'));
+    return data;
   }
 
   function renderTeamBadge() {
     if (!teamBadgeEl) return;
-    const team = window.AppUtils && window.AppUtils.getCurrentTeam && window.AppUtils.getCurrentTeam();
-    teamBadgeEl.textContent = team ? team.name : '';
-    teamBadgeEl.style.display = team ? '' : 'none';
+    teamBadgeEl.textContent = '';
+    teamBadgeEl.style.display = 'none';
   }
 
+  let historySearchQuery = '';
+  let historyBatchMode = false;
+  const historySelectedIds = new Set();
+  let historyPendingConfirm = null;
+
   async function refreshHistoryMenu() {
-    const teamId = getCurrentTeamId() ? parseInt(getCurrentTeamId(), 10) : null;
     const list = root.querySelector('#tcrt-assistant-hm-list');
     const titleEl = root.querySelector('#tcrt-assistant-hm-title');
     const historyBtn = root.querySelector('#tcrt-assistant-history-btn');
-    const team = window.AppUtils && window.AppUtils.getCurrentTeam && window.AppUtils.getCurrentTeam();
-    if (team && team.name) {
-      const historyTitleStr = t('assistant.historyTitle', { team: team.name }, `Recent conversations (${team.name})`);
-      titleEl.textContent = historyTitleStr;
-      titleEl.setAttribute('data-i18n', 'assistant.historyTitle');
-      titleEl.setAttribute('data-i18n-params', JSON.stringify({ team: team.name }));
-      if (historyBtn) {
-        historyBtn.setAttribute('title', historyTitleStr);
-        historyBtn.setAttribute('aria-label', historyTitleStr);
-        historyBtn.setAttribute('data-i18n-title', 'assistant.historyTitle');
-        historyBtn.setAttribute('data-i18n-aria-label', 'assistant.historyTitle');
-        historyBtn.setAttribute('data-i18n-params', JSON.stringify({ team: team.name }));
-      }
-    } else {
-      const historyTitleStr = t('assistant.historyTitleGlobal', {}, 'Recent conversations');
-      titleEl.textContent = historyTitleStr;
-      titleEl.setAttribute('data-i18n', 'assistant.historyTitleGlobal');
-      titleEl.removeAttribute('data-i18n-params');
-      if (historyBtn) {
-        historyBtn.setAttribute('title', historyTitleStr);
-        historyBtn.setAttribute('aria-label', historyTitleStr);
-        historyBtn.setAttribute('data-i18n-title', 'assistant.historyTitleGlobal');
-        historyBtn.setAttribute('data-i18n-aria-label', 'assistant.historyTitleGlobal');
-        historyBtn.removeAttribute('data-i18n-params');
-      }
+    const batchBar = root.querySelector('#tcrt-assistant-hm-batch-bar');
+    const batchToggleBtn = root.querySelector('#tcrt-assistant-hm-batch-toggle');
+    const selectAllCb = root.querySelector('#tcrt-assistant-hm-select-all');
+    const deleteSelBtn = root.querySelector('#tcrt-assistant-hm-delete-sel');
+    const confirmBanner = root.querySelector('#tcrt-assistant-hm-confirm-banner');
+    const confirmMsg = root.querySelector('.tcrt-assistant-hm-confirm-msg');
+
+    const historyTitleStr = t('assistant.historyTitleGlobal', {}, 'Recent conversations');
+    if (titleEl) titleEl.textContent = historyTitleStr;
+
+    if (batchBar) batchBar.style.display = historyBatchMode ? 'flex' : 'none';
+    if (batchToggleBtn) {
+      batchToggleBtn.classList.toggle('active', historyBatchMode);
+      const span = batchToggleBtn.querySelector('span');
+      if (span) span.textContent = historyBatchMode ? '取消' : '多選';
     }
+
+    if (historyPendingConfirm) {
+      confirmBanner.style.display = 'flex';
+      const count = historyPendingConfirm.ids.length;
+      if (historyPendingConfirm.title) {
+        confirmMsg.textContent = `⚠️ 確定要刪除對話「${historyPendingConfirm.title}」嗎？刪除後無法復原。`;
+      } else {
+        confirmMsg.textContent = `⚠️ 確定要刪除選取的 ${count} 個對話嗎？刪除後無法復原。`;
+      }
+    } else if (confirmBanner) {
+      confirmBanner.style.display = 'none';
+    }
+
     list.innerHTML = '';
-    const conversations = (await listRelevantConversations(teamId)).filter(
-      (c) => !currentConversation || c.id !== currentConversation.id,
-    );
+    const allConvs = await listRelevantConversations(null);
+    const conversations = allConvs.filter((c) => {
+      if (currentConversation && c.id === currentConversation.id) return false;
+      if (!historySearchQuery) return true;
+      const q = historySearchQuery.toLowerCase();
+      return (c.title || '').toLowerCase().includes(q) || (c.conversation_key || '').toLowerCase().includes(q);
+    });
+
     if (!conversations.length) {
       list.appendChild(el(`<div class="tcrt-assistant-hm-empty" data-i18n="assistant.historyEmpty">${_assistantEscapeHtml(t('assistant.historyEmpty', {}, 'No recent conversations'))}</div>`));
       return;
     }
+
+    if (selectAllCb) {
+      selectAllCb.checked = conversations.length > 0 && conversations.every((c) => historySelectedIds.has(c.id));
+    }
+    if (deleteSelBtn) {
+      deleteSelBtn.disabled = historySelectedIds.size === 0;
+      deleteSelBtn.textContent = `刪除選取 (${historySelectedIds.size})`;
+    }
+
     conversations.forEach((c) => {
+      const isChecked = historySelectedIds.has(c.id);
       const row = el(`
         <div class="tcrt-assistant-hm-row">
+          ${historyBatchMode ? `<input type="checkbox" class="tcrt-assistant-hm-item-cb" ${isChecked ? 'checked' : ''} style="margin-right:6px;cursor:pointer" />` : ''}
           <button class="tcrt-assistant-hm-item" type="button">
             <span class="tcrt-assistant-t"></span>
             <span class="tcrt-assistant-m"></span>
           </button>
-          <button class="tcrt-assistant-hm-delete" type="button" data-i18n-aria-label="assistant.confirmDelete" aria-label="${_assistantEscapeHtml(t('assistant.confirmDelete', {}, 'Delete'))}">✕</button>
+          ${!historyBatchMode ? `<button class="tcrt-assistant-hm-delete" type="button" title="刪除">✕</button>` : ''}
         </div>
       `);
       row.querySelector('.tcrt-assistant-t').textContent = c.title || c.conversation_key.slice(0, 8);
       row.querySelector('.tcrt-assistant-m').textContent = new Date(c.last_message_at).toLocaleString();
-      row.querySelector('.tcrt-assistant-hm-item').addEventListener('click', () => {
-        closeHistoryMenu();
-        void loadConversation(c, teamId);
-      });
-      row.querySelector('.tcrt-assistant-hm-delete').addEventListener('click', async (ev) => {
-        ev.stopPropagation();
-        if (!window.confirm(t('assistant.deleteConversationConfirm', {}, 'Delete this conversation? This cannot be undone.'))) return;
-        const resp = await window.AuthClient.fetch(`/api/assistant/conversations/${c.id}`, { method: 'DELETE' });
-        if (resp.ok || resp.status === 204) {
-          if (currentConversation && currentConversation.id === c.id) await switchToTeamConversation(true);
-          await refreshHistoryMenu();
-        } else {
-          await showApiError(resp);
+
+      if (historyBatchMode) {
+        const cb = row.querySelector('.tcrt-assistant-hm-item-cb');
+        if (cb) {
+          cb.addEventListener('change', () => {
+            if (cb.checked) historySelectedIds.add(c.id);
+            else historySelectedIds.delete(c.id);
+            refreshHistoryMenu();
+          });
         }
+      }
+
+      row.querySelector('.tcrt-assistant-hm-item').addEventListener('click', () => {
+        if (historyBatchMode) {
+          if (historySelectedIds.has(c.id)) historySelectedIds.delete(c.id);
+          else historySelectedIds.add(c.id);
+          refreshHistoryMenu();
+          return;
+        }
+        closeHistoryMenu();
+        void loadConversation(c, null);
       });
+
+      const delBtn = row.querySelector('.tcrt-assistant-hm-delete');
+      if (delBtn) {
+        delBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          historyPendingConfirm = { ids: [c.id], title: c.title || c.conversation_key.slice(0, 8) };
+          refreshHistoryMenu();
+        });
+      }
+
       list.appendChild(row);
     });
   }
@@ -1802,10 +1888,14 @@ const AssistantWidget = (() => {
     renderTeamBadge();
     let conversation = null;
     if (!forceNew) {
-      const recalledId = recalledConversationId(teamId);
+      const recalledId = recalledConversationId(teamId) || recalledConversationId(null);
       if (recalledId) {
         const list = await listRelevantConversations(teamId);
         conversation = list.find((c) => c.id === recalledId) || null;
+      }
+      if (!conversation) {
+        const list = await listRelevantConversations(teamId);
+        if (list.length > 0) conversation = list[0];
       }
     }
     if (!conversation) conversation = await createConversation(teamId);
@@ -1820,11 +1910,8 @@ const AssistantWidget = (() => {
   }
 
   async function onTeamChanged() {
-    if (currentTurnKey && (turnState === 'streaming' || turnState === 'stopping')) {
-      await stopCurrentTurn();
-      addSysNote(t('assistant.teamSwitched', {}, 'Switched teams — the in-progress turn was stopped'));
-    }
-    await switchToTeamConversation(false);
+    renderTeamBadge();
+    refreshHistoryMenu();
   }
 
   /* ---------------- 事件綁定 ---------------- */
@@ -1841,6 +1928,84 @@ const AssistantWidget = (() => {
     root.querySelector('#tcrt-assistant-new-btn').addEventListener('click', () => { closeHistoryMenu(); void newConversation(); });
     root.querySelector('#tcrt-assistant-expand-btn').addEventListener('click', toggleSize);
     root.querySelector('#tcrt-assistant-hm-new-btn').addEventListener('click', () => { closeHistoryMenu(); void newConversation(); });
+    const autoCb = root.querySelector('#tcrt-assistant-auto-cb');
+    if (autoCb) {
+      autoCb.addEventListener('change', () => {
+        localStorage.setItem('tcrt_assistant_auto_approve', autoCb.checked ? 'true' : 'false');
+        renderAutoApproveBtn();
+      });
+    }
+
+    // Session Manager controls
+    const searchInput = root.querySelector('#tcrt-assistant-hm-search');
+    const batchToggleBtn = root.querySelector('#tcrt-assistant-hm-batch-toggle');
+    const selectAllCb = root.querySelector('#tcrt-assistant-hm-select-all');
+    const deleteSelBtn = root.querySelector('#tcrt-assistant-hm-delete-sel');
+    const confirmYesBtn = root.querySelector('#tcrt-assistant-hm-confirm-yes');
+    const confirmNoBtn = root.querySelector('#tcrt-assistant-hm-confirm-no');
+
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        historySearchQuery = searchInput.value;
+        refreshHistoryMenu();
+      });
+    }
+    if (batchToggleBtn) {
+      batchToggleBtn.addEventListener('click', () => {
+        historyBatchMode = !historyBatchMode;
+        historySelectedIds.clear();
+        historyPendingConfirm = null;
+        refreshHistoryMenu();
+      });
+    }
+    if (selectAllCb) {
+      selectAllCb.addEventListener('change', async () => {
+        const conversations = await listRelevantConversations(null);
+        if (selectAllCb.checked) {
+          conversations.forEach((c) => {
+            if (!currentConversation || c.id !== currentConversation.id) historySelectedIds.add(c.id);
+          });
+        } else {
+          historySelectedIds.clear();
+        }
+        refreshHistoryMenu();
+      });
+    }
+    if (deleteSelBtn) {
+      deleteSelBtn.addEventListener('click', () => {
+        if (historySelectedIds.size === 0) return;
+        historyPendingConfirm = { ids: Array.from(historySelectedIds) };
+        refreshHistoryMenu();
+      });
+    }
+    if (confirmNoBtn) {
+      confirmNoBtn.addEventListener('click', () => {
+        historyPendingConfirm = null;
+        refreshHistoryMenu();
+      });
+    }
+    if (confirmYesBtn) {
+      confirmYesBtn.addEventListener('click', async () => {
+        if (!historyPendingConfirm || !historyPendingConfirm.ids.length) return;
+        const ids = historyPendingConfirm.ids;
+        const resp = await window.AuthClient.fetch('/api/assistant/conversations/batch-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversation_ids: ids }),
+        });
+        historyPendingConfirm = null;
+        historySelectedIds.clear();
+        if (resp.ok) {
+          if (currentConversation && ids.includes(currentConversation.id)) {
+            await switchToTeamConversation(true);
+          }
+          await refreshHistoryMenu();
+        } else {
+          await showApiError(resp);
+        }
+      });
+    }
+
     sendBtnEl.addEventListener('click', handleSendOrStop);
     inputEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); handleSendOrStop(); }
@@ -1858,7 +2023,6 @@ const AssistantWidget = (() => {
 
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
-      // If another modal/dialog (e.g. test-case detail) is open, let it handle Escape.
       const activeModal = document.querySelector('.modal.show, [role="dialog"].show, [aria-modal="true"]');
       if (activeModal && !root.contains(activeModal)) return;
       if (historyMenuEl && historyMenuEl.classList.contains('tcrt-assistant-show')) { closeHistoryMenu(); return; }

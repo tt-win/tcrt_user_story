@@ -161,6 +161,21 @@ def _struct_compact_tool_content(content: str) -> str:
             meta["_deep_links"] = sampled_links
         return json.dumps(meta, ensure_ascii=False)
 
+    if isinstance(data, dict) and isinstance(data.get("results"), list):
+        items = data["results"]
+        meta = {
+            "compacted": True,
+            "source_count": data.get("source_count", len(items)),
+            "returned_count": data.get("returned_count", len(items)),
+            "truncated": data.get("truncated", True),
+            "id_sample": _sample_ids_from_list(items),
+            "hint": _STRUCT_HINT,
+        }
+        sampled_links = _sample_deep_links_from_list(items)
+        if sampled_links:
+            meta["_deep_links"] = sampled_links
+        return json.dumps(meta, ensure_ascii=False)
+
     # Single-resource dict: preserve _deep_links even when truncating the rest.
     if isinstance(data, dict):
         compacted: dict[str, Any] = {"compacted": True, "hint": _STRUCT_HINT}

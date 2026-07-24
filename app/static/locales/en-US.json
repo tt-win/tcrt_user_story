@@ -3742,7 +3742,36 @@
     "tabs": {
       "logs": "Logs",
       "runtimeSettings": "Runtime Settings",
-      "knowledgeGraph": "Knowledge Graph"
+      "knowledgeGraph": "Knowledge Graph",
+      "knowledgeQueryLog": "Knowledge Query Log"
+    },
+    "kql": {
+      "filterSource": "Source",
+      "filterStatus": "Status",
+      "filterAllSources": "All sources",
+      "filterAllStatuses": "All statuses",
+      "sourceAssistant": "assistant",
+      "sourceQaHelper": "qa_helper",
+      "sourceApi": "api",
+      "statusSuccess": "success",
+      "statusDegraded": "degraded",
+      "queryTextPlaceholder": "Query text",
+      "refresh": "Refresh",
+      "loading": "Loading…",
+      "loadError": "Failed to load query log. Please try again.",
+      "noRecords": "No query records",
+      "colTimestamp": "Timestamp",
+      "colSource": "Source",
+      "colOperation": "Operation",
+      "colStatus": "Status",
+      "colUser": "User",
+      "colQuery": "Query",
+      "colTeam": "team",
+      "colResults": "Results",
+      "colDuration": "Duration",
+      "prev": "Prev",
+      "next": "Next",
+      "count": "{total} records, page {page} / {total_pages}"
     },
     "settings": {
       "perProcessHint": "Shows the settings view of the worker process serving this request; the Logs tab may come from a different worker.",

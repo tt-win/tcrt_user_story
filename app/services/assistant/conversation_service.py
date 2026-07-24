@@ -337,6 +337,33 @@ class ConversationService:
 
         await self.main_boundary.run_write(_delete)
 
+    async def batch_delete_conversations(self, *, user_id: int, conversation_ids: list[int]) -> list[int]:
+        async def _batch_delete(session: AsyncSession) -> list[int]:
+            deleted_ids: list[int] = []
+            if not conversation_ids:
+                return deleted_ids
+            stmt = select(AssistantConversation).where(
+                AssistantConversation.id.in_(conversation_ids),
+                AssistantConversation.user_id == user_id,
+            )
+            convs = (await session.execute(stmt)).scalars().all()
+            for conv in convs:
+                active_turn = (
+                    await session.execute(
+                        select(AssistantTurn.id).where(
+                            AssistantTurn.conversation_id == conv.id,
+                            AssistantTurn.status == "running",
+                        )
+                    )
+                ).scalar_one_or_none()
+                if active_turn is not None:
+                    continue
+                await session.delete(conv)
+                deleted_ids.append(conv.id)
+            return deleted_ids
+
+        return await self.main_boundary.run_write(_batch_delete)
+
     # ------------------------------------------------------------------ #
     # 對話標題自動摘要
     # ------------------------------------------------------------------ #

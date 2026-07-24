@@ -134,10 +134,61 @@ def hard_truncate_result(data: Any, max_chars: int) -> Any:
     return {"truncated": True, "preview": text[: max(0, max_chars - 32)]}
 
 
+def soft_truncate_results_envelope(
+    data: dict[str, Any],
+    max_chars: int,
+    *,
+    list_key: str = "results",
+) -> dict[str, Any]:
+    """Preserve sibling keys (status/fallback_recommended) while soft-truncating a result list.
+
+    Used by knowledge tools whose envelope is ``{status, results, ...}`` rather than
+    ``{items: [...]}``. Falls back to hard truncate only if even an empty list
+    envelope exceeds the budget.
+    """
+    if max_chars <= 0:
+        return {"truncated": True, "preview": ""}
+
+    items = data.get(list_key)
+    if not isinstance(items, list):
+        return hard_truncate_result(data, max_chars)
+
+    passthrough = {k: v for k, v in data.items() if k != list_key}
+    source_count = len(items)
+    kept: list[Any] = []
+    for row in items:
+        candidate = {**passthrough, list_key: kept + [row]}
+        if _json_len(candidate) > max_chars:
+            break
+        kept.append(row)
+
+    out = {
+        **passthrough,
+        list_key: kept,
+        "truncated": len(kept) < source_count,
+        "returned_count": len(kept),
+        "source_count": source_count,
+    }
+    if _json_len(out) <= max_chars:
+        return out
+    # Even empty results overflow (huge sibling keys) → last resort hard truncate
+    empty = {**passthrough, list_key: [], "truncated": True, "returned_count": 0, "source_count": source_count}
+    if _json_len(empty) <= max_chars:
+        return empty
+    return hard_truncate_result(data, max_chars)
+
+
 def truncate_result(data: Any, max_chars: int, *, request_skip: int = 0) -> Any:
     """Public truncate entry: soft-list when applicable, else hard truncate."""
     if isinstance(data, list) or (isinstance(data, dict) and isinstance(data.get("items"), list)):
         return soft_truncate_list(data, max_chars, request_skip=request_skip)
+    # Knowledge tool envelopes: keep status / fallback_recommended when trimming results
+    if (
+        isinstance(data, dict)
+        and isinstance(data.get("results"), list)
+        and ("status" in data or "fallback_recommended" in data)
+    ):
+        return soft_truncate_results_envelope(data, max_chars, list_key="results")
     return hard_truncate_result(data, max_chars)
 
 

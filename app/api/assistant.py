@@ -27,6 +27,8 @@ from app.db_access.main import MainAccessBoundary, get_main_access_boundary
 from app.models.assistant import (
     ActionAckResponse,
     AvailabilityResponse,
+    ConversationBatchDeleteRequest,
+    ConversationBatchDeleteResponse,
     ConversationCreateRequest,
     ConversationResponse,
     MessageHistoryItem,
@@ -192,6 +194,27 @@ async def delete_conversation_endpoint(
     for f in files:
         with contextlib.suppress(OSError, ValueError):
             attachment_storage.resolve_stored_path(f.relative_path).unlink(missing_ok=True)
+
+
+@router.post("/conversations/batch-delete", response_model=ConversationBatchDeleteResponse)
+async def batch_delete_conversations_endpoint(
+    body: ConversationBatchDeleteRequest,
+    current_user: User = Depends(get_current_user),
+    config: AssistantConfig = Depends(_get_config),
+    conv_svc: ConversationService = Depends(_get_conversation_service),
+) -> ConversationBatchDeleteResponse:
+    _require_enabled(config)
+    deleted_ids = await conv_svc.batch_delete_conversations(
+        user_id=current_user.id,
+        conversation_ids=body.conversation_ids,
+    )
+    for cid in deleted_ids:
+        with contextlib.suppress(Exception):
+            files = await conv_svc.list_uploaded_files_for_conversation(conversation_id=cid)
+            for f in files:
+                with contextlib.suppress(OSError, ValueError):
+                    attachment_storage.resolve_stored_path(f.relative_path).unlink(missing_ok=True)
+    return ConversationBatchDeleteResponse(deleted_count=len(deleted_ids), deleted_ids=deleted_ids)
 
 
 @router.get("/conversations/{conversation_id}/messages", response_model=MessageHistoryResponse)
