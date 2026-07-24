@@ -65,11 +65,14 @@ _LINK_RULES: dict[str, tuple[str, str, dict[str, str]]] = {
     ),
     # --- global read (cross-team) ---
     # get_test_case_global returns a flat dict with `set_id` (from
-    # TestCaseLocal.test_case_set_id) and `test_case_number` already present.
+    # TestCaseLocal.test_case_set_id), `team_id`, and `test_case_number`
+    # already present. `team_id` MUST be in the URL — otherwise the frontend
+    # `ensureTeamIdInUrl_TCM` falls back to the user's session team, which
+    # may be wrong and silently show "no test cases found".
     "get_test_case_global": (
         "test_case",
-        "/test-case-management?set_id={set_id}&tc={tc}",
-        {"set_id": "set_id", "tc": "test_case_number"},
+        "/test-case-management?team_id={team_id}&set_id={set_id}&tc={tc}",
+        {"team_id": "team_id", "set_id": "set_id", "tc": "test_case_number"},
     ),
 }
 
@@ -130,18 +133,23 @@ _LIST_LINK_RULES: dict[str, tuple[str, str, dict[str, str]] | tuple[str, str, di
     ),
     "search_test_cases_global": (
         "test_case",
-        "/test-case-management?set_id={set_id}&tc={tc}",
-        {"set_id": "set_id", "tc": "test_case_number"},
+        "/test-case-management?team_id={team_id}&set_id={set_id}&tc={tc}",
+        {"team_id": "team_id", "set_id": "set_id", "tc": "test_case_number"},
     ),
     # search_knowledge returns heterogeneous entity types (test_case / usm_node /
     # jira_ticket). Only test_case entities have a TCRT page to deep-link to;
-    # non-test_case items must be skipped. IDs live in `metadata` (dotted path).
+    # non-test_case items must be skipped. IDs live in `metadata` (dotted path);
+    # the cross-team `team_id` is at the item top level.
     # The 4th tuple element is an optional entity_type_filter — see
     # build_list_deep_links for the skip rule.
     "search_knowledge": (
         "test_case",
-        "/test-case-management?set_id={set_id}&tc={tc}",
-        {"set_id": "metadata.test_case_set_id", "tc": "metadata.test_case_number"},
+        "/test-case-management?team_id={team_id}&set_id={set_id}&tc={tc}",
+        {
+            "team_id": "team_id",
+            "set_id": "metadata.test_case_set_id",
+            "tc": "metadata.test_case_number",
+        },
         {"field": "entity_type", "value": "test_case"},
     ),
 }

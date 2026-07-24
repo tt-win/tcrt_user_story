@@ -355,7 +355,7 @@
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
   width: 100%;
-  table-layout: fixed;
+  table-layout: auto;
 }
 .tcrt-assistant-bubble th, .tcrt-assistant-bubble td {
   border: 1px solid var(--tr-border-light);
@@ -368,10 +368,16 @@
   text-align: left !important;
 }
 .tcrt-assistant-bubble th { background: var(--tr-bg-sidebar); font-weight: 600; }
-/* 第一欄（項目/名稱欄）固定 35%，其餘欄位平分剩餘空間 */
+/* 第一欄（項目/名稱欄）以內容自然寬度為主，限制在 20%–35% 區間。
+   - 內容短：自然寬度（可能 5–10%）
+   - 內容中等：依內容寬度
+   - 內容長：最多 35% 並在欄內換行，避免壓縮其他欄位
+   table-layout: auto 下 max-width / min-width 對第一欄生效（瀏覽器以內容為主、
+   再 clamp 到邊界）。 */
 .tcrt-assistant-bubble th:first-child,
 .tcrt-assistant-bubble td:first-child {
-  width: 35%;
+  min-width: 20%;
+  max-width: 35%;
 }
 .tcrt-assistant-bubble a { color: var(--tr-primary-dark); }
 

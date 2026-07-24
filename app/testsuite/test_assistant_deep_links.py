@@ -277,16 +277,29 @@ class TestGetTestCaseGlobal:
     """Tests for extend-assistant-deep-links-global: get_test_case_global rule."""
 
     def test_basic(self):
-        result = {"set_id": 63, "test_case_number": "TCG-114460.030.060", "title": "X"}
+        result = {
+            "team_id": 3,
+            "set_id": 63,
+            "test_case_number": "TCG-114460.030.060",
+            "title": "X",
+        }
         links = build_deep_links("get_test_case_global", result, {})
-        assert links == {"test_case": "/test-case-management?set_id=63&tc=TCG-114460.030.060"}
+        assert links == {
+            "test_case": "/test-case-management?team_id=3&set_id=63&tc=TCG-114460.030.060"
+        }
 
     def test_missing_set_id(self):
-        links = build_deep_links("get_test_case_global", {"test_case_number": "TC001"}, {})
+        links = build_deep_links("get_test_case_global", {"team_id": 3, "test_case_number": "TC001"}, {})
+        assert links == {}
+
+    def test_missing_team_id(self):
+        # team_id is required so the frontend does not fall back to the user's
+        # session team, which can be wrong for cross-team deep links.
+        links = build_deep_links("get_test_case_global", {"set_id": 5, "test_case_number": "TC001"}, {})
         assert links == {}
 
     def test_missing_test_case_number(self):
-        links = build_deep_links("get_test_case_global", {"set_id": 5}, {})
+        links = build_deep_links("get_test_case_global", {"team_id": 3, "set_id": 5}, {})
         assert links == {}
 
 
@@ -298,30 +311,49 @@ class TestSearchTestCasesGlobalList:
             "status": "success",
             "total": 2,
             "results": [
-                {"test_case_number": "TC001", "set_id": 5, "title": "A"},
-                {"test_case_number": "TC002", "set_id": 5, "title": "B"},
+                {"team_id": 4, "test_case_number": "TC001", "set_id": 5, "title": "A"},
+                {"team_id": 3, "test_case_number": "TC002", "set_id": 5, "title": "B"},
             ],
         }
         assert build_list_deep_links("search_test_cases_global", payload) is True
-        assert payload["results"][0]["_deep_links"] == {"test_case": "/test-case-management?set_id=5&tc=TC001"}
-        assert payload["results"][1]["_deep_links"] == {"test_case": "/test-case-management?set_id=5&tc=TC002"}
+        assert payload["results"][0]["_deep_links"] == {
+            "test_case": "/test-case-management?team_id=4&set_id=5&tc=TC001"
+        }
+        assert payload["results"][1]["_deep_links"] == {
+            "test_case": "/test-case-management?team_id=3&set_id=5&tc=TC002"
+        }
 
     def test_set_id_none_skips_item(self):
         payload = {
             "status": "success",
             "total": 2,
             "results": [
-                {"test_case_number": "TC001", "set_id": 5, "title": "A"},
-                {"test_case_number": "ORPHAN", "set_id": None, "title": "no set"},
+                {"team_id": 3, "test_case_number": "TC001", "set_id": 5, "title": "A"},
+                {"team_id": 3, "test_case_number": "ORPHAN", "set_id": None, "title": "no set"},
             ],
         }
         build_list_deep_links("search_test_cases_global", payload)
         assert "_deep_links" in payload["results"][0]
         assert "_deep_links" not in payload["results"][1]
 
+    def test_missing_team_id_skips_item(self):
+        # Without team_id, frontend would fall back to the session team and may
+        # land on the wrong team. Skip the link rather than mislead the user.
+        payload = {
+            "status": "success",
+            "total": 1,
+            "results": [
+                {"test_case_number": "TC001", "set_id": 5, "title": "no team_id"},
+            ],
+        }
+        build_list_deep_links("search_test_cases_global", payload)
+        assert "_deep_links" not in payload["results"][0]
+
     def test_special_chars_in_number(self):
         payload = {
-            "results": [{"test_case_number": "TCG 1&2", "set_id": 3, "title": "X"}],
+            "results": [
+                {"team_id": 3, "test_case_number": "TCG 1&2", "set_id": 3, "title": "X"},
+            ],
         }
         build_list_deep_links("search_test_cases_global", payload)
         assert "tc=TCG%201%262" in payload["results"][0]["_deep_links"]["test_case"]
@@ -338,19 +370,22 @@ class TestSearchKnowledgeList:
                 {
                     "entity_type": "test_case",
                     "entity_id": "TCG-1",
+                    "team_id": 3,
                     "title": "A",
                     "metadata": {"test_case_set_id": 3, "test_case_number": "TCG-1"},
                 },
             ],
         }
         build_list_deep_links("search_knowledge", payload)
-        assert payload["results"][0]["_deep_links"] == {"test_case": "/test-case-management?set_id=3&tc=TCG-1"}
+        assert payload["results"][0]["_deep_links"] == {
+            "test_case": "/test-case-management?team_id=3&set_id=3&tc=TCG-1"
+        }
 
     def test_non_test_case_entities_skipped(self):
         payload = {
             "results": [
-                {"entity_type": "usm_node", "entity_id": "USM-1", "title": "X", "metadata": {}},
-                {"entity_type": "jira_ticket", "entity_id": "JIRA-1", "title": "Y", "metadata": {}},
+                {"entity_type": "usm_node", "entity_id": "USM-1", "team_id": 3, "title": "X", "metadata": {}},
+                {"entity_type": "jira_ticket", "entity_id": "JIRA-1", "team_id": 3, "title": "Y", "metadata": {}},
             ],
         }
         build_list_deep_links("search_knowledge", payload)
@@ -360,17 +395,39 @@ class TestSearchKnowledgeList:
     def test_mixed_entities_only_test_case_linked(self):
         payload = {
             "results": [
-                {"entity_type": "usm_node", "entity_id": "USM-1", "metadata": {}},
-                {"entity_type": "test_case", "entity_id": "TCG-2", "metadata": {"test_case_set_id": 7, "test_case_number": "TCG-2"}},
+                {"entity_type": "usm_node", "entity_id": "USM-1", "team_id": 3, "metadata": {}},
+                {
+                    "entity_type": "test_case",
+                    "entity_id": "TCG-2",
+                    "team_id": 4,
+                    "metadata": {"test_case_set_id": 7, "test_case_number": "TCG-2"},
+                },
             ],
         }
         build_list_deep_links("search_knowledge", payload)
         assert "_deep_links" not in payload["results"][0]
-        assert payload["results"][1]["_deep_links"] == {"test_case": "/test-case-management?set_id=7&tc=TCG-2"}
+        assert payload["results"][1]["_deep_links"] == {
+            "test_case": "/test-case-management?team_id=4&set_id=7&tc=TCG-2"
+        }
 
     def test_test_case_without_metadata_skipped(self):
         payload = {
-            "results": [{"entity_type": "test_case", "entity_id": "TCG-9", "title": "X"}],
+            "results": [
+                {"entity_type": "test_case", "entity_id": "TCG-9", "team_id": 3, "title": "X"},
+            ],
+        }
+        build_list_deep_links("search_knowledge", payload)
+        assert "_deep_links" not in payload["results"][0]
+
+    def test_test_case_without_top_level_team_id_skipped(self):
+        payload = {
+            "results": [
+                {
+                    "entity_type": "test_case",
+                    "entity_id": "TCG-1",
+                    "metadata": {"test_case_set_id": 3, "test_case_number": "TCG-1"},
+                },
+            ],
         }
         build_list_deep_links("search_knowledge", payload)
         assert "_deep_links" not in payload["results"][0]
@@ -380,7 +437,7 @@ class TestResultsEnvelope:
     """Generic {results:[...]} envelope support in build_list_deep_links."""
 
     def test_results_key_recognized(self):
-        payload = {"status": "ok", "results": [{"test_case_number": "X", "set_id": 1, "title": "t"}]}
+        payload = {"status": "ok", "results": [{"team_id": 3, "test_case_number": "X", "set_id": 1, "title": "t"}]}
         # search_test_cases_global rule applies; verifies envelope handler picks up
         # the list even when not called via a known tool.
         assert build_list_deep_links("search_test_cases_global", payload) is True
