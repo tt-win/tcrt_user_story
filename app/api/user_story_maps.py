@@ -43,7 +43,6 @@ from app.models.database_models import User, Team
 from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
 from sqlalchemy import insert
 from app.services.knowledge.hooks import (
-    enqueue_usm_node_sync,
     enqueue_usm_nodes_bulk,
 )
 

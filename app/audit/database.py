@@ -11,7 +11,7 @@ from enum import Enum
 from typing import Any, Optional, AsyncGenerator
 from contextlib import asynccontextmanager
 
-from sqlalchemy import Column, DateTime, Enum as SQLEnum, Float, Index, Integer, String, SmallInteger, Text as SqlText, event, text
+from sqlalchemy import Column, DateTime, Enum as SQLEnum, Float, Index, Integer, String, SmallInteger, event, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import SQLAlchemyError
