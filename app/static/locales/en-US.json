@@ -3958,6 +3958,7 @@
     "removeAttachment": "Remove attachment",
     "notConfigured": "The assistant is currently unavailable",
     "confirmTargetNew": "Target: {label}",
+    "confirmTargetTeam": "Team: {team}",
     "confirmTargetSingle": "Target: {label} (#{id})",
     "confirmTargetBatch": "{count} item(s) affected",
     "confirmTargetMembership": "{count} member(s) affected",

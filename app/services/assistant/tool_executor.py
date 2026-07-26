@@ -27,6 +27,7 @@ from app.db_access.main import MainAccessBoundary
 from app.models.database_models import TestCaseLocal
 from app.models.test_case import TestDataCategory
 from app.services.assistant import resolvers
+from app.services.assistant.capability_context import build_capability_facts, tools_for_turn
 from app.services.assistant.crypto import (
     AssistantPayloadEncryptionError,
     encrypt_sensitive_payload,
@@ -34,6 +35,7 @@ from app.services.assistant.crypto import (
 from app.services.assistant.ids import compute_confirmation_fingerprint
 from app.services.assistant.param_validation import validate_arguments
 from app.services.assistant.projection import project_and_redact, project_error
+from app.services.assistant.team_context import effective_team_id
 from app.services.assistant.content_store import get_skill_enabled, list_enabled_skills
 from app.services.assistant.tool_registry import AssistantTool, ToolRegistry
 
@@ -209,6 +211,55 @@ class ToolExecutor:
             return tool.permission == PermissionType.READ  # 全域對話僅允許 discovery
         check = await permission_service.check_team_permission(user_id, team_id, tool.permission, role)
         return check.has_permission
+
+    async def resolve_target_team(
+        self, tool: AssistantTool, *, conversation, turn, path_params: dict, body_params: dict
+    ) -> Optional[int]:
+        """本次執行實際要注入 path／檢權的 team。
+
+        41/48 個 `team_check=resolve` 工具的 path 仍含 `{team_id}`，因此注入值 MUST 是「資源實際
+        所屬的 team」而非 context team——全域對話允許操作其他可存取 team 的資源（見
+        `verify_target_team`），若注入 context team 會打到錯誤路徑。
+        """
+        effective = effective_team_id(conversation, turn)
+        if tool.team_check == "none":
+            return effective
+        return await self.resolve_team(
+            tool, conversation_team_id=effective, path_params=path_params, body_params=body_params
+        )
+
+    async def verify_target_team(
+        self,
+        tool: AssistantTool,
+        *,
+        conversation,
+        resolved_team: Optional[int],
+        effective_team: Optional[int],
+        user_id: int,
+        role: UserRole,
+    ) -> bool:
+        """驗證工具實際作用的 team 是否可被本回合操作（spec assistant-tool-execution
+        「sub-resource team 歸屬驗證」）。
+
+        - team-bound 對話：MUST 等於對話綁定 team（原有語意不變）。
+        - 全域對話：MUST 屬於使用者可存取的 team，且該 team 上的權限涵蓋工具宣告的
+          `PermissionType`。允許不等於 context team——使用者常以全域搜尋找到其他 team
+          的資源再要求操作；代價是確認卡 MUST 標示目標 team（見 build_confirmation_summary）。
+        """
+        if tool.team_check == "none":
+            return True
+        if resolved_team is None:
+            return False
+        if getattr(conversation, "scope_type", None) == "team":
+            return resolved_team == effective_team
+        try:
+            accessible = await permission_service.get_user_accessible_teams(user_id)
+        except Exception:  # noqa: BLE001 - fail-closed：無法確認可存取性即拒絕
+            logger.exception("assistant verify_target_team: accessible teams lookup failed user_id=%s", user_id)
+            return False
+        if resolved_team not in (accessible or []):
+            return False
+        return await self.check_permission(tool, user_id=user_id, team_id=resolved_team, role=role)
 
     async def resolve_team(self, tool: AssistantTool, *, conversation_team_id: Optional[int], path_params: dict, body_params: dict) -> Optional[int]:
         """回傳工具實際作用資源的 team_id；有 resolver 時即使 path 注入 team 仍必須核對資源。"""
@@ -433,8 +484,19 @@ class ToolExecutor:
         return await self.main_boundary.run_read(_check)
 
     async def validate_batch_actions(
-        self, actions: list[dict[str, Any]], *, conversation_team_id: Optional[int], user_id: int, role: UserRole
+        self,
+        actions: list[dict[str, Any]],
+        *,
+        conversation_team_id: Optional[int],
+        user_id: int,
+        role: UserRole,
     ) -> Optional[RejectionResult]:
+        """`conversation_team_id` 為本回合的有效 team（見 `team_context.effective_team_id`）。
+
+        批次子動作一律要求落在同一個有效 team——單筆 `resolve` 工具在全域對話可作用於其他
+        可存取 team（見 `verify_target_team`），但批次不放寬：一張確認卡只標示一個 team，
+        混入其他 team 會讓使用者無法從卡片判斷影響範圍。
+        """
         if not 2 <= len(actions) <= 50:
             return RejectionResult("schema_invalid", "batch requires 2-50 actions", fixable=True)
         # Size guardrail: avoid single LLM responses so large that they trigger timeout/length truncation.
@@ -476,9 +538,29 @@ class ToolExecutor:
     # ------------------------------------------------------------------ #
 
     async def build_confirmation_summary(
+        self, tool: AssistantTool, *, path_params: dict, body_params: dict, team_id: Optional[int] = None
+    ) -> Optional[tuple[dict[str, Any], Any]]:
+        """回傳 (canonical_summary, stable_target_identity)；None 代表無法解析（fail-closed）。
+
+        `team_id`（目標 team）非空時，summary MUST 帶伺服器 lookup 出的 team 名稱：全域對話
+        沒有「對話綁定 team」可讓使用者推斷影響範圍，卡片上必須看得到動作會落在哪個 team
+        （spec assistant-action-confirmation「confirm 的有效 team 取自 turn 快照」）。team 進入
+        summary 即自動計入 `confirmation_fingerprint`，因此目標 team 改變會走 stale 路徑。
+        """
+        result = await self._build_confirmation_summary_inner(
+            tool, path_params=path_params, body_params=body_params
+        )
+        if result is None or team_id is None:
+            return result
+        summary, identity = result
+        return (
+            {**summary, "team_id": team_id, "team_name": await self.resolve_team_name(team_id) or f"Team-{team_id}"},
+            identity,
+        )
+
+    async def _build_confirmation_summary_inner(
         self, tool: AssistantTool, *, path_params: dict, body_params: dict
     ) -> Optional[tuple[dict[str, Any], Any]]:
-        """回傳 (canonical_summary, stable_target_identity)；None 代表無法解析（fail-closed）。"""
         strategy = tool.target_resolver
 
         if strategy == "batch_actions":
@@ -822,6 +904,24 @@ class ToolExecutor:
                 if isinstance(meta, dict):
                     meta["team_name"] = names[tid]
 
+    async def resolve_team_name(self, team_id: int | None) -> str | None:
+        """capability context／`describe_capabilities` 用的 team 顯示名稱。
+
+        失敗回 None（呼叫端改以 team_id 呈現），MUST NOT 影響回合行為。
+        """
+        if team_id is None:
+            return None
+        try:
+            from app.models.database_models import Team
+
+            async def _q(session):
+                return (await session.execute(select(Team.name).where(Team.id == team_id))).scalar_one_or_none()
+
+            return await self.main_boundary.run_read(_q)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("resolve team name for team_id=%s failed: %s", team_id, type(exc).__name__)
+            return None
+
     async def _resolve_username(self, user_id: int | None) -> str | None:
         """從 main DB 查詢 user.username（觀測性記錄用）。
 
@@ -856,8 +956,23 @@ class ToolExecutor:
         conversation_id: str | None = None,
         turn_key: str | None = None,
         username: str | None = None,
+        role: UserRole | None = None,
+        scope_type: str | None = None,
     ) -> tuple[int, dict[str, Any]]:
         """In-process skill/catalog/knowledge tools：不打 ASGI。"""
+        if tool.name == "describe_capabilities":
+            # 與 agent 迴圈的 capability context 同源（capability_context.tools_for_turn），
+            # 否則模型會拿到與實際目錄不一致的「事實」。
+            effective_role = role or UserRole.VIEWER
+            allowed = tools_for_turn(self.registry, team_id=team_id, role=effective_role)
+            return 200, build_capability_facts(
+                role=effective_role,
+                scope_type=scope_type,
+                team_id=team_id,
+                team_name=await self.resolve_team_name(team_id),
+                all_tools=self.registry.all(),
+                allowed_tool_names=[t.name for t in allowed],
+            )
         if tool.name == "list_skills":
             skills = await list_enabled_skills(self.main_boundary)
             return 200, {"skills": skills, "count": len(skills)}
@@ -1090,16 +1205,21 @@ class ToolExecutor:
 
         path_params, query_params, body_params = _split_arguments(tool, arguments)
 
-        if not await self.check_permission(tool, user_id=user_id, team_id=conversation.team_id, role=role):
+        effective_team = effective_team_id(conversation, turn)
+
+        if not await self.check_permission(tool, user_id=user_id, team_id=effective_team, role=role):
             return ReadToolResult(ok=False, result_payload={}, http_status=None, rejection=RejectionResult("permission_denied", "insufficient permission", fixable=False))
 
-        resolved_team = await self.resolve_team(tool, conversation_team_id=conversation.team_id, path_params=path_params, body_params=body_params)
-        if tool.team_check != "none" and resolved_team != conversation.team_id:
-            return ReadToolResult(ok=False, result_payload={}, http_status=None, rejection=RejectionResult("team_mismatch", "resource does not belong to this conversation's team", fixable=False))
+        resolved_team = await self.resolve_team(tool, conversation_team_id=effective_team, path_params=path_params, body_params=body_params)
+        if not await self.verify_target_team(
+            tool, conversation=conversation, resolved_team=resolved_team, effective_team=effective_team,
+            user_id=user_id, role=role,
+        ):
+            return ReadToolResult(ok=False, result_payload={}, http_status=None, rejection=RejectionResult("team_mismatch", "resource is not accessible from this conversation", fixable=False))
 
         journal_args = {**query_params, **body_params} if tool.execution_mode == "local" else body_params
         journal_id = await conversation_service.start_read_tool_journal(
-            conversation=conversation, turn=turn, user_id=user_id, team_id=conversation.team_id,
+            conversation=conversation, turn=turn, user_id=user_id, team_id=resolved_team if tool.team_check != "none" else effective_team,
             llm_tool_call_id=llm_tool_call_id, tool_name=tool.name, risk_level=tool.risk_level,
             arguments_json=json.dumps(journal_args, ensure_ascii=False),
         )
@@ -1111,12 +1231,14 @@ class ToolExecutor:
                 status_code, payload = await self._run_local_read_tool(
                     tool,
                     {**query_params, **body_params, **path_params},
-                    team_id=conversation.team_id,
+                    team_id=effective_team,
                     user_id=user_id,
                     llm_tool_call_id=llm_tool_call_id,
                     conversation_id=str(getattr(conversation, "conversation_key", "") or "") or None,
                     turn_key=str(getattr(turn, "id", "") or getattr(turn, "turn_key", "") or "") or None,
                     username=resolved_username,
+                    role=role,
+                    scope_type=getattr(conversation, "scope_type", None),
                 )
 
             else:
@@ -1179,6 +1301,7 @@ class ToolExecutor:
         user_id: int,
         role: UserRole,
         execution_key: str,
+        turn=None,
         resolved_file_ref: Optional[dict[str, int]] = None,
         resolved_file_refs: Optional[dict[int, dict[str, int]]] = None,
     ) -> PendingCreationRequest | RejectionResult:
@@ -1196,15 +1319,19 @@ class ToolExecutor:
 
         path_params, query_params, body_params = _split_arguments(tool, arguments)
 
-        if not await self.check_permission(tool, user_id=user_id, team_id=conversation.team_id, role=role):
+        effective_team = effective_team_id(conversation, turn)
+
+        if not await self.check_permission(tool, user_id=user_id, team_id=effective_team, role=role):
             return RejectionResult("permission_denied", "insufficient permission", fixable=False)
 
-        if conversation.scope_type != "team" or conversation.team_id is None:
-            return RejectionResult("scope_invalid", "mutation tools require a team-bound conversation", fixable=False)
+        if effective_team is None:
+            # team-bound 對話的 team 已刪除，或全域對話的 turn 沒有 context team 快照：
+            # 兩者都無目標 team 可執行，fail-closed（spec assistant-conversations）。
+            return RejectionResult("scope_invalid", "mutation tools require a target team for this turn", fixable=False)
 
         if tool.execution_mode == "batch_actions":
             rejection = await self.validate_batch_actions(
-                body_params.get("actions") or [], conversation_team_id=conversation.team_id, user_id=user_id, role=role
+                body_params.get("actions") or [], conversation_team_id=effective_team, user_id=user_id, role=role,
             )
             if rejection is not None:
                 return rejection
@@ -1213,16 +1340,22 @@ class ToolExecutor:
                 if child.multipart_file_param and (resolved_file_refs or {}).get(index) is None:
                     return RejectionResult("file_ref_invalid", f"action {index + 1}: invalid file_ref", fixable=True)
 
-        resolved_team = await self.resolve_team(tool, conversation_team_id=conversation.team_id, path_params=path_params, body_params=body_params)
-        if resolved_team != conversation.team_id:
-            return RejectionResult("team_mismatch", "resource does not belong to this conversation's team", fixable=False)
+        resolved_team = await self.resolve_team(tool, conversation_team_id=effective_team, path_params=path_params, body_params=body_params)
+        if not await self.verify_target_team(
+            tool, conversation=conversation, resolved_team=resolved_team, effective_team=effective_team,
+            user_id=user_id, role=role,
+        ):
+            return RejectionResult("team_mismatch", "resource is not accessible from this conversation", fixable=False)
 
         if self.check_credential_write_rejected(tool, body_params):
             return RejectionResult("credential_write_rejected", "writing credential values via chat is not supported; use the UI", fixable=False)
         if await self.check_update_overwrites_existing_credential(tool, path_params, body_params):
             return RejectionResult("credential_write_rejected", "this case has existing credential test_data; edit it in the UI", fixable=False)
 
-        summary_result = await self.build_confirmation_summary(tool, path_params=path_params, body_params=body_params)
+        summary_result = await self.build_confirmation_summary(
+            tool, path_params=path_params, body_params=body_params,
+            team_id=resolved_team if tool.team_check != "none" else effective_team,
+        )
         if summary_result is None:
             return RejectionResult("confirmation_summary_unresolvable", "cannot resolve a stable target for this high-impact action", fixable=False)
         summary, stable_identity = summary_result

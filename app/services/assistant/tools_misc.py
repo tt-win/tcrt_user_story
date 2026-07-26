@@ -1,10 +1,41 @@
-"""工具目錄：Discovery / Pins（tool-matrix.md 第 1 節，1.1–1.4）。"""
+"""工具目錄：Discovery / Pins（tool-matrix.md 第 1 節，1.1–1.4）＋能力自述（local read）。"""
 
 from __future__ import annotations
 
 from app.auth.models import PermissionType
 from app.services.assistant.schema_helpers import body, s_str
 from app.services.assistant.tool_registry import IDEMPOTENT_WRITE, READ, AssistantTool
+
+# local read（不走 ASGI loopback、team_check=none）：與 loopback 工具分開匯出，
+# 因為 `tools_catalog` 只從 loopback 清單推導 batch_execute_actions 的 child enum。
+LOCAL_TOOLS = [
+    AssistantTool(
+        name="describe_capabilities",
+        method="LOCAL",
+        path_template="",
+        summary=(
+            "Report what this turn can actually do: conversation scope, the user's role, allowed "
+            "permission levels, and which write capability categories were filtered out of the tool "
+            "catalog (with the reason and the correct remediation). Call this before telling the user "
+            "that a TCRT operation is unavailable — a missing write tool usually means role/scope "
+            "filtering, not a missing feature."
+        ),
+        permission=PermissionType.READ,
+        risk_level=READ,
+        execution_mode="local",
+        team_check="none",
+        projection=(
+            "scope",
+            "team_id",
+            "team_name",
+            "role",
+            "allowed_permissions",
+            "withheld_capabilities",
+            "reasons",
+            "remediation",
+        ),
+    ),
+]
 
 TOOLS = [
     AssistantTool(

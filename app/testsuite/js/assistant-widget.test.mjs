@@ -40,6 +40,7 @@ const {
   parseSseEventId,
   confirmTier,
   formatConfirmTargetLine,
+  formatConfirmTeamLine,
   formatConfirmTargetList,
   formatConfirmBatchTargetList,
   formatAgentBusyStatus,
@@ -276,6 +277,16 @@ test('formatConfirmTargetLine：target_label 內的 HTML/腳本字元會被 esca
   const line = formatConfirmTargetLine({ target_type: 'new', target_label: malicious }, fakeT);
   assert.ok(!line.includes('<img'), 'target_label 不得以原始 HTML 出現在輸出中');
   assert.ok(line.includes('&lt;img'), 'target_label 應已被 escapeHtml 處理');
+});
+
+test('formatConfirmTeamLine：有 team_name 才輸出，且 escape team 名稱', () => {
+  // 全域對話沒有綁定 team，使用者必須從卡片看出動作會落在哪個 team
+  // （spec assistant-action-confirmation「confirm 的有效 team 取自 turn 快照」）。
+  assert.equal(formatConfirmTeamLine({ team_id: 1, team_name: 'ART' }, fakeT), 'Team: ART');
+  assert.equal(formatConfirmTeamLine({ target_type: 'new' }, fakeT), '', '沒有 team_name 時不輸出空行內容');
+  assert.equal(formatConfirmTeamLine(null, fakeT), '');
+  const line = formatConfirmTeamLine({ team_name: '<img src=x onerror=alert(1)>' }, fakeT);
+  assert.ok(!line.includes('<img') && line.includes('&lt;img'), 'team_name 必須經 escapeHtml');
 });
 
 test('formatConfirmTargetLine：LLM 文字不得混入摘要（僅吃 summary 欄位）', () => {

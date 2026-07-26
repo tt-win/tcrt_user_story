@@ -22,6 +22,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.exc import IntegrityError
 
 from app.auth.dependencies import get_current_user, security
+from app.auth.permission_service import permission_service
 from app.config import AssistantConfig, get_settings
 from app.db_access.main import MainAccessBoundary, get_main_access_boundary
 from app.models.assistant import (
@@ -43,6 +44,7 @@ from app.services.assistant.conversation_service import ConversationService
 from app.services.assistant.errors import AdmissionDeniedError, AssistantError, ConfirmationStaleError
 from app.services.assistant.param_validation import validate_arguments
 from app.services.assistant.runner_supervisor import RunnerSupervisor, get_runner_supervisor
+from app.services.assistant.team_context import effective_team_id
 from app.services.assistant.tool_executor import ToolExecutor, combined_schema
 from app.services.assistant.tool_registry import get_tool_registry
 
@@ -307,6 +309,7 @@ async def post_message_endpoint(
     request: Request,
     text: str = Form(""),
     client_message_id: str = Form(...),
+    context_team_id: Optional[int] = Form(None),
     after_seq: int = Query(-1),
     attachments: list[UploadFile] = File(default=[]),
     current_user: User = Depends(get_current_user),
@@ -331,6 +334,17 @@ async def post_message_endpoint(
             detail={"code": "TOO_MANY_ATTACHMENTS", "message": f"at most {config.upload_max_files_per_message} attachments"},
         )
 
+    # 全域對話的目標 team 由前端工作區提供，伺服器必須驗證可存取性後才快照到 turn；
+    # 不可存取即 fail-fast，MUST NOT 忽略該值或降級（spec assistant-conversations
+    # 「turn 的 context team 快照」）。team-bound 對話忽略此值，team 一律取對話綁定。
+    if context_team_id is not None and conversation.scope_type != "team":
+        accessible = await permission_service.get_user_accessible_teams(current_user.id)
+        if context_team_id not in (accessible or []):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"code": "CONTEXT_TEAM_INVALID", "message": "context team is not accessible"},
+            )
+
     files_data = []
     for file in attachments:
         data = await _read_capped(file, config.upload_max_file_bytes)
@@ -346,7 +360,8 @@ async def post_message_endpoint(
 
     try:
         result = await conv_svc.start_turn(
-            conversation=conversation, client_message_id=client_message_id, text=text, attachment_digests=digests
+            conversation=conversation, client_message_id=client_message_id, text=text, attachment_digests=digests,
+            context_team_id=context_team_id,
         )
     except AssistantError:
         await supervisor.release_slot()
@@ -508,13 +523,25 @@ async def confirm_action_endpoint(
         )
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"code": "SCHEMA_INVALID", "message": "; ".join(validation.errors)})
 
-    if not await executor.check_permission(tool, user_id=current_user.id, team_id=conversation.team_id, role=current_user.role):
+    # 有效 team MUST 取自 pending 所屬 turn 的快照，MUST NOT 取「confirm 當下的前端工作區」——
+    # 否則使用者在確認卡出現後切換工作區，動作會落到非預期 team（spec assistant-action-confirmation
+    # 「confirm 的有效 team 取自 turn 快照」）。continuation turn 於建立時繼承 source turn 的快照。
+    source_turn = await conv_svc.get_turn_by_id(turn_id=action.turn_id)
+    effective_team = effective_team_id(conversation, source_turn)
+
+    # 「無目標 team」必須先判斷：沒有 team 時 per-team 權限檢查沒有意義，且回 SCOPE_INVALID
+    # 才說得清原因（team 已刪除／turn 沒有 context team 快照）。
+    if effective_team is None:
+        await conv_svc.expire_pending_now(action_id=action.id, synthetic_result={"status": "expired", "code": "scope_invalid"})
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"code": "SCOPE_INVALID", "message": "this action has no target team"})
+
+    if not await executor.check_permission(tool, user_id=current_user.id, team_id=effective_team, role=current_user.role):
         await conv_svc.expire_pending_now(action_id=action.id, synthetic_result={"status": "expired", "code": "permission_denied"})
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={"code": "TOOL_PERMISSION_DENIED", "message": "insufficient permission"})
 
     if tool.execution_mode == "batch_actions":
         rejection = await executor.validate_batch_actions(
-            body_params.get("actions") or [], conversation_team_id=conversation.team_id,
+            body_params.get("actions") or [], conversation_team_id=effective_team,
             user_id=current_user.id, role=current_user.role,
         )
         if rejection is not None:
@@ -527,16 +554,18 @@ async def confirm_action_endpoint(
                 detail={"code": rejection.code.upper(), "message": rejection.message},
             )
 
-    if conversation.scope_type != "team" or conversation.team_id is None:
-        await conv_svc.expire_pending_now(action_id=action.id, synthetic_result={"status": "expired", "code": "scope_invalid"})
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"code": "SCOPE_INVALID", "message": "conversation is no longer team-bound"})
-
-    resolved_team = await executor.resolve_team(tool, conversation_team_id=conversation.team_id, path_params=path_params, body_params=body_params)
-    if resolved_team != conversation.team_id:
+    resolved_team = await executor.resolve_team(tool, conversation_team_id=effective_team, path_params=path_params, body_params=body_params)
+    if not await executor.verify_target_team(
+        tool, conversation=conversation, resolved_team=resolved_team, effective_team=effective_team,
+        user_id=current_user.id, role=current_user.role,
+    ):
         await conv_svc.expire_pending_now(action_id=action.id, synthetic_result={"status": "expired", "code": "team_mismatch"})
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={"code": "TEAM_SCOPE_MISMATCH", "message": "resource no longer belongs to this conversation's team"})
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={"code": "TEAM_SCOPE_MISMATCH", "message": "resource is no longer accessible for this action"})
 
-    summary_result = await executor.build_confirmation_summary(tool, path_params=path_params, body_params=body_params)
+    target_team = resolved_team if tool.team_check != "none" else effective_team
+    summary_result = await executor.build_confirmation_summary(
+        tool, path_params=path_params, body_params=body_params, team_id=target_team
+    )
     if summary_result is None:
         await conv_svc.expire_pending_now(action_id=action.id, synthetic_result={"status": "expired", "code": "confirmation_summary_unresolvable"})
         raise HTTPException(
@@ -565,7 +594,7 @@ async def confirm_action_endpoint(
         # Returns (fingerprint, summary) so claim can attach them to ConfirmationStaleError
         # for the API to CAS-update the confirmation card (same as pre-claim path).
         live_summary = await executor.build_confirmation_summary(
-            tool, path_params=path_params, body_params=body_params
+            tool, path_params=path_params, body_params=body_params, team_id=target_team
         )
         if live_summary is None:
             # Treat unresolvable as stale claim failure; outer AssistantError path releases slot.

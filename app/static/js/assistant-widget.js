@@ -113,6 +113,17 @@ function confirmTier(riskLevel) {
 }
 
 /**
+ * 確認卡的「目標 team」行：全域對話沒有綁定 team，使用者必須能從卡片看出動作會落在哪個
+ * team（spec assistant-action-confirmation）。team_name 由伺服器 lookup 提供，仍先 escape。
+ */
+function formatConfirmTeamLine(summary, t) {
+  if (!summary || typeof summary !== 'object') return '';
+  const name = String(summary.team_name || '').trim();
+  if (!name) return '';
+  return t('assistant.confirmTargetTeam', { team: _assistantEscapeHtml(name) }, 'Team: {team}');
+}
+
+/**
  * 由 server-derived confirmation_summary 組出確認卡的「目標」行（純函式、可測試）。
  * target_label 等不可信欄位一律先 escapeHtml 才嵌入，不得以 HTML/i18n key 解譯（spec 要求）。
  * `t(key, params, fallback)` 簽名比照 `window.i18n.t`。
@@ -1078,6 +1089,8 @@ const AssistantWidget = (() => {
   function buildConfirmCardNode(summary, tier) {
     const actionLabel = confirmationActionLabelMarkup(summary.action, t);
     const targetLine = formatConfirmTargetLine(summary, t);
+    const teamLineText = formatConfirmTeamLine(summary, t);
+    const teamLine = teamLineText ? `<div class="tcrt-assistant-cc-team">${teamLineText}</div>` : '';
     const batchTargetList = summary.target_type === 'batch_actions'
       ? formatConfirmTargetList(summary, t) : formatConfirmBatchTargetList(summary);
     const batchInvalid = (summary.target_type === 'batch_actions' || summary.target_type === 'batch') && !batchTargetList;
@@ -1095,6 +1108,7 @@ const AssistantWidget = (() => {
             <span data-i18n="assistant.confirmTitle">${_assistantEscapeHtml(t('assistant.confirmTitle', {}, 'Your confirmation is required'))}</span>
           </div>
           <div class="tcrt-assistant-cc-desc"><strong>${actionLabel}</strong></div>
+          ${teamLine}
           <div class="tcrt-assistant-cc-target">${targetLine}${warningText ? ' — ' + warningText : ''}${batchTargetList}</div>
           <div class="tcrt-assistant-acts">
             ${batchInvalid ? '' : `<button class="tcrt-assistant-btn tcrt-assistant-btn-sm tcrt-assistant-btn-danger" type="button" data-act="confirm" data-i18n="${confirmKey}">${_assistantEscapeHtml(t(confirmKey, {}, confirmText))}</button>`}
@@ -1106,6 +1120,7 @@ const AssistantWidget = (() => {
     return el(`
       <div class="tcrt-assistant-confirm-card tcrt-assistant-light" role="group">
         <div class="tcrt-assistant-cc-desc">${actionLabel}</div>
+        ${teamLine}
         <div class="tcrt-assistant-cc-target">${targetLine}${batchTargetList}</div>
         <div class="tcrt-assistant-acts">
           ${batchInvalid ? '' : `<button class="tcrt-assistant-btn tcrt-assistant-btn-sm tcrt-assistant-btn-primary" type="button" data-act="confirm" data-i18n="assistant.confirm">${_assistantEscapeHtml(t('assistant.confirm', {}, 'Confirm'))}</button>`}
@@ -1571,6 +1586,12 @@ const AssistantWidget = (() => {
     const form = new FormData();
     form.append('text', text);
     form.append('client_message_id', clientMessageId);
+    // 全域對話沒有綁定 team：本回合的目標 team 取自目前工作區，由伺服器驗證可存取性後
+    // 快照在 turn 上（spec assistant-conversations「turn 的 context team 快照」）。
+    // 未選定工作區時不送，該回合即為唯讀（fail-closed）。
+    const contextTeamIdRaw = getCurrentTeamId();
+    const contextTeamId = contextTeamIdRaw ? parseInt(contextTeamIdRaw, 10) : null;
+    if (contextTeamId) form.append('context_team_id', String(contextTeamId));
     selectedFiles.forEach((f) => form.append('attachments', f, f.name));
     clearAttachments();
 
