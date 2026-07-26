@@ -576,6 +576,7 @@
   margin-bottom: 6px;
 }
 .tcrt-assistant-confirm-card.tcrt-assistant-warning .tcrt-assistant-cc-title svg { width: 15px; height: 15px; }
+.tcrt-assistant-confirm-card .tcrt-assistant-cc-team { color: var(--tr-text-secondary); font-size: 12.5px; margin-bottom: 4px; font-weight: 600; }
 .tcrt-assistant-confirm-card .tcrt-assistant-cc-target { color: var(--tr-text-secondary); margin-bottom: 8px; font-size: 12.5px; }
 .tcrt-assistant-confirm-card.tcrt-assistant-warning .tcrt-assistant-cc-target { color: var(--tr-text-primary); margin: 6px 0 10px; }
 .tcrt-assistant-cc-targets { margin: 8px 0 0; padding-left: 20px; max-height: 180px; overflow-y: auto; }

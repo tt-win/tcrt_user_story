@@ -19,8 +19,14 @@ import logging
 import re
 from typing import Optional
 
-from app.auth.models import PermissionType, UserRole
+from app.auth.models import UserRole
 from app.services.assistant import attachment_storage, ids
+from app.services.assistant.capability_context import (
+    append_capability_context,
+    build_capability_facts,
+    tools_for_turn,
+)
+from app.services.assistant.team_context import effective_team_id
 from app.services.assistant.assistant_llm_service import (
     AssistantLLMContextLengthError,
     AssistantLLMError,
@@ -90,15 +96,6 @@ def _is_stale_preconfirm_prose(text: str) -> bool:
     if len(stripped) > 280:
         return False
     return bool(_STALE_PRECONFIRM_RE.search(stripped))
-
-
-def _allowed_permissions_for_role(role: UserRole) -> set[PermissionType]:
-    """角色→權限等級映射，鏡射 `permission_service._role_to_permission`（design D2 工具目錄預過濾）。"""
-    if role in (UserRole.SUPER_ADMIN, UserRole.ADMIN):
-        return {PermissionType.READ, PermissionType.WRITE, PermissionType.ADMIN}
-    if role == UserRole.USER:
-        return {PermissionType.READ, PermissionType.WRITE}
-    return {PermissionType.READ}
 
 
 async def _renew_or_stop(conversation_service: ConversationService, *, conversation_id: int, turn_key: str, ttl_seconds: int) -> bool:
@@ -211,14 +208,26 @@ async def _run_llm_loop(
     conversation_id = conversation.id
     turn_key = turn.turn_key
 
-    if conversation.scope_type != "team" or conversation.team_id is None:
-        tools = registry.discovery_only()
-    else:
-        tools = registry.filter_by_permission(_allowed_permissions_for_role(role))
+    # 有效 team：team 對話取對話綁定，全域對話取本 turn 的 context team 快照（前端工作區）。
+    effective_team = effective_team_id(conversation, turn)
+    tools = tools_for_turn(registry, team_id=effective_team, role=role)
     tools_by_name = {t.name: t for t in tools}
     llm_tools_schema = [t.to_llm_schema() for t in tools]
     # System prompt + skill catalog from DB (factory seed fallback inside content_store).
     system_prompt = await assemble_system_prompt_for_agent(conversation_service.main_boundary)
+    # 目錄剛被 scope／角色預過濾；capability context 讓模型知道「被移除」而非「不存在」，
+    # 否則權限限制會被誤述為能力限制（spec assistant-agent-loop「回合能力上下文」）。
+    # MUST 在 assemble 之後 append：assemble 的結果是跨使用者共用快取，per-turn 內容
+    # 絕不可寫回該快取（design D1）。
+    capability_facts = build_capability_facts(
+        role=role,
+        scope_type=conversation.scope_type,
+        team_id=effective_team,
+        team_name=await executor.resolve_team_name(effective_team),
+        all_tools=registry.all(),
+        allowed_tool_names=tools_by_name.keys(),
+    )
+    system_prompt = append_capability_context(system_prompt, capability_facts)
     # 本 turn 若隨訊息上傳附件，LLM 必須被明確告知有哪些 file_ref 可用，否則工具 schema
     # 裡的 file_ref 參數對模型而言無從得知合法值（見 spec assistant-conversations「聊天
     # 附檔暫存」）。固定在迴圈外查一次即可：附件只在本 turn 建立時寫入，迴圈期間不會再變。
@@ -531,7 +540,7 @@ async def _run_llm_loop(
         execution_key = ids.generate_execution_key()
         prepared = await executor.prepare_write_tool(
             tool, call.arguments, conversation=conversation, user_id=user_id, role=role, execution_key=execution_key,
-            resolved_file_ref=resolved_file_ref, resolved_file_refs=resolved_file_refs,
+            turn=turn, resolved_file_ref=resolved_file_ref, resolved_file_refs=resolved_file_refs,
         )
         if not await _renew_or_stop(
             conversation_service,
@@ -733,8 +742,17 @@ async def run_confirm_turn(
         )
 
         write_dispatched = True
+        # 目標 team：team 對話取對話綁定，全域對話取 continuation turn 繼承的 context team 快照；
+        # `resolve` 類工具再由資源反解（其 path 多半含 {team_id}，注入 context team 會打錯路徑）。
+        confirm_team_id = await executor.resolve_target_team(
+            tool,
+            conversation=conversation,
+            turn=turn,
+            path_params=execution_payload.get("path_params") or {},
+            body_params=execution_payload.get("body_params") or {},
+        )
         exec_result = await executor.execute_confirmed_write(
-            tool, team_id=conversation.team_id, execution_payload=execution_payload, jwt=jwt,
+            tool, team_id=confirm_team_id, execution_payload=execution_payload, jwt=jwt,
             conversation_key=conversation.conversation_key, multipart_file=multipart_file,
             multipart_files=multipart_files,
         )

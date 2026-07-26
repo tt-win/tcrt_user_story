@@ -3958,6 +3958,7 @@
     "removeAttachment": "移除附件",
     "notConfigured": "助手当前不可用",
     "confirmTargetNew": "目标：{label}",
+    "confirmTargetTeam": "团队：{team}",
     "confirmTargetSingle": "目标：{label}（#{id}）",
     "confirmTargetBatch": "影响 {count} 条",
     "confirmTargetMembership": "成员数：{count}",

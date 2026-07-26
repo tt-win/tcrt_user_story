@@ -467,8 +467,14 @@ class ConversationService:
         client_message_id: str,
         text: str,
         attachment_digests: list[str],
+        context_team_id: Optional[int] = None,
     ) -> TurnStartResult:
-        """實作 design D9 的 TurnStart Tx：冪等檢查 → quota/admission 原子保留 → lease → turn_seq → turn 建立。"""
+        """實作 design D9 的 TurnStart Tx：冪等檢查 → quota/admission 原子保留 → lease → turn_seq → turn 建立。
+
+        `context_team_id`：全域對話的目標 team 快照（呼叫端 MUST 先驗證使用者可存取該 team）。
+        建立後不可變，是該 turn 及其 confirm continuation 唯一的 team 來源（spec
+        assistant-conversations「turn 的 context team 快照」）。
+        """
         fingerprint = ids.compute_request_fingerprint(text, attachment_digests)
         user_id = conversation.user_id
         cfg = self.config
@@ -547,6 +553,7 @@ class ConversationService:
                 request_fingerprint=fingerprint,
                 status="running",
                 started_at=now,
+                context_team_id=context_team_id if conversation.scope_type != "team" else None,
             )
             session.add(turn)
             await session.flush()
@@ -1025,6 +1032,17 @@ class ConversationService:
             raise ConversationNotFoundError()
         return turn
 
+    async def get_turn_by_id(self, *, turn_id: int) -> Optional[AssistantTurn]:
+        """confirm 流程解析有效 team 用：pending.turn_id → turn（含 context team 快照）。
+
+        呼叫端已先以 `get_pending_action_owned` 驗證擁有者，此處不重複做 ownership 檢查。
+        """
+
+        async def _get(session: AsyncSession) -> Optional[AssistantTurn]:
+            return await session.get(AssistantTurn, turn_id)
+
+        return await self.main_boundary.run_read(_get)
+
     async def is_cancel_requested(self, *, turn_id: int) -> bool:
         async def _check(session: AsyncSession) -> bool:
             row = await session.get(AssistantTurn, turn_id)
@@ -1414,6 +1432,9 @@ class ConversationService:
 
             turn_seq = conv_row.next_turn_seq
             conv_row.next_turn_seq = turn_seq + 1
+            # pending.turn_id 稍後會 rebind 到 continuation，因此 continuation MUST 繼承
+            # source turn 的 context team 快照——否則 confirm 後就再也解析不出目標 team。
+            source_turn = await session.get(AssistantTurn, action_row.turn_id)
             continuation = AssistantTurn(
                 conversation_id=conv_row.id,
                 turn_seq=turn_seq,
@@ -1422,6 +1443,7 @@ class ConversationService:
                 request_fingerprint=recomputed_fingerprint,
                 status="running",
                 started_at=now,
+                context_team_id=getattr(source_turn, "context_team_id", None),
             )
             session.add(continuation)
             await session.flush()
@@ -1465,7 +1487,8 @@ class ConversationService:
                 source_turn_key=turn_key,
                 execution_key=action.execution_key,
                 user_id=conv_row.user_id,
-                team_id=conv_row.team_id,
+                # 稽核必須記實際生效的 team：全域對話沒有 conv_row.team_id，目標來自 turn 快照。
+                team_id=conv_row.team_id if conv_row.scope_type == "team" else continuation.context_team_id,
                 llm_tool_call_id=action.llm_tool_call_id,
                 provider_tool_call_id=action.provider_tool_call_id,
                 tool_name=action.tool_name,
