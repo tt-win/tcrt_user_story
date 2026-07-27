@@ -1115,8 +1115,6 @@ async def delete_test_run_set(
     main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user),
 ):
-    from ..services.test_result_cleanup_service import TestResultCleanupService
-
     def _prepare(sync_db: Session):
         verify_team_exists(team_id, sync_db)
         test_run_set = _load_set_or_404(sync_db, team_id, set_id)
@@ -1140,10 +1138,6 @@ async def delete_test_run_set(
 
     try:
         context = await main_boundary.run_sync_read(_prepare)
-
-        cleanup_service = TestResultCleanupService()
-        for config_id in context["config_ids"]:
-            await cleanup_service.cleanup_test_run_config_files(team_id, config_id, db)
 
         def _delete(sync_db: Session):
             verify_team_exists(team_id, sync_db)

@@ -235,12 +235,15 @@ Automation 端點額外錯誤碼見[第 16 節](#16-api-參考automation)。
       "created_at": "...",
       "updated_at": "...",
       "last_sync_at": null,
-      "is_lark_configured": true,
+      "is_lark_configured": false,
       "is_jira_configured": false
     }
   ]
 }
 ```
+
+> `is_lark_configured` 已 deprecated：team 層級的 Lark Bitable 設定已移除，此欄位僅為
+> response schema 相容而保留，對所有 team 恆為 `false`。
 
 ### 7.2 列出 team 的 test cases
 

@@ -1,8 +1,5 @@
-# team-management-console Specification
+## MODIFIED Requirements
 
-## Purpose
-定義縮小後的 `/team-management` 頁面正式契約——僅保留 team 資料 CRUD 與 per-team App Token 入口，正式排除已搬遷至 `organization-management-console` 的人員管理／組織同步／Service 管理／MCP Token／組織自動化基礎設施等 org-wide 內容。由 `redesign-team-settings-information-architecture` change 建立；Lark Bitable 連結欄位已由 `remove-team-lark-repo-settings` change 移除（team 層級的 Lark 邊界見 `lark-runtime-boundary`）。
-## Requirements
 ### Requirement: Team management page scope is limited to per-team data
 
 `/team-management` 頁面 SHALL 僅包含以下功能：team 清單、新增/編輯/刪除 team（欄位限於 team 名稱、描述、JIRA 設定與預設優先級）、team 卡片操作選單（進入團隊各功能頁、App Token 入口）。頁面 SHALL NOT 包含 Lark Bitable 連結欄位（`wiki_token`、`test_case_table_id`）或 Lark 連線驗證入口，亦 SHALL NOT 包含人員管理、組織同步、Service 管理、MCP Token 簽發、組織自動化基礎設施等 org-wide 功能（相關契約見 `organization-management-console`）。
@@ -33,12 +30,3 @@
 #### Scenario: Lark validation endpoints are removed
 - **WHEN** 任何 client 呼叫 `POST /api/teams/validate` 或 `POST /api/teams/validate-table`
 - **THEN** 系統 SHALL NOT 提供該端點，並以 4xx 客戶端錯誤回應（實際為 405 Method Not Allowed：該路徑被同層的 `/{team_id}` 路由涵蓋，而該路徑不接受 POST）
-
-### Requirement: Per-team App token issuance remains on the team management page
-
-App Token（per-team API token）的簽發、列表、撤銷 UI SHALL 維持掛載於 `/team-management` 頁面的 team 卡片操作選單（`#appTokenModal`），不隨組織層分頁一併搬遷至 `/organization-management`。
-
-#### Scenario: App token management stays reachable from team card menu
-- **WHEN** 使用者從 team 卡片選單開啟「App Tokens」
-- **THEN** 系統 SHALL 顯示該 team 的 App Token 管理 modal，行為與既有 `app/api/app_tokens.py` contract 一致
-

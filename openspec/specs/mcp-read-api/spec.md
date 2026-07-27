@@ -4,7 +4,10 @@
 定義 TCRT 對 MCP consumer 提供的唯讀查詢 API，包括 team、test case 與 test run 的統一讀取模型與過濾規則。
 ## Requirements
 ### Requirement: MCP Teams Read Endpoint
+
 系統 SHALL 透過 `/api/mcp/teams` 保留 read-only 團隊清單相容端點，並在 `/api/app/teams` 提供正式 app-token 等價 read endpoint。兩者 SHALL 回傳經過清理的欄位與總數資訊；`/api/app/*` SHALL 使用 app-token principal，`/api/mcp/*` SHALL 使用相容 app-token principal。
+
+team read model 中的 `is_lark_configured` 欄位 SHALL 保留於回應（維持既有 response schema 相容性），但 SHALL 一律回傳 `false` 並視為 deprecated：team 層級的 Lark Bitable 設定已由 `remove-team-lark-repo-settings` 移除，系統中不再存在「已設定 Lark」的 team。Client SHALL NOT 依據此欄位提供任何 Lark 相關功能分支。
 
 #### Scenario: Team list returns count and sanitized fields
 - **WHEN** machine principal 查詢 `/api/mcp/teams`
@@ -13,6 +16,10 @@
 #### Scenario: App namespace returns equivalent team list
 - **WHEN** app-token principal 查詢 `/api/app/teams`
 - **THEN** 回應 SHALL 與 `/api/mcp/teams` read model 相容
+
+#### Scenario: Deprecated Lark flag is always false
+- **WHEN** 任一 principal 查詢 `/api/mcp/teams` 或 `/api/app/teams`
+- **THEN** 每一筆 team 的 `is_lark_configured` SHALL 為 `false`，即使該 team 的資料庫列仍保有歷史 Lark token 值
 
 ### Requirement: MCP Test Case Set and Test Case Query with Filters
 系統 SHALL 支援依 team scope、test case set、ticket / tcg、關鍵字與內容展開等條件查詢 test cases。`/api/mcp/*` SHALL 保留 read-only 相容；`/api/app/*` SHALL 成為正式 app-token read/write namespace，其中 read payload SHALL 與 MCP read model 相容。

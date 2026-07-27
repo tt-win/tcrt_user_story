@@ -17,8 +17,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, contains_eager, joinedload
 
 from app.db_access import MainAccessBoundary, get_main_access_boundary
-from app.services.lark_client import LarkClient
-from app.config import settings
 from app.database import get_db
 from app.models.database_models import (
     TestRunItem as TestRunItemDB,
@@ -481,17 +479,6 @@ def _verify_team_and_config(team_id: int, config_id: int, db: Session) -> TestRu
     if not config:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到測試執行配置 ID {config_id}")
     return config
-
-
-def _get_lark_client_for_team(team_id: int, db: Session):
-    """獲取配置好的 LarkClient 實例"""
-    team_config = db.query(TeamDB).filter(TeamDB.id == team_id).first()
-    if not team_config:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="團隊配置不存在")
-
-    lark_client = LarkClient(app_id=settings.lark.app_id, app_secret=settings.lark.app_secret)
-    lark_client.set_wiki_token(team_config.wiki_token)
-    return lark_client, team_config
 
 
 def _serialize_section_with_parents(
@@ -1089,7 +1076,6 @@ async def delete_item(
     main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """刪除測試執行項目及相關附件"""
-    from ..services.test_result_cleanup_service import TestResultCleanupService
 
     def _verify_item(sync_db: Session) -> None:
         _verify_team_and_config(team_id, config_id, sync_db)
@@ -1108,14 +1094,7 @@ async def delete_item(
     await main_boundary.run_sync_read(_verify_item)
 
     try:
-        # 1. 先清理測試結果檔案
-        cleanup_service = TestResultCleanupService()
-        cleaned_files_count = await cleanup_service.cleanup_test_run_item_files(team_id, config_id, item_id, db)
-
-        if cleaned_files_count > 0:
-            logger.info(f"Test Run Item {item_id} 已清理 {cleaned_files_count} 個測試結果檔案")
-
-        # 2. 保險刪除對應歷程（避免 DB 未啟用 FK 級聯時殘留）
+        # 1. 保險刪除對應歷程（避免 DB 未啟用 FK 級聯時殘留）
         def _delete(sync_db: Session) -> None:
             # 2. 保險刪除對應歷程（避免 DB 未啟用 FK 級聯時殘留）
             sync_db.query(ResultHistoryDB).filter(

@@ -71,7 +71,6 @@ function initTeamManagement() {
     document.getElementById('createTeamBtn').addEventListener('click', showCreateTeamModal);
     document.getElementById('refreshBtn').addEventListener('click', loadTeams);
     document.getElementById('saveTeamBtn').addEventListener('click', saveTeam);
-    document.getElementById('validateLarkBtn').addEventListener('click', validateLarkConnection);
     // 審計記錄和團隊統計現在使用下拉選單中的 <a> 標籤，不需要額外的事件監聽器
     // 「組織與系統設定」已改為導向 /organization-management 的連結（<a>），
     // 不再是開啟本頁 modal 的按鈕，故不需要 click listener。
@@ -192,14 +191,6 @@ function renderTeamCards() {
                         </div>
                     </div>
                     <div class="mt-auto pt-2">
-                        <div class="mb-2">
-                            <div class="d-flex align-items-center mb-1">
-                                <i class="fas fa-table me-2 text-success"></i>
-                                <small class="text-muted">Lark: ${team.is_lark_configured ?
-                                    ((window.i18n && window.i18n.isReady()) ? window.i18n.t('team.configured') : '已設定') :
-                                    ((window.i18n && window.i18n.isReady()) ? window.i18n.t('team.notConfigured') : '未設定')}</small>
-                            </div>
-                        </div>
                         <div class="d-flex gap-2">
                             <div class="dropdown" style="flex: 1;">
                                 <button class="btn btn-primary btn-sm w-100 dropdown-toggle" type="button" id="enterTeamDropdown${team.id}" data-bs-toggle="dropdown" aria-expanded="false">
@@ -293,9 +284,6 @@ function editTeam(teamId) {
     // 填入表單資料
     document.getElementById('teamName').value = team.name;
     document.getElementById('teamDescription').value = team.description || '';
-    document.getElementById('wikiToken').value = team.lark_config.wiki_token;
-    document.getElementById('testCaseTableId').value = team.lark_config.test_case_table_id;
-
 
     const modal = new bootstrap.Modal(document.getElementById('teamModal'));
     modal.show();
@@ -309,17 +297,13 @@ async function saveTeam() {
     const teamData = {
         name: formData.get('name'),
         description: formData.get('description') || null,
-        lark_config: {
-            wiki_token: formData.get('wiki_token'),
-            test_case_table_id: formData.get('test_case_table_id')
-        },
         settings: {
             default_priority: 'Medium'
         }
     };
 
     // 驗證必填欄位
-    if (!teamData.name || !teamData.lark_config.wiki_token || !teamData.lark_config.test_case_table_id) {
+    if (!teamData.name) {
         const errorMsg = window.i18n ? window.i18n.t('messages.fillRequiredFields') : '請填寫所有必填欄位';
         AppUtils.showError(errorMsg);
         return;
@@ -382,61 +366,6 @@ async function saveTeam() {
         console.error('Save team failed:', error);
         const errorMsg = window.i18n ? window.i18n.t('messages.saveFailed') : '儲存失敗';
         AppUtils.showError(errorMsg + '：' + error.message);
-    }
-}
-
-async function validateLarkConnection() {
-    const wikiToken = document.getElementById('wikiToken').value;
-    const testCaseTableId = document.getElementById('testCaseTableId').value;
-    const resultDiv = document.getElementById('larkValidationResult');
-
-    if (!wikiToken || !testCaseTableId) {
-        const warningMsg = window.i18n ? window.i18n.t('team.pleaseEnterToken') : '請先填寫 Wiki Token 和 Test Case 表格 ID';
-        showValidationMessage(warningMsg, 'warning');
-        return;
-    }
-
-    const validateBtn = document.getElementById('validateLarkBtn');
-    validateBtn.disabled = true;
-    const validatingMsg = window.i18n ? window.i18n.t('team.validating') : '驗證中...';
-    validateBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${validatingMsg}`;
-
-    try {
-        const response = await window.AuthClient.fetch('/api/teams/validate', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                name: 'test',
-                lark_config: {
-                    wiki_token: wikiToken,
-                    test_case_table_id: testCaseTableId
-                },
-                settings: {
-                    default_priority: 'Medium'
-                }
-            })
-        });
-
-        const result = await response.json();
-
-        if (result.valid) {
-            const successMsg = window.i18n ? window.i18n.t('team.connectionValid') : '連線驗證成功';
-            showValidationMessage(successMsg, 'success');
-        } else {
-            const failMsg = window.i18n ? window.i18n.t('team.connectionInvalid') : '連線驗證失敗';
-            showValidationMessage(failMsg, 'danger');
-        }
-
-    } catch (error) {
-        console.error('Validation failed:', error);
-        const errorMsg = window.i18n ? window.i18n.t('team.connectionError') : '驗證過程發生錯誤';
-        showValidationMessage(errorMsg, 'danger');
-    } finally {
-        validateBtn.disabled = false;
-        const validateText = window.i18n ? window.i18n.t('team.validateConnection') : '驗證 Lark 連線';
-        validateBtn.innerHTML = `<i class="fas fa-check me-2"></i>${validateText}`;
     }
 }
 
@@ -532,38 +461,6 @@ function getTeamInitials(name) {
         .map(word => word.charAt(0).toUpperCase())
         .slice(0, 2)
         .join('');
-}
-
-function showValidationMessage(message, type) {
-    const resultDiv = document.getElementById('larkValidationResult');
-
-    // 設定顏色和圖示
-    let iconClass, textClass;
-    switch(type) {
-        case 'success':
-            iconClass = 'fas fa-check-circle';
-            textClass = 'text-success';
-            break;
-        case 'danger':
-            iconClass = 'fas fa-times-circle';
-            textClass = 'text-danger';
-            break;
-        case 'warning':
-            iconClass = 'fas fa-exclamation-triangle';
-            textClass = 'text-warning';
-            break;
-        default:
-            iconClass = 'fas fa-info-circle';
-            textClass = 'text-info';
-    }
-
-    // 顯示訊息
-    resultDiv.innerHTML = `<small class="${textClass}"><i class="${iconClass} me-1"></i>${message}</small>`;
-
-    // 3秒後自動清除
-    setTimeout(() => {
-        resultDiv.innerHTML = '';
-    }, 3000);
 }
 
 function escapeHtml(text) {

@@ -323,7 +323,8 @@ async def list_teams(
             created_at=team.created_at,
             updated_at=team.updated_at,
             last_sync_at=team.last_sync_at,
-            is_lark_configured=bool(team.wiki_token and team.test_case_table_id),
+            # Deprecated：team 層級 Lark Bitable 設定已移除，欄位僅為相容保留且恆為 False。
+            is_lark_configured=False,
             is_jira_configured=bool(team.jira_project_key),
         )
         for team in teams

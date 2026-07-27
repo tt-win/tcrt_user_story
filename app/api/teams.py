@@ -2,11 +2,8 @@
 團隊管理 API 路由
 """
 
-import asyncio
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select, delete
-from pydantic import BaseModel
 
 from app.db_access.main import MainAccessBoundary, get_main_access_boundary
 from app.auth.dependencies import (
@@ -27,26 +24,10 @@ from app.models.database_models import (
 )
 import logging
 
-from app.services.lark_client import LarkClient
-from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/teams", tags=["teams"])
-
-
-class SimpleTableValidationRequest(BaseModel):
-    """簡單的表格驗證請求"""
-
-    wiki_token: str
-    table_id: str
-
-
-class ValidationResponse(BaseModel):
-    """驗證回應"""
-
-    valid: bool
-    message: str
 
 
 def team_db_to_model(team_db: TeamDB, test_case_count: int = 0) -> dict:
@@ -54,11 +35,7 @@ def team_db_to_model(team_db: TeamDB, test_case_count: int = 0) -> dict:
 
     `test_case_count` 由呼叫端即時計算傳入；`Team.test_case_count` 欄位無人維護，勿使用。
     """
-    from app.models.team import LarkRepoConfig, JiraConfig, TeamSettings
-
-    lark_config = LarkRepoConfig(
-        wiki_token=team_db.wiki_token, test_case_table_id=team_db.test_case_table_id
-    )
+    from app.models.team import JiraConfig, TeamSettings
 
     jira_config = None
     if team_db.jira_project_key:
@@ -81,7 +58,6 @@ def team_db_to_model(team_db: TeamDB, test_case_count: int = 0) -> dict:
         "id": team_db.id,
         "name": team_db.name,
         "description": team_db.description,
-        "lark_config": lark_config.dict(),
         "jira_config": jira_config.dict() if jira_config else None,
         "settings": settings.dict(),
         "status": (
@@ -93,7 +69,8 @@ def team_db_to_model(team_db: TeamDB, test_case_count: int = 0) -> dict:
         "updated_at": team_db.updated_at,
         "test_case_count": test_case_count,
         "last_sync_at": team_db.last_sync_at,
-        "is_lark_configured": bool(team_db.wiki_token and team_db.test_case_table_id),
+        # Deprecated：team 層級的 Lark Bitable 設定已移除，此欄位僅為相容而保留且恆為 False。
+        "is_lark_configured": False,
         "is_jira_configured": bool(team_db.jira_project_key),
     }
 
@@ -104,8 +81,10 @@ def team_model_to_db(team: TeamCreate) -> TeamDB:
     return TeamDB(
         name=team.name,
         description=team.description,
-        wiki_token=team.lark_config.wiki_token,
-        test_case_table_id=team.lark_config.test_case_table_id,
+        # Lark Bitable 設定已移除，但 DB 欄位仍為 NOT NULL（既有 team 的歷史值原樣保留），
+        # 因此新 team 顯式寫入空字串代表「從未有過 Lark 設定」。
+        wiki_token="",
+        test_case_table_id="",
         jira_project_key=team.jira_config.project_key if team.jira_config else None,
         default_assignee=(
             team.jira_config.default_assignee if team.jira_config else None
@@ -181,70 +160,6 @@ async def create_team(
         )
 
 
-@router.post("/validate", response_model=dict)
-async def validate_lark_repo(
-    team: TeamCreate, current_user: User = Depends(require_admin())
-):
-    """驗證 Lark Repo 的連線（需要 ADMIN+ 權限）"""
-    try:
-        # 創建 Lark Client 來驗證連線
-        lark_client = LarkClient(
-            app_id=settings.lark.app_id, app_secret=settings.lark.app_secret
-        )
-
-        def _validate_connection():
-            lark_client.set_wiki_token(team.lark_config.wiki_token)
-            return lark_client.get_table_fields(team.lark_config.test_case_table_id)
-
-        # 設定 wiki token 並取得表格資訊來驗證連線
-        await asyncio.to_thread(_validate_connection)
-
-        return {"valid": True, "message": "Lark Repo 連線驗證成功"}
-    except Exception as e:
-        return {"valid": False, "message": f"Lark Repo 連線驗證失敗: {str(e)}"}
-
-
-@router.post("/validate-table", response_model=ValidationResponse)
-async def validate_table(
-    request: SimpleTableValidationRequest, current_user: User = Depends(require_admin())
-):
-    """簡單的表格驗證 API（需要 ADMIN+ 權限）"""
-    try:
-        # 創建 Lark Client 來驗證表格
-        lark_client = LarkClient(
-            app_id=settings.lark.app_id, app_secret=settings.lark.app_secret
-        )
-
-        def _validate_connection():
-            if not lark_client.set_wiki_token(request.wiki_token):
-                return False, None
-            return True, lark_client.get_table_fields(request.table_id)
-
-        # 設定 wiki token 並取得表格資訊來驗證連線
-        token_valid, fields = await asyncio.to_thread(_validate_connection)
-        if not token_valid:
-            return ValidationResponse(
-                valid=False,
-                message="Failed to set Wiki Token, please check if the token is correct",
-            )
-
-        if fields:
-            return ValidationResponse(
-                valid=True,
-                message=f"Table validation successful, found {len(fields)} fields",
-            )
-        else:
-            return ValidationResponse(
-                valid=False,
-                message="Unable to retrieve table field information, please check if the Table ID is correct",
-            )
-
-    except Exception as e:
-        return ValidationResponse(
-            valid=False, message=f"Table validation failed: {str(e)}"
-        )
-
-
 @router.get("/{team_id}")
 async def get_team(
     team_id: int,
@@ -312,9 +227,7 @@ async def update_team(
             if team_update.description is not None:
                 team_db.description = team_update.description
 
-            if team_update.lark_config is not None:
-                team_db.wiki_token = team_update.lark_config.wiki_token
-                team_db.test_case_table_id = team_update.lark_config.test_case_table_id
+            # 不再寫入 wiki_token / test_case_table_id：既有 team 的歷史值原樣保留。
 
             if team_update.jira_config is not None:
                 team_db.jira_project_key = team_update.jira_config.project_key
