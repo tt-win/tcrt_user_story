@@ -206,6 +206,12 @@ class TestResultCleanupService:
         file_tokens_to_remove: List[str],
         team_config: TeamDB,
     ) -> bool:
+        # team 層級的 Lark Bitable 設定已移除；沒有 wiki_token 的 team 不可能有 Lark 附件，
+        # 直接返回避免對外部服務發出無意義請求（用 debug 等級，避免正常刪除流程產生假警報）。
+        if not team_config.wiki_token:
+            self.logger.debug("Team %s 沒有 Lark wiki token，略過 Lark 附件清理", team_config.id)
+            return False
+
         try:
             # 使用 LarkClient 直接獲取當前 Test Case
             lark_client = LarkClient(settings.lark.app_id, settings.lark.app_secret)

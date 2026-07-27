@@ -53,6 +53,11 @@ async def get_lark_client_for_team(
     if not team:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到團隊 ID {team_id}")
 
+    # team 層級的 Lark Bitable 設定已移除；新建立的 team 不會有 wiki_token，
+    # 這類 team 不可能存在 Lark 附件，直接視為找不到附件（而非回報 Lark 服務異常）。
+    if not team.wiki_token:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="附件不存在")
+
     # 建立 Lark Client
     lark_client = LarkClient(app_id=settings.lark.app_id, app_secret=settings.lark.app_secret)
 

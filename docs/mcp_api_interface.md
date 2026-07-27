@@ -81,12 +81,15 @@ Accept: application/json
       "created_at": "2026-03-03T07:00:00.000000",
       "updated_at": "2026-03-03T07:00:00.000000",
       "last_sync_at": null,
-      "is_lark_configured": true,
+      "is_lark_configured": false,
       "is_jira_configured": false
     }
   ]
 }
 ```
+
+> `is_lark_configured` 已 deprecated：team 層級的 Lark Bitable 設定已移除，此欄位僅為
+> response schema 相容而保留，對所有 team 恆為 `false`，client 不應據此提供任何 Lark 功能分支。
 
 ---
 

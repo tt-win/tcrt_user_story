@@ -11,28 +11,6 @@ class TeamStatus(str, Enum):
     ARCHIVED = "archived"
 
 
-class LarkRepoConfig(BaseModel):
-    """Lark Repository 配置"""
-    wiki_token: str = Field(..., description="Lark Wiki Token")
-    test_case_table_id: str = Field(..., description="測試案例表格 ID")
-    # 移除 test_run_table_id，改用 TestRunConfig 管理多個 test run
-    
-    @field_validator('wiki_token')
-    @classmethod
-    def validate_wiki_token(cls, v):
-        if not v or len(v) < 10:
-            raise ValueError('Wiki token must be at least 10 characters long')
-        return v
-    
-    @field_validator('test_case_table_id')
-    @classmethod
-    def validate_test_case_table_id(cls, v):
-        if not v or not v.startswith('tbl'):
-            raise ValueError('Test case table ID must start with "tbl"')
-        return v
-    
-
-
 class JiraConfig(BaseModel):
     """JIRA 配置"""
     project_key: Optional[str] = Field(None, description="JIRA 專案 Key")
@@ -58,10 +36,7 @@ class Team(BaseModel):
     id: Optional[int] = Field(None, description="團隊 ID")
     name: str = Field(..., min_length=1, max_length=100, description="團隊名稱")
     description: Optional[str] = Field(None, max_length=500, description="團隊描述")
-    
-    # Lark 相關配置
-    lark_config: LarkRepoConfig = Field(..., description="Lark Repository 配置")
-    
+
     # JIRA 相關配置
     jira_config: Optional[JiraConfig] = Field(None, description="JIRA 配置")
     
@@ -85,11 +60,6 @@ class Team(BaseModel):
             "example": {
                 "name": "Frontend Team",
                 "description": "前端開發測試團隊",
-                "lark_config": {
-                    "wiki_token": "Q4XxwaS2Cif80DkAku9lMKuAgof",
-                    "test_case_table_id": "tblEAg8srqYs0rzi",
-                    "test_run_table_id": "tblRun123456789"
-                },
                 "jira_config": {
                     "project_key": "FE",
                     "default_assignee": "john.doe",
@@ -110,26 +80,15 @@ class Team(BaseModel):
             raise ValueError('Team name cannot be empty')
         return v.strip()
     
-    def is_lark_configured(self) -> bool:
-        """檢查 Lark 是否已配置"""
-        return bool(self.lark_config.wiki_token and self.lark_config.test_case_table_id)
-    
     def is_jira_configured(self) -> bool:
         """檢查 JIRA 是否已配置"""
         return bool(self.jira_config and self.jira_config.project_key)
-    
-    def get_lark_url(self) -> str:
-        """取得 Lark 表格 URL"""
-        if not self.is_lark_configured():
-            return ""
-        return f"https://larksuite.com/wiki/{self.lark_config.wiki_token}?table={self.lark_config.test_case_table_id}"
 
 
 class TeamCreate(BaseModel):
     """建立團隊請求模型"""
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
-    lark_config: LarkRepoConfig
     jira_config: Optional[JiraConfig] = None
     settings: Optional[TeamSettings] = None
 
@@ -138,7 +97,6 @@ class TeamUpdate(BaseModel):
     """更新團隊請求模型"""
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
-    lark_config: Optional[LarkRepoConfig] = None
     jira_config: Optional[JiraConfig] = None
     settings: Optional[TeamSettings] = None
     status: Optional[TeamStatus] = None

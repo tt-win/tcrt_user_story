@@ -89,7 +89,7 @@ function showNoTeams() {
                         </div>
                         <h5 class="text-primary mb-2" data-i18n="team.createTeam">新增團隊</h5>
                         <p class="text-muted small mb-0" data-i18n="team.createFirstTeamHint">
-                            建立團隊並設定 Lark 資料來源
+                            建立團隊以開始管理測試案例
                         </p>
                     </div>
                 </div>
@@ -137,11 +137,6 @@ function renderTeamCards() {
                         </div>
                     </div>
                     <div class="mt-auto pt-2">
-                        <div class="mb-2">
-                            <small class="text-muted">
-                                <i class="fas fa-table me-1"></i><span data-i18n="team.linked">已連結 Lark 資料源</span>
-                            </small>
-                        </div>
                         <div class="d-grid gap-2">
                         <button class="btn btn-primary" onclick="event.stopPropagation(); selectTeamForTestCases(${team.id})">
                             <i class="fas fa-list-check me-2"></i><span data-i18n="navigation.testCaseManagement">Test Case 管理</span>

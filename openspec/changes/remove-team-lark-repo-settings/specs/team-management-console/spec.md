@@ -29,4 +29,4 @@
 
 #### Scenario: Lark validation endpoints are removed
 - **WHEN** 任何 client 呼叫 `POST /api/teams/validate` 或 `POST /api/teams/validate-table`
-- **THEN** 系統 SHALL 回傳 404
+- **THEN** 系統 SHALL NOT 提供該端點，並以 4xx 客戶端錯誤回應（實際為 405 Method Not Allowed：該路徑被同層的 `/{team_id}` 路由涵蓋，而該路徑不接受 POST）
