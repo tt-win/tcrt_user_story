@@ -57,7 +57,6 @@ from app.models.database_models import (
 from app.models.test_run_config import TestRunConfigCreate, TestRunConfigUpdate, TestRunStatus
 from app.models.test_run_set import TestRunSetCreate, TestRunSetStatus, TestRunSetUpdate
 from app.services.attachment_storage import build_attachment_metadata, get_attachments_root_dir
-from app.services.test_result_cleanup_service import TestResultCleanupService
 from app.services.test_run_scope_service import TestRunScopeService
 from app.services.test_run_set_status import (
     apply_config_status_transition_sync,
@@ -359,12 +358,6 @@ async def delete_app_test_run_config(
 
     config_name = await boundary.run_sync_read(_load)
 
-    cleanup_service = TestResultCleanupService()
-    try:
-        await cleanup_service.cleanup_test_run_config_files(team_id, config_id, db)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to clean up result files for config %s: %s", config_id, exc, exc_info=True)
-
     await boundary.run_sync_write(
         lambda sync_db: delete_test_run_config_cascade_sync(sync_db, team_id, config_id)
     )
@@ -528,13 +521,6 @@ async def delete_app_test_run_set(
         }
 
     context = await boundary.run_sync_read(_prepare)
-
-    cleanup_service = TestResultCleanupService()
-    for config_id in context["config_ids"]:
-        try:
-            await cleanup_service.cleanup_test_run_config_files(team_id, config_id, db)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to clean up result files for config %s: %s", config_id, exc, exc_info=True)
 
     def _delete(sync_db: Session):
         trs = ensure_test_run_set(sync_db, team_id, set_id)
@@ -983,12 +969,6 @@ async def delete_app_test_run_item(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Test run item not found")
 
     await boundary.run_sync_read(_verify)
-
-    cleanup_service = TestResultCleanupService()
-    try:
-        await cleanup_service.cleanup_test_run_item_files(team_id, config_id, item_id, db)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to clean up result files for item %s: %s", item_id, exc, exc_info=True)
 
     from app.models.database_models import TestRunItemResultHistory as ResultHistoryDB
 

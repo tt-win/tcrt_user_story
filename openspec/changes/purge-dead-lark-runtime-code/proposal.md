@@ -16,12 +16,21 @@
 - **移除 `app/api/attachments.py` 的 6 支 Lark 寫入路由**：testcase upload、test-run record upload、upload-screenshot、upload-file-token、attach-token、remove attachment。**保留** `GET .../attachments/download` 下載代理（見下方「不在範圍」）。
 - **刪除 `app/models/test_run.py`**（隨最後一個 importer 一起消失）與 **`app/services/test_result_file_service.py`**（零 importer）。
 - **移除 `app/api/test_run_items.py` 的死 helper** `_get_lark_client_for_team` 與其 `LarkClient` import。
-- **新增 capability `lark-runtime-boundary`**：把「test run 資料只以本地 DB 為真實來源、系統不提供任何 Lark record 讀寫端點」「Lark 附件寫入路徑已移除、僅保留唯讀下載代理」寫成正式契約，避免日後有人把這類端點加回來。
+- **關閉最後兩條 team 層級 Lark 出站路徑**（2026-07-27 唯讀掃描生產 DB 取得證據後納入，見 design D3）：
+  - 附件下載代理移除 Lark 回退（優先級 4）與 `get_lark_client_for_team()`；本機三種來源皆落空時回 404。
+  - 刪除 `app/services/test_result_cleanup_service.py` 與其 6 個呼叫點——該服務唯一的工作就是對 Lark 解除附件關聯，沒有任何本機檔案清理邏輯，關閉 Lark 出口後即為空殼。
+- **新增 capability `lark-runtime-boundary`**：把「test run 資料只以本地 DB 為真實來源、系統不提供任何 Lark record 讀寫端點」「Lark 附件寫入路徑已移除」「已無任何 team 層級 Lark 出站」寫成正式契約，避免日後有人把這類端點加回來。
 
 ## Capabilities
 
 ### Added Capabilities
-- `lark-runtime-boundary`: 定義系統剩餘的 Lark 出站邊界——哪些路徑已永久移除、哪些為了既有資料相容而保留。
+- `lark-runtime-boundary`: 定義系統的 Lark 邊界——team 層級已無任何 Lark 出站，僅保留組織層（人員／部門同步、群組通知）整合。
+
+### Modified Capabilities
+- `core-runtime-performance`: 「請求處理不得在事件迴圈上執行阻塞式網路或 IO」的對象改為組織層 Lark 出站呼叫；附件下載代理已無外部代理路徑。
+
+### Removed Capabilities
+- `async-runtime-performance` 的「附件下載代理以 async 串流轉發且保留既有行為契約」requirement：其規範對象（Lark 代理下載的狀態碼映射、逾時、連線釋放）已不存在。
 
 ## Impact
 
@@ -34,9 +43,6 @@
 
 ## 明確不在本次範圍
 
-以下兩條路徑**仍會對 Lark 發出請求**，但它們服務的是既有資料、且有現行契約保護，關閉它們需要先確認生產資料，不在本次「清死碼」的範圍：
-
-1. **`GET /api/attachments/teams/{team_id}/attachments/download` 的 Lark 回退（優先級 4）**：`openspec/specs/async-runtime-performance/spec.md` 明文規定其上游狀態碼映射（401→401、404→404、其他→502、逾時→504），且有 `test_attachment_proxy_contract.py` 鎖定。舊 team 的 token 仍在 DB，這是它們唯一還能取回 legacy Lark 附件的路徑。
-2. **`TestResultCleanupService._remove_files_from_test_case_sync()`**：刪除 test run item 時對 legacy 資料（`result_files_uploaded==1` 且 `upload_history_json` 帶 `file_token`）解除 Lark 附件關聯。
-
-關閉這兩條的前置條件是掃描生產 DB 確認不存在帶 Lark `file_token` 的 `execution_results_json` / `upload_history_json`。屆時 `async-runtime-performance` 的相關 requirement 也需要一併改寫。
+- **組織層 Lark 整合**：人員／部門同步、Test Run 群組通知、Lark 使用者查詢（`lark_users.py`、`lark_org_sync_service` 等）使用全域 `settings.lark.app_id` / `app_secret`，與 team token 無關，完全不動。
+- **`teams.wiki_token` / `test_case_table_id` 欄位與其歷史值**：保留於資料庫（由 `remove-team-lark-repo-settings` 決定），本 change 只讓程式碼不再讀取它們。
+- **歷史 test case 上的 Lark 附件**：生產 DB 中有 2 筆 test case 的 `attachments_json` 仍帶 `file_token` 與 `open.larksuite.com` URL。前端對這類項目是直接輸出該 URL 的 `<a href>`，從不經過本系統的下載代理，因此行為不受本 change 影響（掃描證據見 design D3）。

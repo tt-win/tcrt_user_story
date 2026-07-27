@@ -674,21 +674,7 @@ async def delete_test_run_config(
     main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """刪除測試執行配置及相關附件"""
-    from ..services.test_result_cleanup_service import TestResultCleanupService
-
-    cleanup_service = TestResultCleanupService()
-
     try:
-        cleaned_files_count = await cleanup_service.cleanup_test_run_config_files(
-            team_id, config_id, db
-        )
-        if cleaned_files_count > 0:
-            logger.info(
-                "Test Run Config %s 已清理 %s 個測試結果檔案",
-                config_id,
-                cleaned_files_count,
-            )
-
         await main_boundary.run_sync_write(
             lambda sync_db: delete_test_run_config_cascade_sync(
                 sync_db, team_id, config_id

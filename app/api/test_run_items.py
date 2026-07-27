@@ -1076,7 +1076,6 @@ async def delete_item(
     main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """刪除測試執行項目及相關附件"""
-    from ..services.test_result_cleanup_service import TestResultCleanupService
 
     def _verify_item(sync_db: Session) -> None:
         _verify_team_and_config(team_id, config_id, sync_db)
@@ -1095,14 +1094,7 @@ async def delete_item(
     await main_boundary.run_sync_read(_verify_item)
 
     try:
-        # 1. 先清理測試結果檔案
-        cleanup_service = TestResultCleanupService()
-        cleaned_files_count = await cleanup_service.cleanup_test_run_item_files(team_id, config_id, item_id, db)
-
-        if cleaned_files_count > 0:
-            logger.info(f"Test Run Item {item_id} 已清理 {cleaned_files_count} 個測試結果檔案")
-
-        # 2. 保險刪除對應歷程（避免 DB 未啟用 FK 級聯時殘留）
+        # 1. 保險刪除對應歷程（避免 DB 未啟用 FK 級聯時殘留）
         def _delete(sync_db: Session) -> None:
             # 2. 保險刪除對應歷程（避免 DB 未啟用 FK 級聯時殘留）
             sync_db.query(ResultHistoryDB).filter(

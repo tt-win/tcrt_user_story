@@ -25,20 +25,22 @@
 - **WHEN** 使用者在測試案例或 test run item 上傳附件
 - **THEN** 檔案 SHALL 寫入本機附件目錄，流程 SHALL NOT 涉及任何 Lark 呼叫
 
-### Requirement: Remaining Lark egress is limited to legacy read paths
+### Requirement: No team-level Lark egress remains
 
-系統剩餘的 team 層級 Lark 出站路徑 SHALL 僅限於服務既有資料的兩條路徑，且兩者 SHALL 在 team 沒有 `wiki_token` 時提前返回而不對外發出請求：
+系統 SHALL NOT 在任何 team 層級的請求處理路徑上呼叫 Lark。附件下載代理 SHALL 只從本機附件目錄取檔（DB 記錄的路徑、`/attachments` 相對路徑、檔名遞迴搜尋），三者皆落空時 SHALL 回傳 404，SHALL NOT 建立 Lark client、SHALL NOT 代理任何外部下載。test run 相關的刪除流程 SHALL NOT 對外部服務發出附件解除關聯請求。
 
-1. 附件下載代理（`GET /api/attachments/teams/{team_id}/attachments/download`）在本機來源全部落空後的 Lark 回退；其對外行為契約見 `async-runtime-performance`。
-2. `TestResultCleanupService` 於刪除 test run item 時，對 legacy 上傳紀錄解除 Lark 附件關聯。
+系統中僅存的 Lark 整合為組織層功能（人員／部門同步、Test Run 群組通知、Lark 使用者查詢），一律使用全域 `settings.lark.app_id` / `app_secret`，與 `teams.wiki_token` 無關。`teams.wiki_token` / `teams.test_case_table_id` 欄位與其歷史值 SHALL 保留於資料庫，但 SHALL NOT 被任何程式碼路徑讀取用於對外請求。
 
-移除這兩條路徑 SHALL 以「已確認生產資料中不存在帶 Lark `file_token` 的 `execution_results_json` / `upload_history_json`」為前置條件，並 SHALL 同步更新 `async-runtime-performance` 中的下載代理 requirement。
+#### Scenario: Attachment download falls back to 404, not to Lark
+- **WHEN** 下載代理在本機三種來源都找不到指定附件
+- **THEN** 系統 SHALL 回傳 404
+- **AND** 處理過程 SHALL NOT 建立 Lark client 或發出任何外部 HTTP 請求
 
-#### Scenario: New team never triggers Lark egress
-- **WHEN** 對一個 `wiki_token` 為空字串的 team 觸發附件下載代理或 test run item 刪除
-- **THEN** 系統 SHALL NOT 建立 Lark client、SHALL NOT 對 Lark 發出任何請求
-- **AND** 下載代理 SHALL 回傳 404（附件不存在），而非回報 Lark 服務異常
+#### Scenario: Deleting test run data performs no external calls
+- **WHEN** 使用者刪除 test run config、test run set 或單一 test run item
+- **THEN** 系統 SHALL 僅操作本地資料庫與本機檔案，SHALL NOT 對 Lark 發出任何請求
 
-#### Scenario: Legacy team can still retrieve its Lark attachments
-- **WHEN** 一個仍保有歷史 `wiki_token` 的 team 下載一筆只存在於 Lark 的舊附件
-- **THEN** 下載代理 SHALL 走 Lark 回退取回檔案，行為與 `async-runtime-performance` 定義的狀態碼映射一致
+#### Scenario: Legacy Lark test case attachments are unaffected
+- **WHEN** 某些歷史 test case 的 `attachments_json` 仍帶有 Lark `file_token` 與 `open.larksuite.com` URL
+- **THEN** UI SHALL 維持既有行為，以該 URL 直接連往 Lark（不經過本系統代理）
+- **AND** 本系統 SHALL NOT 因此保留任何 Lark client 程式碼

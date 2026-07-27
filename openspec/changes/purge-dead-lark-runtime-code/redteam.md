@@ -90,3 +90,41 @@ hasattr(TestRunConfig, 'table_id') → False
 ### Round 2 結論
 
 3 項發現皆為實測確認，無新風險。審查收斂。
+
+---
+
+## Round 3（2026-07-27，取得生產資料證據後）
+
+攻擊面：Round 1 F4 把「保留下載代理」當成結論。這一輪反過來攻擊那個結論——**如果它其實沒有任何資料可以服務，保留它就只是包袱**。
+
+### F9 ⚠️ 中 — 模糊關鍵字掃描會給出假陽性，差點誤判
+
+第一版掃描用 `lark` 當關鍵字，`test_run_items.execution_results_json` 命中 2 筆，看起來像「還有 Lark 附件，不能關」。逐筆檢視後發現是檔名為 `Lark20260424-164715.mp4`、`Lark20260402-104834.mp4` 的**本機**檔案——使用者用 Lark app 錄的螢幕錄影，上傳到本機附件目錄，metadata 帶 `relative_path`／`absolute_path`，與 Lark Drive 毫無關係。
+
+改用精確標記（`file_token` / `larksuite` / `feishu`）後 test run 側命中 **0**。
+
+**教訓**：判斷「還有沒有 X 資料」時，關鍵字要挑不會出現在使用者資料裡的技術標記。`lark` 會出現在檔名，`file_token` 不會。
+
+### F10 ⚠️ 中 — test case 側確實還有 2 筆真 Lark 附件，但它們不走代理
+
+`test_cases.attachments_json` 有 2 筆帶 `file_token` 與 `open.larksuite.com/open-apis/drive/v1/medias/...` URL。若只看這個數字會得出「不能關」的結論。
+
+實際追前端：`test-case-management/attachments.js:220-222` 對帶 `url` 的附件是直接輸出 `<a href="${url}" target="_blank">`，**從不呼叫本系統的下載代理**；代理只被 `test-run-execution/render.js`（2 處）與 `results.js`（1 處）呼叫，而 test run 側的精確命中是 0。
+
+因此移除代理的 Lark 回退，不會讓任何目前取得得到的附件變成取不到——那 2 筆 test case 附件的取得方式（直連 Lark、需使用者自己有 Lark 登入）完全不變。
+
+### F11 ✅ 意外發現 — cleanup service 的 Lark 分支本來就會拋例外
+
+`_cleanup_item_files()` 執行 `json.loads(upload_history_json).get('uploads', [])`，但生產資料的實際結構是 **list**：`[{"uploaded": 1, "at": "...", "files": [...]}]`。對 list 呼叫 `.get` 會拋 `AttributeError`，被外層 except 吞掉並記為 error log。
+
+也就是說：這個服務不只是「只服務 legacy 資料」，它是**每次刪除帶附件的 item 都在 log 裡製造一筆假錯誤**，且從未真正清理過任何東西。這強化了刪除整個服務（而非只拿掉 Lark 呼叫）的決定。
+
+### F12 ⚠️ 中 — 刪掉 cleanup service 會不會讓本機檔案沒人清？
+
+這是刪服務最該問的問題。逐行檢視 `cleanup_test_run_config_files` / `cleanup_test_run_item_files` / `_cleanup_item_files` / `_remove_files_from_test_case*`：整個服務**沒有任何一行**觸碰本機檔案系統，它從頭到尾只做「解析 upload history → 呼叫 Lark 解除附件關聯」。本機檔案的刪除在 `delete_test_run_config_cascade_sync` 與 team 刪除流程（`teams.py` 的 `shutil.rmtree`）。
+
+另外確認 6 個呼叫點的回傳值只進 log，不進任何 API 回應，前端也沒有讀 `cleaned_files_count` 的地方 → 刪除不改變對外契約。
+
+### Round 3 結論
+
+4 項發現：F9 攔下一個會導致錯誤結論的掃描方法問題，F10 把「有 2 筆 Lark 資料」正確歸類為「不影響本次決策」，F11／F12 支持把整個 cleanup service 刪掉而非局部修補。**Round 1 F4 的保留結論在取得資料證據後被正當地推翻**——這正是當初把它列為「前置條件」而不是「永久保留」的用意。
