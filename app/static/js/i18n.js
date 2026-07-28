@@ -324,27 +324,46 @@ async switchLanguage(language) {
         }
 
         // Perform parameter substitution
-        return this.interpolate(value, params);
+        return this.interpolate(value, params, keyPath);
     }
 
     /**
      * Interpolate parameters into a string
      * @param {string} text - The text with placeholders like {name}
      * @param {Object} params - Parameters to substitute
+     * @param {string} keyPath - Translation key used for diagnostics
      * @returns {string} The interpolated text
      */
-    interpolate(text, params) {
+    interpolate(text, params, keyPath = '') {
         if (!text) return text;
-        
-        // If the translation contains placeholders but no params provided, warn
-        if (text.includes('{') && (!params || Object.keys(params).length === 0)) {
-            console.warn(`Missing parameters for translation: text contains placeholders but no params provided`);
-            return text; // Return original text with placeholders as fallback
+
+        const interpolationKeys = [];
+        const placeholderPattern = /\{(\w+)\}/g;
+        text.replace(placeholderPattern, (match, key, offset) => {
+            // Double-braced tokens such as {{SKILL_CATALOG}} are literal prompt
+            // markers, not i18n parameters.
+            if (text[offset - 1] !== '{' && text[offset + match.length] !== '}') {
+                interpolationKeys.push(key);
+            }
+            return match;
+        });
+
+        const hasParameter = (key) => (
+            params && typeof params === 'object' &&
+            Object.prototype.hasOwnProperty.call(params, key)
+        );
+        const missingKeys = [...new Set(interpolationKeys)].filter((key) => !hasParameter(key));
+        if (missingKeys.length > 0) {
+            const keyLabel = keyPath ? ` "${keyPath}"` : '';
+            console.warn(`Missing parameters for translation${keyLabel}: ${missingKeys.join(', ')}`);
         }
 
         // Perform parameter substitution
-        return text.replace(/\{(\w+)\}/g, (match, key) => {
-            return params.hasOwnProperty(key) ? params[key] : match;
+        return text.replace(placeholderPattern, (match, key, offset) => {
+            if (text[offset - 1] === '{' || text[offset + match.length] === '}') {
+                return match;
+            }
+            return hasParameter(key) ? params[key] : match;
         });
     }
 

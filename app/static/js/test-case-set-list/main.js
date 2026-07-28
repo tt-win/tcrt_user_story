@@ -1741,8 +1741,12 @@ function setupSetCaseEventListeners() {
  */
 function updateSetCaseSelectionSummary() {
   const count = setTestCaseData.selectedCases.size;
+  const summaryEl = document.getElementById('setCaseSelectionSummary');
+  if (!summaryEl) return;
+
+  summaryEl.setAttribute('data-i18n-params', JSON.stringify({ count }));
   const summaryMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.selectedCount', { count }, `已選 ${count} 個測試案例`) : `已選 ${count} 個測試案例`;
-  document.getElementById('setCaseSelectionSummary').textContent = summaryMsg;
+  summaryEl.textContent = summaryMsg;
 }
 
 /**
