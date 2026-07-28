@@ -729,7 +729,7 @@ function toggleAdHocStatusDropdown(btn, id, currentStatus) {
     } else {
         // Build HTML
         dropdown.innerHTML = options.map(opt => `
-            <button class="custom-status-dropdown-item" onclick="updateAdHocStatus(${id}, '${opt.value}'); hideCustomStatusDropdown()">
+            <button class="dropdown-item" onclick="updateAdHocStatus(${id}, '${opt.value}'); hideCustomStatusDropdown()">
                 <i class="fas ${opt.icon} ${opt.color} me-2"></i>
                 ${escapeHtml(opt.label)}
             </button>

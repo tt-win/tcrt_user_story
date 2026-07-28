@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TCRT v2 · 共用元件規範</title>
+
+<!-- 實際專案 CDN（維持不變） -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=Noto+Sans+CJK+TC:wght@400;500;600;700&family=Noto+Sans+Condensed:wght@400;600;700&display=swap" rel="stylesheet">
+
+<style>
+/* ═══ Design tokens — 取自 style.css :root（真實設計語彙） ═══ */
+:root {
+    --font-sans: 'Noto Sans', 'Noto Sans CJK TC', sans-serif;
+    --font-condensed: 'Noto Sans Condensed', 'Noto Sans CJK TC', sans-serif;
+    --font-mono: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+
+    --color-primary: #4a90e2;
+    --color-primary-rgb: 74, 144, 226;
+    --color-primary-dark: #357abd;
+    --color-primary-light: #e3f2fd;
+    --color-secondary: #7b68ee;
+    --color-success: #5cb85c;
+    --color-warning: #f0ad4e;
+    --color-danger: #d9534f;
+    --color-info: #5bc0de;
+
+    --tr-primary: var(--color-primary);
+    --tr-primary-rgb: var(--color-primary-rgb);
+    --tr-primary-dark: var(--color-primary-dark);
+    --tr-primary-light: var(--color-primary-light);
+    --tr-success: var(--color-success);
+    --tr-success-light: #dff0d8;
+    --tr-warning: var(--color-warning);
+    --tr-warning-light: #fcf8e3;
+    --tr-danger: var(--color-danger);
+    --tr-danger-light: #f2dede;
+    --tr-info: var(--color-info);
+    --tr-info-light: #d9edf7;
+
+    --tr-bg-body: #f8f9fa;
+    --tr-bg-sidebar: #f5f6f7;
+    --tr-bg-card: #ffffff;
+    --tr-border: #dee2e6;
+    --tr-border-light: #e1e5e9;
+    --tr-text-primary: #212529;
+    --tr-text-secondary: #6c757d;
+    --tr-text-muted: #868e96;
+
+    --tr-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --tr-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+
+    --btn-border-width: 2px;
+    --btn-radius: 6px;
+    --header-height: 64px;
+    --footer-height: 52px;
+}
+
+body {
+    font-family: var(--font-sans) !important;
+    font-size: 14px; color: var(--tr-text-primary);
+    background-color: var(--tr-bg-body);
+}
+
+/* ═══ 緊湊設計覆蓋（取自 style.css） ═══ */
+.btn {
+    padding: 0.25rem 0.5rem !important; font-size: 0.875rem !important;
+    line-height: 1.4 !important; border-radius: var(--btn-radius);
+    border-width: var(--btn-border-width); font-weight: 500;
+    transition: all 0.2s ease;
+}
+.btn:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.btn-primary { background: transparent; border-color: var(--tr-primary); color: var(--tr-primary); }
+.btn-primary:hover { background: linear-gradient(135deg, var(--tr-primary) 0%, #5ba0f2 100%); border-color: var(--tr-primary); color: #fff; }
+.btn-secondary { background: transparent; border-color: #8e9aaf; color: #8e9aaf; }
+.btn-secondary:hover { background: linear-gradient(135deg, #8e9aaf 0%, #a8b4c8 100%); border-color: #8e9aaf; color: #fff; }
+.btn-success { background: transparent; border-color: var(--tr-success); color: var(--tr-success); }
+.btn-success:hover { background: linear-gradient(135deg, var(--tr-success) 0%, #6dc86d 100%); border-color: var(--tr-success); color: #fff; }
+.btn-danger { background: transparent; border-color: #b85450; color: #b85450; }
+.btn-danger:hover { background: linear-gradient(135deg, #b85450 0%, #c96a66 100%); border-color: #b85450; color: #fff; }
+.btn-warning { background: transparent; border-color: var(--tr-warning); color: var(--tr-warning); }
+.btn-warning:hover { background: linear-gradient(135deg, var(--tr-warning) 0%, #f5b868 100%); border-color: var(--tr-warning); color: #fff; }
+.btn-info { background: transparent; border-color: var(--tr-info); color: var(--tr-info); }
+.btn-info:hover { background: linear-gradient(135deg, var(--tr-info) 0%, #6fd4e8 100%); border-color: var(--tr-info); color: #fff; }
+.btn-outline-primary { background: transparent; border-color: var(--tr-primary); color: var(--tr-primary); }
+.btn-outline-primary:hover { background: var(--tr-primary); color: #fff; }
+
+.card { border: 1px solid var(--tr-border-light); border-radius: 8px; box-shadow: var(--tr-shadow-sm); }
+.card-header { padding: 0.5rem 0.75rem; }
+.card-body { padding: 0.75rem; }
+.form-control, .form-select { padding: 0.25rem 0.5rem !important; font-size: 0.875rem !important; border: 1px solid var(--tr-border-light); }
+.form-label { margin-bottom: 0.25rem !important; font-weight: 500 !important; font-size: 0.875rem !important; }
+.modal-header { padding: 0.75rem 1rem !important; }
+.modal-body { padding: 1rem !important; }
+.modal-footer { padding: 0.75rem 1rem !important; }
+/* ═══ Table — 精緻化（維持語彙，提升俐落度） ═══ */
+.table { --bs-table-bg: transparent; margin-bottom: 0; }
+.table thead th {
+    font-size: 0.7rem !important; font-weight: 600 !important;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--tr-text-muted) !important;
+    background: #fff !important;
+    border-bottom: 2px solid var(--tr-border) !important;
+    border-top: none !important;
+    padding: 0.625rem 0.75rem !important;
+    white-space: nowrap;
+}
+.table tbody td {
+    padding: 0.5rem 0.75rem !important;
+    font-size: 0.83rem !important;
+    color: #495057;
+    border-bottom: 1px solid var(--tr-border-light) !important;
+    border-top: none !important;
+    vertical-align: middle;
+}
+.table tbody tr { transition: background 0.12s ease; }
+.table-hover tbody tr:hover { background-color: rgba(74, 144, 226, 0.04) !important; }
+.table tbody tr:last-child td { border-bottom: none !important; }
+
+/* ═══ Dropdown — 間距 + icon 對齊修正 ═══ */
+.dropdown-menu {
+    border: 1px solid var(--tr-border-light); border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.1); font-size: 0.83rem;
+    margin-top: 5px !important; padding: 4px !important;
+    --bs-dropdown-min-width: 180px;
+}
+.dropdown-item { padding: 0.35rem 0.6rem; border-radius: 5px; }
+.dropdown-item i.fas, .dropdown-item i.far, .dropdown-item i.fab {
+    width: 16px; text-align: center; font-size: 0.78rem;
+}
+.dropdown-item:active { background-color: var(--tr-primary); }
+.dropdown-divider { margin: 4px 0 !important; }
+.dropdown-header { padding: 0.35rem 0.6rem !important; font-size: 0.68rem !important; }
+
+/* ═══ Layout ═══ */
+.app-header { position: fixed; top: 0; left: 0; right: 0; height: var(--header-height); z-index: 1030; background: #fff; border-bottom: 1px solid var(--tr-border-light); }
+.app-footer { position: fixed; bottom: 0; left: 0; right: 0; height: var(--footer-height); z-index: 1030; background: #fff; border-top: 1px solid var(--tr-border-light); }
+.app-main { padding-top: calc(var(--header-height) + 12px); padding-bottom: calc(var(--footer-height) + 12px); }
+
+/* ═══ Spec Page Styles ═══ */
+.spec-card {
+    border: 1px solid var(--tr-border-light); border-radius: 8px;
+    background: #fff; margin-bottom: 1rem; overflow: hidden;
+}
+.spec-card-header {
+    padding: 0.75rem 1rem; background: var(--tr-bg-sidebar);
+    border-bottom: 1px solid var(--tr-border-light);
+    display: flex; align-items: center; justify-content: space-between;
+}
+.spec-card-header h3 { font-size: 1rem; font-weight: 600; margin: 0; color: var(--tr-primary); }
+.spec-card-header .spec-id { font-family: var(--font-mono); font-size: 0.7rem; color: var(--tr-text-muted); }
+.spec-card-body { padding: 1rem; }
+
+.spec-rules {
+    background: var(--tr-bg-sidebar); border: 1px solid var(--tr-border-light);
+    border-radius: 6px; padding: 0.75rem; margin-bottom: 1rem;
+}
+.spec-rules-title { font-size: 0.75rem; font-weight: 700; color: var(--tr-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.5rem; }
+.spec-rules ul { margin: 0; padding-left: 1.25rem; font-size: 0.82rem; line-height: 1.6; color: var(--tr-text-primary); }
+.spec-rules ul li code { font-family: var(--font-mono); font-size: 0.75rem; background: #e9ecef; padding: 1px 4px; border-radius: 3px; }
+
+.spec-demo { padding: 1rem; border: 1px dashed var(--tr-border); border-radius: 6px; background: #fff; }
+.spec-label { font-size: 0.7rem; font-weight: 600; color: var(--tr-text-muted); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.5rem; }
+
+.spec-fixes {
+    border-left: 3px solid var(--tr-danger); padding: 0.5rem 0.75rem;
+    background: var(--tr-danger-light); border-radius: 0 6px 6px 0;
+    font-size: 0.8rem; margin-top: 0.75rem;
+}
+.spec-fixes-title { font-weight: 600; color: #721c24; margin-bottom: 0.25rem; font-size: 0.78rem; }
+.spec-fixes ul { margin: 0; padding-left: 1.1rem; color: #721c24; line-height: 1.5; font-size: 0.78rem; }
+.spec-fixes ul li code, .spec-fixes ul li strong { font-family: var(--font-mono); font-size: 0.72rem; }
+
+.spec-ok {
+    border-left: 3px solid var(--tr-success); padding: 0.5rem 0.75rem;
+    background: var(--tr-success-light); border-radius: 0 6px 6px 0;
+    font-size: 0.8rem; margin-top: 0.75rem;
+    color: #155724;
+}
+
+.diff-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; font-size: 0.8rem; }
+.diff-bad { color: var(--tr-danger); }
+.diff-good { color: var(--tr-success); }
+.diff-arrow { color: var(--tr-text-muted); font-size: 0.7rem; }
+
+/* Section nav */
+.spec-nav { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+.spec-nav a {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 0.25rem 0.6rem; font-size: 0.78rem; font-weight: 500;
+    border: 1px solid var(--tr-border-light); border-radius: 6px;
+    color: var(--tr-text-secondary); text-decoration: none; transition: all 0.15s ease;
+}
+.spec-nav a:hover { border-color: var(--tr-primary); color: var(--tr-primary); }
+.spec-nav a i { font-size: 0.7rem; }
+</style>
+</head>
+
+<body>
+<!-- ═══ Header（維持現有設計） ═══ -->
+<header class="app-header">
+    <div class="container-fluid d-flex justify-content-between align-items-center h-100 px-3">
+        <div class="py-2 d-flex align-items-center gap-2">
+            <h1 class="h5 mb-0">TCRT</h1>
+            <span class="badge bg-primary" style="font-size:0.75rem;border-radius:12px;padding:0.25rem 0.5rem;cursor:pointer;">
+                <i class="fas fa-users me-1"></i>QA Engineering
+            </span>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+            <button class="btn btn-secondary btn-sm"><i class="fas fa-cog me-1"></i> 管理</button>
+            <span class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center" style="width:28px;height:28px;font-size:11px;font-weight:700;">JD</span>
+        </div>
+    </div>
+</header>
+
+<!-- ═══ Main ═══ -->
+<main class="app-main container-fluid">
+
+    <!-- Page Title -->
+    <div class="mb-3">
+        <h2 style="color:var(--tr-primary);font-size:1.5rem;font-weight:600;margin:0;">共用元件規範</h2>
+        <p style="color:rgba(74,144,226,0.7);font-size:0.85rem;margin-top:2px;">
+            Component Specification — 在維持現有設計語彙下，統一各頁面的共用元件實作
+        </p>
+    </div>
+
+    <!-- Quick Nav -->
+    <div class="spec-nav">
+        <a href="#btn"><i class="fas fa-square"></i> 按鈕</a>
+        <a href="#badge"><i class="fas fa-tag"></i> 狀態徽章</a>
+        <a href="#table"><i class="fas fa-table"></i> 表格</a>
+        <a href="#modal"><i class="fas fa-window-maximize"></i> Modal</a>
+        <a href="#card"><i class="fas fa-id-card"></i> 卡片</a>
+        <a href="#toolbar"><i class="fas fa-tools"></i> 頁首工具列</a>
+        <a href="#tab"><i class="fas fa-folder"></i> Tab 導覽</a>
+        <a href="#dropdown"><i class="fas fa-chevron-circle-down"></i> Dropdown</a>
+        <a href="#home"><i class="fas fa-home"></i> Home 按鈕</a>
+        <a href="#assistant"><i class="fas fa-robot"></i> AI 助手框</a>
+        <a href="#entry"><i class="fas fa-sitemap"></i> 入口結構</a>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+         ① BUTTON SYSTEM
+         ═══════════════════════════════════════════════════ -->
+    <div class="spec-card" id="btn">
+        <div class="spec-card-header">
+            <h3><i class="fas fa-square me-2"></i>按鈕系統 (Button)</h3>
+            <span class="spec-id">SPEC-BTN-001</span>
+        </div>
+        <div class="spec-card-body">
+
+            <div class="spec-rules">
+                <div class="spec-rules-title">規則</div>
+                <ul>
+                    <li>Class 順序固定：<code>btn btn-{variant} btn-sm</code>（variant 在前、size 在後）</li>
+                    <li>圖示在文字左側，用 <code>me-1</code> 間距：<code>&lt;i class="fas fa-plus me-1"&gt;&lt;/i&gt; 新增</code></li>
+                    <li>語意對應：<code>btn-primary</code>=新增/儲存 · <code>btn-secondary</code>=取消/返回 · <code>btn-success</code>=確認/套用 · <code>btn-danger</code>=刪除 · <code>btn-info</code>=特殊功能 · <code>btn-warning</code>=警告操作</li>
+                    <li><strong>禁止使用</strong>：<code>btn-xs</code>、<code>btn-view</code>、<code>btn-edit</code>（非標準 class，僅單頁使用）</li>
+                    <li><strong>禁止</strong>用 inline style 覆蓋 button 樣式（<code>style="border:none;background:none"</code>）</li>
+                    <li>所有頁面工具列按鈕統一用 <code>btn-sm</code>；modal 內可用標準 <code>btn</code>（不加 sm）</li>
+                </ul>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="spec-label">標準變體（hover 有漸層效果）</div>
+                    <div class="spec-demo d-flex flex-wrap gap-2">
+                        <button class="btn btn-primary btn-sm"><i class="fas fa-plus me-1"></i>新增</button>
+                        <button class="btn btn-secondary btn-sm"><i class="fas fa-times me-1"></i>取消</button>
+                        <button class="btn btn-success btn-sm"><i class="fas fa-check me-1"></i>確認</button>
+                        <button class="btn btn-danger btn-sm"><i class="fas fa-trash me-1"></i>刪除</button>
+                        <button class="btn btn-warning btn-sm"><i class="fas fa-exclamation-triangle me-1"></i>警告</button>
+                        <button class="btn btn-info btn-sm"><i class="fas fa-info-circle me-1"></i>資訊</button>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="spec-label">Outline 變體（次要強調）</div>
+                    <div class="spec-demo d-flex flex-wrap gap-2">
+                        <button class="btn btn-outline-primary btn-sm">選取</button>
+                        <button class="btn btn-sm" style="border:2px solid #8e9aaf;color:#8e9aaf;">次要</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="spec-fixes">
+                <div class="spec-fixes-title"><i class="fas fa-wrench me-1"></i>需修正的頁面</div>
+                <ul>
+                    <li><strong>test_case_management.html</strong> — markdown toolbar 使用 <code>btn-xs</code>（非標準）→ 改用 icon-only <code>btn btn-sm</code></li>
+                    <li><strong>user_story_map.html</strong> — 使用 <code>btn-view</code> / <code>btn-edit</code>（自訂 class）→ 對應改用 <code>btn-secondary</code> / <code>btn-outline-primary</code></li>
+                    <li><strong>test_run_execution.html</strong> — inline <code>style="border:none;background:none"</code> → 改用 <code>btn-link btn-sm p-0</code></li>
+                    <li><strong>test_run_management.html</strong> — <code>btn btn-sm btn-secondary</code> 順序顛倒 → 改為 <code>btn btn-secondary btn-sm</code></li>
+                    <li><strong>btn-info 語意混用</strong> — TCM 用於 bulk mode、team_management 用於 data menu、test_case_set_list 用於 AI Helper → 統一：<code>btn-info</code> 僅用於「輔助功能」，dropdown toggle 一律用 <code>btn-secondary</code></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+         ② STATUS BADGE
+         ═══════════════════════════════════════════════════ -->
+    <div class="spec-card" id="badge">
+        <div class="spec-card-header">
+            <h3><i class="fas fa-tag me-2"></i>狀態徽章 (Badge)</h3>
+            <span class="spec-id">SPEC-BDG-001</span>
+        </div>
+        <div class="spec-card-body">
+
+            <div class="spec-rules">
+                <div class="spec-rules-title">規則</div>
+                <ul>
+                    <li>語意色統一用 <code>bg-{semantic}</code>，<strong>禁止</strong> Bootstrap 5.3 的 <code>text-bg-*</code>（尚未全站採用）</li>
+                    <li>測試狀態使用以下固定對應：
+                        <code>bg-success</code>=Passed ·
+                        <code>bg-danger</code>=Failed ·
+                        <code>bg-secondary</code>=Pending ·
+                        <code>bg-warning</code>=Blocked ·
+                        <code>bg-info</code>=Retest
+                    </li>
+                    <li>計數徽章（count badge）一律用 <code>bg-secondary</code>，字級 <code>font-size:0.65rem</code></li>
+                    <li>活躍狀態（active/pinned）用 <code>bg-primary</code></li>
+                    <li><strong>禁止</strong>無 <code>bg-*</code> 的裸 <code>&lt;span class="badge"&gt;</code></li>
+                    <li><strong>禁止</strong>多 class 組合如 <code>bg-info-subtle text-info-emphasis border border-info-subtle</code></li>
+                </ul>
+            </div>
+
+            <div class="spec-label">測試狀態（全站統一色票）</div>
+            <div class="spec-demo d-flex flex-wrap gap-2 align-items-center">
+                <span class="badge bg-success" style="font-size:0.75rem;padding:0.35em 0.6em;"><i class="fas fa-check-circle me-1"></i>Passed</span>
+                <span class="badge bg-danger" style="font-size:0.75rem;padding:0.35em 0.6em;"><i class="fas fa-times-circle me-1"></i>Failed</span>
+                <span class="badge bg-secondary" style="font-size:0.75rem;padding:0.35em 0.6em;"><i class="fas fa-clock me-1"></i>Pending</span>
+                <span class="badge bg-warning" style="font-size:0.75rem;padding:0.35em 0.6em;"><i class="fas fa-ban me-1"></i>Blocked</span>
+                <span class="badge bg-info" style="font-size:0.75rem;padding:0.35em 0.6em;"><i class="fas fa-redo me-1"></i>Retest</span>
+            </div>
+
+            <div class="mt-3 spec-label">計數 / 標記徽章</div>
+            <div class="spec-demo d-flex flex-wrap gap-2 align-items-center">
+                <span class="badge bg-secondary" style="font-size:0.65rem;padding:0.125rem 0.35rem;">4</span>
+                <span class="badge bg-primary" style="font-size:0.65rem;padding:0.125rem 0.35rem;">Active</span>
+                <span class="badge bg-secondary" style="font-size:0.65rem;padding:0.125rem 0.35rem;">12</span>
+                <span style="font-family:var(--font-mono);font-size:0.72rem;font-weight:500;padding:0.1rem 0.3rem;border:1px solid #dee2e6;border-radius:0.25rem;color:#495057;background:#f8f9fa;">@auth</span>
+                <span class="text-muted" style="font-size:0.7rem;">← tag 用 tcg-tag class，不用 badge</span>
+            </div>
+
+            <div class="spec-fixes">
+                <div class="spec-fixes-title"><i class="fas fa-wrench me-1"></i>需修正的頁面</div>
+                <ul>
+                    <li><strong>organization_management.html</strong> L269 — 使用 <code>text-bg-secondary</code> → 改為 <code>bg-secondary</code></li>
+                    <li><strong>organization_management.html</strong> L707 — 裸 <code>badge</code> 無 <code>bg-*</code> → 加上 <code>bg-secondary</code></li>
+                    <li><strong>automation_provider_settings.html</strong> L243 — 同上，裸 badge → 加 <code>bg-secondary</code></li>
+                    <li><strong>test_run_management.html</strong> L414 — <code>bg-info-subtle text-info-emphasis border border-info-subtle</code> → 簡化為 <code>bg-info</code></li>
+                    <li><strong>automation_hub.html</strong> L311 — <code>bg-light text-dark border</code> 組合 → 改為 <code>bg-secondary</code></li>
+                    <li><strong>profile.html</strong> L47 — 自訂 <code>badge-role</code> → 改為 <code>badge bg-primary</code></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+         ③ TABLE
+         ═══════════════════════════════════════════════════ -->
+    <div class="spec-card" id="table">
+        <div class="spec-card-header">
+            <h3><i class="fas fa-table me-2"></i>表格 (Table)</h3>
+            <span class="spec-id">SPEC-TBL-001</span>
+        </div>
+        <div class="spec-card-body">
+
+            <div class="spec-rules">
+                <div class="spec-rules-title">規則</div>
+                <ul>
+                    <li>標準 class：<code>table table-sm table-hover align-middle mb-0</code>（全站統一這組）</li>
+                    <li>Header 用<strong>白底</strong>（不加 <code>table-light</code>），靠 uppercase + letter-spacing + 底部 2px 分隔線做層次</li>
+                    <li>移除所有垂直框線（只保留水平 <code>border-bottom</code>）</li>
+                    <li>Hover 用 <code>rgba(74,144,226,0.04)</code>（primary 4% 透明），不用 <code>var(--tr-bg-sidebar)</code></li>
+                    <li>長表格（超過 viewport）加 <code>sticky-top</code> 在 <code>&lt;thead&gt;</code></li>
+                    <li><strong>禁止</strong>不加 <code>table-sm</code>（audit_logs 目前漏了）</li>
+                    <li><strong>禁止</strong>不加 <code>table-hover</code>（org_mgmt MCP token 表格目前漏了）</li>
+                    <li>標籤（tag）用 <code>tcg-tag</code> class（monospace 小框），不用 badge</li>
+                    <li>空狀態統一用獨立 <code>&lt;tr&gt;&lt;td colspan="N"&gt;</code> 區塊，不加圖示外框</li>
+                </ul>
+            </div>
+
+            <div class="spec-label">標準表格（精緻化：白底 header · 無垂直線 · 淡藍 hover · uppercase header）</div>
+            <div class="spec-demo p-0" style="padding:0!important;overflow:hidden;border-radius:6px;">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th style="width:130px;">案例編號</th>
+                            <th style="width:110px;">狀態</th>
+                            <th>標題</th>
+                            <th style="width:70px;">優先級</th>
+                            <th style="width:150px;">標籤</th>
+                            <th style="width:50px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code class="small" style="font-family:var(--font-mono);color:#495057;">TC-AUTH-001</code></td>
+                            <td><span class="badge bg-success" style="font-size:0.7rem;font-weight:500;"><i class="fas fa-check-circle me-1"></i>Passed</span></td>
+                            <td>驗證使用者使用有效憑證登入</td>
+                            <td><span class="badge bg-danger" style="font-size:0.65rem;font-weight:600;">P0</span></td>
+                            <td><span style="font-family:var(--font-mono);font-size:0.72rem;color:#495057;background:#f8f9fa;border:1px solid #dee2e6;padding:1px 5px;border-radius:3px;">@auth</span> <span style="font-family:var(--font-mono);font-size:0.72rem;color:#495057;background:#f8f9fa;border:1px solid #dee2e6;padding:1px 5px;border-radius:3px;">@login</span></td>
+                            <td><button class="btn btn-sm p-0" style="border:none;background:none;"><i class="fas fa-ellipsis-h text-muted"></i></button></td>
+                        </tr>
+                        <tr>
+                            <td><code class="small" style="font-family:var(--font-mono);color:#495057;">TC-AUTH-002</code></td>
+                            <td><span class="badge bg-secondary" style="font-size:0.7rem;font-weight:500;"><i class="fas fa-clock me-1"></i>Pending</span></td>
+                            <td>註冊新帳號並完成 Email 驗證</td>
+                            <td><span class="badge bg-warning" style="font-size:0.65rem;font-weight:600;">P1</span></td>
+                            <td><span style="font-family:var(--font-mono);font-size:0.72rem;color:#495057;background:#f8f9fa;border:1px solid #dee2e6;padding:1px 5px;border-radius:3px;">@register</span></td>
+                            <td><button class="btn btn-sm p-0" style="border:none;background:none;"><i class="fas fa-ellipsis-h text-muted"></i></button></td>
+                        </tr>
+                        <tr>
+                            <td><code class="small" style="font-family:var(--font-mono);color:#495057;">TC-AUTH-005</code></td>
+                            <td><span class="badge bg-danger" style="font-size:0.7rem;font-weight:500;"><i class="fas fa-times-circle me-1"></i>Failed</span></td>
+                            <td>連續 5 次登入失敗後帳號鎖定</td>
+                            <td><span class="badge bg-warning" style="font-size:0.65rem;font-weight:600;">P1</span></td>
+                            <td><span style="font-family:var(--font-mono);font-size:0.72rem;color:#495057;background:#f8f9fa;border:1px solid #dee2e6;padding:1px 5px;border-radius:3px;">@auth</span> <span style="font-family:var(--font-mono);font-size:0.72rem;color:#495057;background:#f8f9fa;border:1px solid #dee2e6;padding:1px 5px;border-radius:3px;">@security</span></td>
+                            <td><button class="btn btn-sm p-0" style="border:none;background:none;"><i class="fas fa-ellipsis-h text-muted"></i></button></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-2" style="font-size:0.75rem;color:var(--tr-text-muted);">
+                <i class="fas fa-info-circle me-1"></i>
+                改善重點：① header 改白底 + uppercase + letter-spacing（不再用灰底 table-light）　② 移除所有垂直框線（只有水平底線）　③ hover 為 4% primary 透明色（更柔和）　④ 行間距略縮（0.5rem）更緊湊　⑤ tag 用 monospace 小框（不用 badge）
+            </div>
+
+            <div class="spec-fixes">
+                <div class="spec-fixes-title"><i class="fas fa-wrench me-1"></i>需修正的頁面</div>
+                <ul>
+                    <li><strong>audit_logs.html</strong> L124 — 缺 <code>table-sm</code> → 加上</li>
+                    <li><strong>organization_management.html</strong> MCP token 表格 L308 — 缺 <code>table-hover</code> + <code>&lt;thead&gt;</code> 缺 <code>table-light</code> → 補上</li>
+                    <li><strong>organization_management.html</strong> infra 表格 L375 — 缺 <code>sticky-top</code> → 與 automation 表格一致，加上</li>
+                    <li><strong>team_statistics.html</strong> — 多處表格混用 <code>table-hover</code>／不加；<code>&lt;thead&gt;</code> 混用 <code>sticky-top bg-white</code>／<code>table-light</code> → 全部統一為 <code>table-light sticky-top</code></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+         ④ MODAL
+         ═══════════════════════════════════════════════════ -->
+    <div class="spec-card" id="modal">
+        <div class="spec-card-header">
+            <h3><i class="fas fa-window-maximize me-2"></i>Modal 對話框</h3>
+            <span class="spec-id">SPEC-MDL-001</span>
+        </div>
+        <div class="spec-card-body">
+
+            <div class="spec-rules">
+                <div class="spec-rules-title">規則</div>
+                <ul>
+                    <li>尺寸用 Bootstrap 標準：<code>modal-sm</code> / 預設 / <code>modal-lg</code> / <code>modal-xl</code> + 可選 <code>modal-dialog-scrollable</code></li>
+                    <li><strong>禁止</strong>用 inline style 覆蓋 modal 尺寸（<code>style="width:1400px;height:90vh"</code>）→ 用 <code>modal-xl</code> 或自訂 CSS class</li>
+                    <li>Header 結構固定：<code>&lt;h5 class="modal-title"&gt;</code>（可選圖示 <code>text-primary me-2</code>）+ <code>&lt;button class="btn-close"&gt;</code></li>
+                    <li><strong>禁止</strong>在 modal-header 放導覽按鈕（prev/next/copy 等）→ 放在 modal-body 的 toolbar</li>
+                    <li>Footer 按鈕順序固定：左→右 <code>btn-secondary</code>（取消）<code>btn-primary</code> / <code>btn-danger</code>（確認/刪除）</li>
+                    <li>確認刪除 modal 可用 <code>btn-danger</code>，但<strong>不</strong>用 <code>bg-danger text-white</code> header（僅 title 加圖示）</li>
+                    <li>Footer 第三按鈕（如「清除覆寫」）用 <code>btn-outline-danger me-auto</code> 靠左</li>
+                </ul>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <div class="spec-label">標準 CRUD Modal (modal-lg)</div>
+                    <div class="spec-demo">
+                        <div class="modal-header p-2" style="position:relative;border-bottom:1px solid var(--tr-border-light);border-radius:6px 6px 0 0;">
+                            <h6 class="mb-0"><i class="fas fa-edit text-primary me-2"></i>編輯測試案例</h6>
+                            <button type="button" class="btn-close" style="font-size:0.6rem;"></button>
+                        </div>
+                        <div class="p-2" style="background:var(--tr-bg-body);min-height:40px;border-radius:0 0 6px 6px;">
+                            <small class="text-muted">— modal-body —</small>
+                        </div>
+                        <div class="p-2 d-flex justify-content-end gap-1" style="border-top:1px solid var(--tr-border-light);">
+                            <button class="btn btn-secondary btn-sm">取消</button>
+                            <button class="btn btn-primary btn-sm"><i class="fas fa-save me-1"></i>儲存</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="spec-label">刪除確認 Modal (預設尺寸)</div>
+                    <div class="spec-demo">
+                        <div class="modal-header p-2" style="border-bottom:1px solid var(--tr-border-light);border-radius:6px 6px 0 0;">
+                            <h6 class="mb-0"><i class="fas fa-exclamation-triangle text-warning me-2"></i>確認刪除</h6>
+                            <button type="button" class="btn-close" style="font-size:0.6rem;"></button>
+                        </div>
+                        <div class="p-2" style="background:var(--tr-bg-body);min-height:40px;border-radius:0 0 6px 6px;">
+                            <small class="text-muted">確定要刪除？</small>
+                        </div>
+                        <div class="p-2 d-flex justify-content-end gap-1" style="border-top:1px solid var(--tr-border-light);">
+                            <button class="btn btn-secondary btn-sm">取消</button>
+                            <button class="btn btn-danger btn-sm"><i class="fas fa-trash me-1"></i>刪除</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="spec-label">三按鈕 Modal</div>
+                    <div class="spec-demo">
+                        <div class="modal-header p-2" style="border-bottom:1px solid var(--tr-border-light);border-radius:6px 6px 0 0;">
+                            <h6 class="mb-0">環境變數</h6>
+                            <button type="button" class="btn-close" style="font-size:0.6rem;"></button>
+                        </div>
+                        <div class="p-2" style="background:var(--tr-bg-body);min-height:40px;border-radius:0 0 6px 6px;">
+                            <small class="text-muted">— modal-body —</small>
+                        </div>
+                        <div class="p-2 d-flex gap-1" style="border-top:1px solid var(--tr-border-light);">
+                            <button class="btn btn-outline-danger btn-sm me-auto">清除覆寫</button>
+                            <button class="btn btn-secondary btn-sm">取消</button>
+                            <button class="btn btn-primary btn-sm">儲存</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="spec-fixes">
+                <div class="spec-fixes-title"><i class="fas fa-wrench me-1"></i>需修正的頁面</div>
+                <ul>
+                    <li><strong>test_case_management.html</strong> L155 — inline <code>style="width:1400px;height:90vh"</code> → 改用 <code>modal-xl modal-dialog-scrollable</code> + 自訂 CSS class</li>
+                    <li><strong>test_case_management.html</strong> L162-173 — modal-header 內放 prev/next/copy 導覽按鈕 → 移至 modal-body 的 sub-toolbar</li>
+                    <li><strong>test_case_management.html</strong> L747 — <code>modal-header bg-light</code> → 移除 <code>bg-light</code>（標準 modal-header 不加背景色）</li>
+                    <li><strong>team_management.html</strong> L169 — 刪除 modal 用 <code>bg-danger text-white</code> header → 移除背景色，title 改用 <code>text-warning</code> 圖示</li>
+                    <li><strong>test_run_management.html</strong> L643 — inline <code>style="max-width:1400px"</code> → 改用 CSS class</li>
+                    <li><strong>test_run_management.html</strong> configDetailModal — 3 按鈕用 <code>btn-warning</code> 做「編輯」→ 改為 <code>btn-outline-primary me-auto</code></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+         ⑤ CARD
+         ═══════════════════════════════════════════════════ -->
+    <div class="spec-card" id="card">
+        <div class="spec-card-header">
+            <h3><i class="fas fa-id-card me-2"></i>卡片 (Card)</h3>
+            <span class="spec-id">SPEC-CRD-001</span>
+        </div>
+        <div class="spec-card-body">
+
+            <div class="spec-rules">
+                <div class="spec-rules-title">規則</div>
+                <ul>
+                    <li>card-header 加 <code>d-flex align-items-center justify-content-between flex-wrap gap-2</code></li>
+                    <li>card-header 背景用 <code>bg-light</code>（與 <code>table-light</code> 同色票）</li>
+                    <li>card-body padding 統一 <code>0.75rem</code>（已由 style.css 強制）</li>
+                    <li><strong>禁止</strong>用 <code>p-0</code> 或 <code>p-4</code> 覆蓋 card-body padding（除非內含 table/chart 需貼齊）</li>
+                    <li>card-header 內標題用 <code>&lt;h6 class="mb-0"&gt;</code>，不加 <code>fw-bold</code>（由 card-header 繼承）</li>
+                </ul>
+            </div>
+
+            <div class="spec-label">標準卡片</div>
+            <div class="spec-demo">
+                <div class="card mb-0">
+                    <div class="card-header bg-light d-flex align-items-center justify-content-between flex-wrap gap-2">
+                        <h6 class="mb-0">測試案例設定</h6>
+                        <div class="d-flex gap-1">
+                            <button class="btn btn-secondary btn-sm"><i class="fas fa-sync-alt"></i></button>
+                            <button class="btn btn-primary btn-sm"><i class="fas fa-plus me-1"></i>新增</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted mb-0" style="font-size:0.85rem;">卡片內容區域，padding 統一 0.75rem。</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="spec-fixes">
+                <div class="spec-fixes-title"><i class="fas fa-wrench me-1"></i>需修正的頁面</div>
+                <ul>
+                    <li><strong>automation_hub.html</strong> L171 — card-header 用 <code>d-flex flex-wrap gap-2 align-items-center justify-content-between py-2</code>（多了 py-2）→ 統一移除 <code>py-2</code></li>
+                    <li><strong>automation_hub.html</strong> L96 — card-body <code>p-0</code> 需加註釋說明原因（suite browser 貼齊）</li>
+                    <li><strong>organization_management.html</strong> L72 — card-body <code>p-2</code> → 移除（由 style.css 強制 0.75rem）</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+         ⑥ TOOLBAR / PAGE HEADER
+         ═══════════════════════════════════════════════════ -->
+    <div class="spec-card" id="toolbar">
+        <div class="spec-card-header">
+            <h3><i class="fas fa-tools me-2"></i>頁首工具列 (Page Toolbar)</h3>
+            <span class="spec-id">SPEC-TLB-001</span>
+        </div>
+        <div class="spec-card-body">
+
+            <div class="spec-rules">
+                <div class="spec-rules-title">規則</div>
+                <ul>
+                    <li>工具列 wrapper 統一用 <code>&lt;div class="d-flex gap-2"&gt;</code></li>
+                    <li><strong>禁止</strong>用自訂 class 如 <code>automation-toolbar</code> 做工具列排版</li>
+                    <li>間距統一 <code>gap-2</code>（不用 <code>gap-3</code>）</li>
+                    <li>按鈕排列順序左→右：頁面特定操作（primary） → 輔助操作（info/secondary dropdown）→ 重新整理（secondary）→ Home（secondary）</li>
+                    <li><strong>禁止</strong>用 <code>&lt;span class="automation-toolbar-divider"&gt;</code> 做分隔線 → 用 <code>&lt;div class="vr mx-1"&gt;</code> 或 Bootstrap <code>vr</code> utility</li>
+                </ul>
+            </div>
+
+            <div class="spec-label">標準工具列</div>
+            <div class="spec-demo">
+                <div class="d-flex gap-2 align-items-center">
+                    <button class="btn btn-primary btn-sm"><i class="fas fa-plus me-1"></i>新增案例</button>
+                    <button class="btn btn-info btn-sm"><i class="fas fa-layer-group me-1"></i>批次操作</button>
+                    <div class="vr mx-1"></div>
+                    <button class="btn btn-secondary btn-sm"><i class="fas fa-sync-alt me-1"></i>重新整理</button>
+                    <button class="btn btn-secondary btn-sm"><i class="fas fa-home me-1"></i>回到首頁</button>
+                </div>
+            </div>
+
+            <div class="spec-fixes">
+                <div class="spec-fixes-title"><i class="fas fa-wrench me-1"></i>需修正的頁面</div>
+                <ul>
+                    <li><strong>automation_hub.html</strong> L18 — <code>&lt;div class="automation-toolbar"&gt;</code> + <code>&lt;span class="automation-toolbar-divider"&gt;</code> → 改為 <code>&lt;div class="d-flex gap-2"&gt;</code> + <code>&lt;div class="vr mx-1"&gt;</code></li>
+                    <li><strong>test_run_management.html</strong> L17 — 外層 <code>d-flex flex-column flex-md-row gap-3</code> → 改為 <code>d-flex gap-2</code>，將 radio filter 移至 filter bar 區域</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+         ⑦ TAB NAVIGATION
+         ═══════════════════════════════════════════════════ -->
+    <div class="spec-card" id="tab">
+        <div class="spec-card-header">
+            <h3><i class="fas fa-folder me-2"></i>Tab 導覽 (Tab Navigation)</h3>
+            <span class="spec-id">SPEC-TAB-001</span>
+        </div>
+        <div class="spec-card-body">
+
+            <div class="spec-rules">
+                <div class="spec-rules-title">規則</div>
+                <ul>
+                    <li>全站統一用 <code>nav nav-tabs</code>（<strong>禁止</strong>在同一頁混合 <code>nav-pills</code>）</li>
+                    <li>外層統一加 <code>mb-3</code>（不用 <code>mb-2</code>）</li>
+                    <li>Tab 按鈕結構：<code>&lt;button class="nav-link" data-bs-toggle="tab"&gt;</code>，active 加 <code>active</code></li>
+                    <li>所有 tab 按鈕<strong>都加圖示</strong>：<code>&lt;i class="fas fa-{icon} me-1"&gt;&lt;/i&gt;</code>（system_logs 目前缺圖示）</li>
+                    <li>Tab pane：<code>&lt;div class="tab-pane fade show active"&gt;</code>（首個） / <code>&lt;div class="tab-pane fade"&gt;</code>（其餘）</li>
+                    <li>同一頁面內的子 tab 也用 <code>nav nav-tabs</code>，不用 <code>nav-pills</code></li>
+                </ul>
+            </div>
+
+            <div class="spec-label">標準 Tab</div>
+            <div class="spec-demo">
+                <ul class="nav nav-tabs mb-3">
+                    <li class="nav-item"><button class="nav-link active"><i class="fas fa-list me-1"></i>案例</button></li>
+                    <li class="nav-item"><button class="nav-link"><i class="fas fa-play-circle me-1"></i>執行</button></li>
+                    <li class="nav-item"><button class="nav-link"><i class="fas fa-chart-bar me-1"></i>統計</button></li>
+                    <li class="nav-item"><button class="nav-link"><i class="fas fa-cog me-1"></i>設定</button></li>
+                </ul>
+            </div>
+
+            <div class="spec-fixes">
+                <div class="spec-fixes-title"><i class="fas fa-wrench me-1"></i>需修正的頁面</div>
+                <ul>
+                    <li><strong>team_statistics.html</strong> L932 — QA AI Agent 子 tab 用 <code>nav nav-pills</code> + <code>data-bs-toggle="pill"</code> → 改為 <code>nav nav-tabs</code> + <code>data-bs-toggle="tab"</code></li>
+                    <li><strong>system_logs.html</strong> L35 — <code>mb-2</code> → 改為 <code>mb-3</code></li>
+                    <li><strong>system_logs.html</strong> L35-56 — tab 按鈕缺圖示 → 全部加上 <code>fas fa-*</code> 圖示</li>
+                    <li><strong>organization_management.html</strong> L37-57 — 部分 tab 有圖示、部分沒有 → 全部統一加上</li>
+                    <li><strong>automation_hub.html</strong> L56 — <code>nav nav-tabs automation-tabs</code> → 移除 <code>automation-tabs</code>（用標準 nav-tabs + 全站 CSS 即可）</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+         ⑧ DROPDOWN
+         ═══════════════════════════════════════════════════ -->
+    <div class="spec-card" id="dropdown">
+        <div class="spec-card-header">
+            <h3><i class="fas fa-chevron-circle-down me-2"></i>Dropdown 下拉選單</h3>
+            <span class="spec-id">SPEC-DRP-001</span>
+        </div>
+        <div class="spec-card-body">
+
+            <div class="spec-rules">
+                <div class="spec-rules-title">規則</div>
+                <ul>
+                    <li>工具列內的 dropdown trigger 一律用 <code>btn btn-secondary btn-sm dropdown-toggle</code></li>
+                    <li><strong>禁止</strong>用 <code>btn-info</code> 做 dropdown trigger（目前 TCM 和 team_management 混用）</li>
+                    <li><strong>禁止</strong>自訂 dropdown 實作（<code>custom-status-dropdown</code>）→ 一律用 Bootstrap dropdown</li>
+                    <li>dropdown menu 與 trigger 之間保留 <code>5px</code> 間距（由全域 CSS <code>.dropdown-menu { margin-top: 5px }</code> 強制）</li>
+                    <li>dropdown-item 內圖示加 <code>me-2</code> + 全域 CSS 強制 <code>i { width:16px; text-align:center }</code> 確保文字對齊</li>
+                    <li>分隔線用 <code>&lt;li&gt;&lt;hr class="dropdown-divider"&gt;&lt;/li&gt;</code></li>
+                    <li>標題用 <code>&lt;li&gt;&lt;h6 class="dropdown-header"&gt;&lt;/h6&gt;&lt;/li&gt;</code></li>
+                </ul>
+            </div>
+
+            <div class="spec-label">標準 Dropdown</div>
+            <div class="spec-demo d-flex gap-2">
+                <div class="dropdown">
+                    <button class="btn btn-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">操作選單</button>
+                    <ul class="dropdown-menu shadow-sm show" style="position:relative;display:block;max-width:200px;">
+                        <li><a class="dropdown-item" href="#"><i class="fas fa-edit me-2 text-muted"></i>編輯</a></li>
+                        <li><a class="dropdown-item" href="#"><i class="fas fa-copy me-2 text-muted"></i>複製</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item text-danger" href="#"><i class="fas fa-trash me-2"></i>刪除</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="spec-fixes">
+                <div class="spec-fixes-title"><i class="fas fa-wrench me-1"></i>需修正的頁面</div>
+                <ul>
+                    <li><strong>test_case_management.html</strong> L23 — <code>btn-info btn-sm dropdown-toggle</code>（bulk mode）→ 改為 <code>btn-secondary btn-sm dropdown-toggle</code></li>
+                    <li><strong>team_management.html</strong> L24 — <code>btn-info btn-sm dropdown-toggle</code>（data menu）→ 改為 <code>btn-secondary btn-sm dropdown-toggle</code></li>
+                    <li><strong>team_management.html</strong> L45 — <code>btn-info btn-sm</code>（org settings link）→ 改為 <code>btn-secondary btn-sm</code></li>
+                    <li><strong>test_case_set_list.html</strong> L12 — <code>btn-info</code>（AI Helper entry）→ 改為 <code>btn-secondary</code> 或 <code>btn-outline-primary</code></li>
+                    <li><strong>test_run_management.html</strong> L877 — <code>custom-status-dropdown</code> 全自訂實作 → 改用 Bootstrap <code>dropdown</code> component</li>
+                    <li><strong>test_run_management.html</strong> L555 — <code>btn btn-sm test-run-kebab-btn</code> → 改為 <code>btn btn-secondary btn-sm</code> + <code>fas fa-ellipsis-v</code></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+         ⑨ HOME BUTTON
+         ═══════════════════════════════════════════════════ -->
+    <div class="spec-card" id="home">
+        <div class="spec-card-header">
+            <h3><i class="fas fa-home me-2"></i>Home / 回首頁 按鈕</h3>
+            <span class="spec-id">SPEC-HOM-001</span>
+        </div>
+        <div class="spec-card-body">
+
+            <div class="spec-rules">
+                <div class="spec-rules-title">規則</div>
+                <ul>
+                    <li>全站統一文案：<code>&lt;i class="fas fa-home me-1"&gt;&lt;/i&gt; 回到首頁</code></li>
+                    <li>統一 class：<code>btn btn-secondary btn-sm</code>（順序固定）</li>
+                    <li>統一為 <code>&lt;a href="/"&gt;</code> 元素</li>
+                    <li>圖示和文字在同一行（不可斷行）</li>
+                </ul>
+            </div>
+
+            <div class="spec-label">目前各頁差異（需統一）</div>
+            <div class="spec-demo">
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr><th>頁面</th><th>目前文案</th><th>目前 class 順序</th><th>修正</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>TCM / team_mgmt / org_mgmt / test_case_set_list</td><td><code>回到首頁</code></td><td><code>btn btn-secondary btn-sm</code></td><td class="diff-good"><i class="fas fa-check"></i> 標準（不需改）</td></tr>
+                        <tr><td>audit_logs / profile / qa_ai_helper / system_logs / adhoc / user_story_map</td><td><code>首頁</code></td><td><code>btn btn-secondary btn-sm</code></td><td class="diff-bad">文案 → <code>回到首頁</code></td></tr>
+                        <tr><td>automation_hub / provider_settings / webhook_config</td><td><code>Home</code></td><td><code>btn btn-secondary btn-sm</code></td><td class="diff-bad">文案 → <code>回到首頁</code></td></tr>
+                        <tr><td>test_run_management / team_statistics</td><td><code>回到首頁</code> / <code>首頁</code></td><td><code>btn btn-sm btn-secondary</code></td><td class="diff-bad">順序 → <code>btn btn-secondary btn-sm</code></td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="spec-ok mt-2">
+                <i class="fas fa-check-circle me-1"></i> 統一後全站 15 個頁面的 Home 按鈕完全一致。
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+         ⑩ AI ASSISTANT WIDGET
+         ═══════════════════════════════════════════════════ -->
+    <div class="spec-card" id="assistant">
+        <div class="spec-card-header">
+            <h3><i class="fas fa-robot me-2"></i>AI 助手框 (Assistant Widget)</h3>
+            <span class="spec-id">SPEC-AI-001</span>
+        </div>
+        <div class="spec-card-body">
+
+            <div class="spec-rules">
+                <div class="spec-rules-title">規則 — 全站所有 AI / 助手介面統一視覺模式</div>
+                <ul>
+                    <li>系統中存在多個 AI 介面：全域懸浮助手（<code>assistant-widget</code>）、QA AI Helper 七畫面流程、TC 編輯器內 AI Assist modal。三者須共用以下視覺語彙。</li>
+                    <li><strong>FAB（懸浮按鈕）</strong>：52px 圓形，<code>linear-gradient(135deg, var(--tr-primary), var(--tr-primary-dark))</code>，white icon，<code>box-shadow: 0 4px 14px rgba(primary-rgb,.45)</code></li>
+                    <li><strong>面板 Header</strong>：同漸層背景 + 白字，左側 title + team badge pill，右側 icon buttons（28×28，透明底 hover rgba(255,255,255,.18)）</li>
+                    <li><strong>使用者氣泡</strong>：<code>background: var(--tr-primary); color: #fff; border-radius: 14px 14px 5px 14px</code>（右下角小圓角）</li>
+                    <li><strong>AI 氣泡</strong>：<code>background: #fff; border: 1px solid var(--tr-border-light); border-radius: 14px 14px 14px 5px</code>（左下角小圓角）+ <code>box-shadow: var(--tr-shadow-sm)</code></li>
+                    <li><strong>工具執行區</strong>：<code>&lt;details&gt;</code> accordion，<code>background: var(--tr-bg-sidebar)</code>，圓角 10px，summary 有三角形展開圖示</li>
+                    <li><strong>確認卡</strong>：左側 3-4px 色條（primary / warning），圓角 10px，按鈕用 <code>tcrt-assistant-btn</code> 系列（不用 Bootstrap .btn）</li>
+                    <li><strong>Composer 輸入區</strong>：textarea 圓角 10px + 圓形送出按鈕 38px（primary 底色）</li>
+                    <li><strong>Thinking 指示器</strong>：三點動畫，<code>var(--tr-primary)</code> 色點</li>
+                    <li><strong>禁止</strong>在 AI 介面混用 Bootstrap <code>.btn</code>（AI 面板按鈕用 <code>tcrt-assistant-btn-*</code> 系列，尺寸/圓角與 Bootstrap btn 不同）</li>
+                </ul>
+            </div>
+
+            <!-- FAB + Panel mockup -->
+            <div class="spec-label">標準助手面板（靜態展示）</div>
+            <div class="spec-demo" style="padding:0;overflow:hidden;">
+                <div style="width:390px;max-width:100%;margin:0 auto;border:1px solid var(--tr-border-light);border-radius:14px;overflow:hidden;box-shadow:var(--tr-shadow-md);">
+                    <!-- Header -->
+                    <div style="display:flex;align-items:center;gap:8px;padding:12px 14px;background:linear-gradient(135deg,var(--tr-primary) 0%,var(--tr-primary-dark) 100%);color:#fff;">
+                        <i class="fas fa-robot" style="font-size:16px;"></i>
+                        <span style="font-weight:600;font-size:14.5px;">AI 助手</span>
+                        <span style="font-size:11.5px;background:rgba(255,255,255,.22);padding:2px 9px;border-radius:999px;">QA Engineering</span>
+                        <span style="flex:1;"></span>
+                        <span style="width:28px;height:28px;display:grid;place-items:center;border-radius:6px;cursor:pointer;"><i class="fas fa-chevron-down" style="font-size:12px;opacity:.85;"></i></span>
+                        <span style="width:28px;height:28px;display:grid;place-items:center;border-radius:6px;cursor:pointer;"><i class="fas fa-expand" style="font-size:12px;opacity:.85;"></i></span>
+                        <span style="width:28px;height:28px;display:grid;place-items:center;border-radius:6px;cursor:pointer;"><i class="fas fa-times" style="font-size:13px;opacity:.85;"></i></span>
+                    </div>
+                    <!-- Messages -->
+                    <div style="padding:14px;display:flex;flex-direction:column;gap:12px;background:var(--tr-bg-body);min-height:200px;">
+                        <!-- Scope toast -->
+                        <div style="display:flex;gap:7px;font-size:12px;color:var(--tr-text-secondary);background:var(--tr-primary-light);border:1px solid var(--tr-border-light);border-radius:10px;padding:8px 12px;">
+                            <i class="fas fa-info-circle" style="color:var(--tr-primary-dark);font-size:12px;margin-top:1px;"></i>
+                            <span>資料範圍：<strong>QA Engineering</strong> 團隊</span>
+                        </div>
+                        <!-- User bubble -->
+                        <div style="align-self:flex-end;max-width:88%;">
+                            <div style="background:var(--tr-primary);color:#fff;padding:9px 13px;border-radius:14px 14px 5px 14px;font-size:13.5px;">
+                                幫我查一下 Smoke Test Auth 有哪些失敗的案例
+                            </div>
+                        </div>
+                        <!-- Assistant bubble -->
+                        <div style="align-self:flex-start;max-width:96%;">
+                            <div style="background:#fff;border:1px solid var(--tr-border-light);border-radius:14px 14px 14px 5px;box-shadow:var(--tr-shadow-sm);padding:9px 13px;font-size:13.5px;">
+                                找到 <strong>1 個失敗案例</strong>：
+                                <div style="margin-top:8px;border:1px solid var(--tr-border-light);border-radius:10px;background:var(--tr-bg-sidebar);font-size:12.5px;overflow:hidden;">
+                                    <div style="padding:7px 11px;display:flex;align-items:center;gap:6px;font-weight:600;color:var(--tr-text-secondary);cursor:pointer;">
+                                        <i class="fas fa-chevron-right" style="font-size:10px;"></i>
+                                        <span>查詢測試案例</span>
+                                        <span style="margin-left:auto;width:20px;height:20px;border-radius:999px;display:inline-grid;place-items:center;background:var(--tr-success-light);color:var(--tr-success-dark);font-size:10px;"><i class="fas fa-check"></i></span>
+                                    </div>
+                                    <div style="padding:6px 12px 6px 26px;color:var(--tr-text-secondary);">
+                                        <span style="width:15px;height:15px;display:inline-block;text-align:center;color:var(--tr-success-dark);font-weight:700;">✓</span>
+                                        篩選 status=failed · 2 筆
+                                    </div>
+                                </div>
+                                <div style="margin-top:8px;">
+                                    <code style="font-family:var(--font-mono);font-size:0.8rem;color:#495057;">TC-AUTH-005</code> — 連續 5 次登入失敗後帳號鎖定
+                                    <span style="display:inline-flex;align-items:center;font-size:0.7rem;font-weight:500;padding:0.2em 0.55em;border-radius:999px;background:var(--tr-danger-light);color:#721c24;margin-left:4px;"><i class="fas fa-times-circle" style="font-size:0.65rem;margin-right:3px;"></i>Failed</span>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Confirm card -->
+                        <div style="align-self:flex-start;max-width:96%;margin-top:4px;">
+                            <div style="border:1px solid var(--tr-border);border-left:3px solid var(--tr-primary);background:#fff;border-radius:10px;padding:10px 12px;font-size:13px;">
+                                <div style="color:var(--tr-text-primary);margin-bottom:8px;">
+                                    <span style="font-size:11px;color:var(--tr-primary-dark);background:var(--tr-primary-light);padding:1px 7px;border-radius:999px;margin-right:6px;font-weight:600;">ACTION</span>
+                                    需要建立 Test Run 嗎？
+                                </div>
+                                <div style="display:flex;gap:8px;">
+                                    <button style="background:var(--tr-primary);border:1px solid var(--tr-primary);color:#fff;border-radius:7px;padding:5px 14px;font-size:13px;font-weight:500;">確認建立</button>
+                                    <button style="background:transparent;border:none;color:var(--tr-text-secondary);padding:5px 6px;font-size:13px;">取消</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Composer -->
+                    <div style="border-top:1px solid var(--tr-border-light);background:#fff;padding:10px 12px;">
+                        <div style="display:flex;align-items:flex-end;gap:8px;">
+                            <button style="width:38px;height:38px;border-radius:10px;border:1px solid var(--tr-border);background:var(--tr-bg-body);color:var(--tr-text-secondary);display:grid;place-items:center;flex:none;">
+                                <i class="fas fa-paperclip" style="font-size:14px;"></i>
+                            </button>
+                            <textarea style="flex:1;resize:none;border:1px solid var(--tr-border);border-radius:10px;padding:8px 11px;font-size:13.5px;background:var(--tr-bg-body);color:var(--tr-text-primary);min-height:38px;max-height:96px;" placeholder="輸入訊息…" rows="1"></textarea>
+                            <button style="width:38px;height:38px;border-radius:10px;border:none;background:var(--tr-primary);color:#fff;display:grid;place-items:center;flex:none;">
+                                <i class="fas fa-paper-plane" style="font-size:14px;"></i>
+                            </button>
+                        </div>
+                        <div style="font-size:11.5px;color:var(--tr-text-muted);margin-top:6px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                            <span><i class="fas fa-paperclip me-1"></i>拖放或點擊上傳附件</span>
+                            <span style="font-size:10.5px;color:var(--tr-text-muted);">Enter 送出 · Shift+Enter 換行</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- FAB standalone -->
+            <div class="spec-label mt-3">懸浮按鈕（FAB）</div>
+            <div class="spec-demo d-flex align-items-center gap-3">
+                <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--tr-primary) 0%,var(--tr-primary-dark) 100%);border:none;color:#fff;display:grid;place-items:center;box-shadow:0 4px 14px rgba(74,144,226,.45);">
+                    <i class="fas fa-robot" style="font-size:22px;"></i>
+                </div>
+                <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--tr-primary) 0%,var(--tr-primary-dark) 100%);border:none;color:#fff;display:grid;place-items:center;box-shadow:0 4px 14px rgba(74,144,226,.45);position:relative;">
+                    <i class="fas fa-robot" style="font-size:22px;"></i>
+                    <span style="position:absolute;top:3px;right:3px;width:12px;height:12px;border-radius:50%;background:var(--tr-danger);border:2px solid #fff;"></span>
+                </div>
+                <div class="text-muted" style="font-size:0.78rem;">
+                    左：標準 FAB　·　右：有未讀訊息（紅點）<br>
+                    <code style="font-family:var(--font-mono);font-size:0.7rem;">position:fixed; right:20px; bottom:calc(footer + 16px); z-index:1045</code>
+                </div>
+            </div>
+
+            <div class="spec-fixes">
+                <div class="spec-fixes-title"><i class="fas fa-wrench me-1"></i>需修正的頁面 / 一致性問題</div>
+                <ul>
+                    <li><strong>qa_ai_helper.html</strong> — QA AI Helper 七畫面流程的卡片視覺與全域助手面板的氣泡 / 確認卡風格不一致 → 統一使用本 SPEC 定義的氣泡圓角、確認卡左色條、工具執行區 accordion 模式</li>
+                    <li><strong>test_case_management.html</strong> AI Assist modal — inline AI 助手的結果呈現應與全域助手一致（氣泡 + Markdown 渲染 + code block copy 按鈕）</li>
+                    <li><strong>assistant-widget.css</strong> 已定義完整 token，但其他 AI 介面（QA AI Helper）未引用 → v2 統一由共用 CSS class 提供氣泡 / 確認卡 / 工具區樣式</li>
+                    <li><strong>assistant widget 按鈕</strong>用 <code>tcrt-assistant-btn-*</code> 而非 Bootstrap <code>.btn</code> → 這是刻意的（AI 面板內的按鈕圓角 7px、padding 5px 14px 與 Bootstrap btn-sm 不同），v2 維持此分離，但需確保 QA AI Helper 頁面也遵循</li>
+                </ul>
+            </div>
+
+            <div class="spec-ok mt-2">
+                <i class="fas fa-lightbulb me-1"></i>
+                <strong>設計原則：</strong>AI 助手是「對話式」介面，視覺語彙（漸層 header、氣泡、accordion 工具區、確認卡）有別於一般 CRUD 表單頁。這套模式一旦定義，全站所有 AI 功能（全域助手、QA Helper、inline assist）都套用相同氣泡與卡片樣式。
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+         ⑪ ENTRY POINT RESTRUCTURING
+         ═══════════════════════════════════════════════════ -->
+    <div class="spec-card" id="entry">
+        <div class="spec-card-header">
+            <h3><i class="fas fa-sitemap me-2"></i>入口結構整合（唯一需要重構的部分）</h3>
+            <span class="spec-id">SPEC-NAV-001</span>
+        </div>
+        <div class="spec-card-body">
+
+            <div class="spec-rules">
+                <div class="spec-rules-title">原則：維持頁面設計不變，只整合不合理的入口散落問題</div>
+            </div>
+
+            <!-- Issue 1: Data menu -->
+            <div class="mb-3">
+                <div class="spec-label">問題 1：team_management 的 data menu dropdown（散落入口）</div>
+                <div class="spec-demo">
+                    <div class="diff-row diff-bad">
+                        <i class="fas fa-times-circle"></i>
+                        <strong>現況：</strong>
+                        <code>team_management.html</code> L24 的 <code>btn-info dropdown</code> 放了 audit-logs / team-statistics / system-logs 的連結 → 這三個管理功能不應藏在團隊管理頁的工具列 dropdown
+                    </div>
+                    <div class="diff-row diff-good">
+                        <i class="fas fa-arrow-right"></i>
+                        <strong>修正：</strong>
+                        移除此 dropdown，audit-logs / team-statistics / system-logs 改由 header 的「管理」dropdown 統一入口（見下圖）
+                    </div>
+                </div>
+            </div>
+
+            <!-- Issue 2: Scattered entry points -->
+            <div class="mb-3">
+                <div class="spec-label">問題 2：全域管理頁面的入口散落在 3 處</div>
+                <div class="spec-demo">
+                    <div class="diff-row diff-bad">
+                        <i class="fas fa-times-circle"></i>
+                        <strong>現況：</strong>
+                        team-management 在 index 頁 / org-management 在 team_management 按鈕 / audit-logs 在 data menu dropdown / system-logs 在 data menu / profile 在 user_menu
+                    </div>
+                    <div class="diff-row diff-good">
+                        <i class="fas fa-arrow-right"></i>
+                        <strong>修正：</strong>
+                        header 新增「管理」dropdown（如下），統一入口。不新增頁面，不改現有頁面設計：
+                    </div>
+                    <div class="mt-2 p-2" style="background:var(--tr-bg-sidebar);border-radius:6px;border:1px solid var(--tr-border-light);">
+                        <div class="dropdown d-inline-block">
+                            <button class="btn btn-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown"><i class="fas fa-cog me-1"></i>管理</button>
+                            <ul class="dropdown-menu shadow-sm show" style="position:relative;display:block;min-width:200px;">
+                                <li><h6 class="dropdown-header">組織</h6></li>
+                                <li><a class="dropdown-item" href="/team-management"><i class="fas fa-users-cog me-2 text-muted"></i>團隊管理</a></li>
+                                <li><a class="dropdown-item" href="/organization-management"><i class="fas fa-building me-2 text-muted"></i>組織設定</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header">系統</h6></li>
+                                <li><a class="dropdown-item" href="/audit-logs"><i class="fas fa-file-alt me-2 text-muted"></i>稽核日誌</a></li>
+                                <li><a class="dropdown-item" href="/system-logs"><i class="fas fa-terminal me-2 text-muted"></i>系統日誌</a></li>
+                                <li><a class="dropdown-item" href="/team-statistics"><i class="fas fa-chart-bar me-2 text-muted"></i>統計分析</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Issue 3: Automation sub-pages -->
+            <div class="mb-3">
+                <div class="spec-label">問題 3：automation provider/webhook 設定頁是獨立路由但只是 hub 的子管理面</div>
+                <div class="spec-demo">
+                    <div class="diff-row diff-bad">
+                        <i class="fas fa-times-circle"></i>
+                        <strong>現況：</strong>
+                        <code>/automation-provider-settings</code> 和 <code>/automation-webhook-config</code> 是獨立頁面，各有一個「Back to Hub」按鈕。三個頁面共用 <code>automation-hub.css</code>，內容高度相關。
+                    </div>
+                    <div class="diff-row diff-good">
+                        <i class="fas fa-arrow-right"></i>
+                        <strong>修正方案 A（推薦）：</strong>
+                        維持三個獨立路由不變，但 provider-settings 和 webhook-config 的 header 改為「&lt; Automation Hub」breadcrumb 連結 + 統一的 toolbar，移除各自不同的 page_specific_actions 按鈕排列。
+                    </div>
+                    <div class="diff-row diff-good">
+                        <i class="fas fa-arrow-right"></i>
+                        <strong>修正方案 B（如要更激進）：</strong>
+                        將 provider/webhook 設定改為 hub 頁面 Settings tab 內的子面板（modal 或 drawer），消除兩個獨立路由。但這涉及較大 JS 重構。
+                    </div>
+                </div>
+            </div>
+
+            <!-- Issue 4: Home buttons removal -->
+            <div class="mb-3">
+                <div class="spec-label">問題 4：每頁都有 Home 按鈕佔工具列空間</div>
+                <div class="spec-demo">
+                    <div class="diff-row diff-bad">
+                        <i class="fas fa-times-circle"></i>
+                        <strong>現況：</strong>
+                        全站 15 個頁面都有 <code>btn-secondary btn-sm</code> 的「回到首頁」/「首頁」/「Home」按鈕，佔工具列最右側。
+                    </div>
+                    <div class="diff-row diff-good">
+                        <i class="fas fa-arrow-right"></i>
+                        <strong>修正（可選）：</strong>
+                        header 的 TCRT logo 設為首頁連結（慣例），移除各頁的 Home 按鈕 → 工具列少一個按鈕，更清爽。如保留則需先統一文案/class（見 SPEC-HOM-001）。
+                    </div>
+                </div>
+            </div>
+
+            <div class="spec-ok">
+                <i class="fas fa-info-circle me-1"></i>
+                <strong>總結：</strong>以上 4 項是唯一需要「結構性」調整的入口問題。其餘頁面設計、layout、功能流不變，只需按照各元件 SPEC 修正 class/文案差異。
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Summary ═══ -->
+    <div class="spec-card">
+        <div class="spec-card-header">
+            <h3><i class="fas fa-clipboard-list me-2"></i>修正清單總覽</h3>
+            <span class="spec-id">SUMMARY</span>
+        </div>
+        <div class="spec-card-body">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>SPEC</th>
+                        <th>元件</th>
+                        <th>需修正頁面數</th>
+                        <th>主要問題</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td><code>SPEC-BTN-001</code></td><td>按鈕</td><td><span class="badge bg-danger">5</span></td><td>btn-xs / btn-view / btn-edit / class 順序 / btn-info 語意混用</td></tr>
+                    <tr><td><code>SPEC-BDG-001</code></td><td>徽章</td><td><span class="badge bg-warning">6</span></td><td>text-bg-* / 裸 badge / 多 class 組合 / 自訂 badge-role</td></tr>
+                    <tr><td><code>SPEC-TBL-001</code></td><td>表格</td><td><span class="badge bg-warning">4</span></td><td>缺 table-sm / table-hover / thead table-light / sticky-top</td></tr>
+                    <tr><td><code>SPEC-MDL-001</code></td><td>Modal</td><td><span class="badge bg-danger">5</span></td><td>inline style 尺寸 / header 導覽按鈕 / bg-light header / bg-danger header</td></tr>
+                    <tr><td><code>SPEC-CRD-001</code></td><td>卡片</td><td><span class="badge bg-info">3</span></td><td>card-header class 不一致 / card-body padding 覆蓋</td></tr>
+                    <tr><td><code>SPEC-TLB-001</code></td><td>工具列</td><td><span class="badge bg-warning">2</span></td><td>automation-toolbar 自訂 class / gap-3</td></tr>
+                    <tr><td><code>SPEC-TAB-001</code></td><td>Tab</td><td><span class="badge bg-warning">4</span></td><td>nav-pills 混用 / 缺圖示 / mb-2 / 自訂 class</td></tr>
+                    <tr><td><code>SPEC-DRP-001</code></td><td>Dropdown</td><td><span class="badge bg-danger">5</span></td><td>btn-info trigger / custom-status-dropdown / kebab-btn</td></tr>
+                    <tr><td><code>SPEC-HOM-001</code></td><td>Home 按鈕</td><td><span class="badge bg-warning">10</span></td><td>文案不一致 / class 順序不一致</td></tr>
+                    <tr><td><code>SPEC-AI-001</code></td><td>AI 助手框</td><td><span class="badge bg-info">3</span></td><td>QA AI Helper / inline assist 與全域助手視覿不一致</td></tr>
+                    <tr><td><code>SPEC-NAV-001</code></td><td>入口結構</td><td><span class="badge bg-danger">3</span></td><td>data menu dropdown / 散落入口 / automation 子頁面</td></tr>
+                </tbody>
+            </table>
+
+            <div class="mt-3 d-flex gap-3 flex-wrap">
+                <div class="d-flex align-items-center gap-1">
+                    <span class="badge bg-danger">嚴重</span>
+                    <small class="text-muted">class 非標準或結構問題</small>
+                </div>
+                <div class="d-flex align-items-center gap-1">
+                    <span class="badge bg-warning">中等</span>
+                    <small class="text-muted">多頁不一致但不影響功能</small>
+                </div>
+                <div class="d-flex align-items-center gap-1">
+                    <span class="badge bg-info">輕微</span>
+                    <small class="text-muted">padding/class 微調</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</main>
+
+<!-- ═══ Footer（維持現有設計） ═══ -->
+<footer class="app-footer">
+    <div class="container-fluid d-flex justify-content-end align-items-center h-100 px-3">
+        <button class="btn btn-secondary btn-sm dropdown-toggle"><i class="fas fa-globe me-1"></i>繁體中文</button>
+    </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

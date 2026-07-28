@@ -285,15 +285,19 @@ const applyUsmPermissions = async () => {
 };
 
 // Utility: sanitize HTML content before injecting into DOM
-const escapeHtml = (value) => {
-    if (value === undefined || value === null) return '';
-    return String(value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-};
+// escapeHtml 由全域 assistant-widget.js 提供（先載入）。此處僅在缺漏時補上 fallback，
+// 避免與其他 classic script 同名宣告衝突（SyntaxError: Identifier 'escapeHtml' has already been declared）。
+if (typeof window.escapeHtml !== 'function') {
+    window.escapeHtml = (value) => {
+        if (value === undefined || value === null) return '';
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    };
+}
 
 const parseJiraTicketsInput = (value) => {
     if (!value) return [];
@@ -1810,7 +1814,7 @@ const UserStoryMapFlow = () => {
                                             ${escapeHtml(rel.team_name || '')} / ${escapeHtml(rel.map_name || '')}
                                         </small>
                                     </button>
-                                    ${isCrossMap ? `<button type="button" class="btn btn-sm btn-info" data-related-popup-idx="${idx}" data-map-id="${rel.map_id || rel.mapId || ''}" data-team-id="${rel.team_id || rel.teamId || ''}" title="${escapeHtml(openExternalTitle)}" style="flex-shrink: 0; position: relative; z-index: 2; pointer-events: auto;"><i class="fas fa-external-link-alt"></i></button>` : ''}
+                                    ${isCrossMap ? `<button type="button" class="btn btn-info btn-sm" data-related-popup-idx="${idx}" data-map-id="${rel.map_id || rel.mapId || ''}" data-team-id="${rel.team_id || rel.teamId || ''}" title="${escapeHtml(openExternalTitle)}" style="flex-shrink: 0; position: relative; z-index: 2; pointer-events: auto;"><i class="fas fa-external-link-alt"></i></button>` : ''}
                                 </div>
                             `;
                         }).join('')}
@@ -1819,8 +1823,8 @@ const UserStoryMapFlow = () => {
             : '';
 
         const actionButtonsHtml = [
-            canUpdateNode ? `<button type="button" class="btn btn-sm btn-primary w-100" id="updateNodeBtn">${escapeHtml(t.updateNode)}</button>` : '',
-            canDeleteNode ? `<button type="button" class="btn btn-sm btn-danger w-100" id="deleteNodeBtn">${escapeHtml(t.deleteNode)}</button>` : '',
+            canUpdateNode ? `<button type="button" class="btn btn-primary btn-sm w-100" id="updateNodeBtn">${escapeHtml(t.updateNode)}</button>` : '',
+            canDeleteNode ? `<button type="button" class="btn btn-danger btn-sm w-100" id="deleteNodeBtn">${escapeHtml(t.deleteNode)}</button>` : '',
         ].filter(Boolean).join('');
         const noActionsText = tUsm('noAvailableActions', '目前角色無可用操作');
 
@@ -5364,7 +5368,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                     return `
                         <div class="list-group-item d-flex justify-content-between align-items-center">
                             <div><strong>${escapeHtml(rel)}</strong></div>
-                            <button type="button" class="btn btn-sm btn-danger" data-remove-idx="${idx}">
+                            <button type="button" class="btn btn-danger btn-sm" data-remove-idx="${idx}">
                                 <i class="fas fa-times"></i>
                             </button>
                         </div>
@@ -5381,7 +5385,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                             <h6 class="mb-1 small">${escapeHtml(rel.display_title || rel.node_id)}</h6>
                             ${infoText ? `<small class="text-muted">${escapeHtml(infoText)}</small>` : ''}
                         </div>
-                        <button type="button" class="btn btn-sm btn-danger" data-remove-idx="${idx}">
+                        <button type="button" class="btn btn-danger btn-sm" data-remove-idx="${idx}">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>

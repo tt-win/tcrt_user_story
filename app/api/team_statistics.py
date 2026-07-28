@@ -14,7 +14,7 @@ import json
 import math
 import orjson
 from collections import Counter, defaultdict
-from sqlalchemy import case, func, select, desc
+from sqlalchemy import case, func, select, desc, cast, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import require_admin
@@ -30,7 +30,7 @@ from app.models.database_models import (
     Team,
     User,
 )
-from app.models.lark_types import TestResultStatus
+from app.models.lark_types import TestResultStatus, _TEST_RESULT_ALIASES
 from app.models.team import TeamStatus
 from app.audit.database import AuditLogTable
 from app.audit.models import ResourceType, AuditSeverity
@@ -201,6 +201,37 @@ def _enum_storage_key(value: Any) -> str:
     if hasattr(value, "value"):
         return str(value.value)
     return str(value)
+
+
+def _normalize_result_status(raw: Any) -> str:
+    """將 DB 中可能存在的 legacy / 大小寫變體正規化為 TestResultStatus 的 canonical name。
+
+    DB 可能存有 enum value（如 ``"Passed"``）、legacy 短形式（如 ``"Pass"``）、
+    或 alias（如 ``"blocked"``）。此 helper 以大小寫不敏感方式比對 enum value 與
+    ``_TEST_RESULT_ALIASES``，回傳 enum 的 ``.name``（如 ``PASSED``），與既有
+    reporting 契約（``by_status["PASSED"]``）一致。無法對應時回傳 ``"unknown"``。
+    """
+    if raw is None:
+        return "unknown"
+    if hasattr(raw, "name"):
+        return str(raw.name)
+    text = str(raw).strip()
+    if not text:
+        return "unknown"
+    upper = text.upper()
+    # 已是 canonical name（PASSED / FAILED ...）
+    for member in TestResultStatus:
+        if member.name.upper() == upper:
+            return member.name
+    # 對應 enum value（"Passed" / "Failed" ...）— 大小寫不敏感
+    for member in TestResultStatus:
+        if member.value.upper() == upper:
+            return member.name
+    # alias（"pass" / "blocked" ...）— _TEST_RESULT_ALIASES key 為小寫
+    alias = _TEST_RESULT_ALIASES.get(text.lower())
+    if alias is not None:
+        return alias.name
+    return "unknown"
 
 
 def _day_to_label(value: Any) -> Optional[str]:
@@ -676,18 +707,22 @@ async def get_test_run_metrics(
             )
             pass_rate_team_rows = pass_rate_team_result.all()
 
+            # 以 cast(String) 讀取 new_result 的 raw 字串，避免 SQLAlchemy Enum 型別
+            # 反序列化 legacy 值（如 "Pass"）時拋 LookupError；正規化交由 _normalize_result_status。
             status_result = await session.execute(
                 select(
-                    TestRunItemResultHistory.new_result,
+                    cast(TestRunItemResultHistory.new_result, String),
                     status_count_expr,
                 )
                 .where(history_day.between(start_date_str, end_date_str))
-                .group_by(TestRunItemResultHistory.new_result)
+                .group_by(cast(TestRunItemResultHistory.new_result, String))
             )
-            by_status = {
-                (_enum_storage_key(row[0]) if row[0] is not None else "unknown"): int(row[1])
-                for row in status_result.all()
-            }
+            # 多個 raw 變體（"Passed" / "Pass" / "pass"）正規化後可能映射到同一 key，
+            # 需累加而非覆蓋。
+            by_status: Dict[str, int] = {}
+            for row in status_result.all():
+                key = _normalize_result_status(row[0])
+                by_status[key] = by_status.get(key, 0) + int(row[1])
 
             involved_team_ids = {int(row[0]) for row in daily_team_rows + pass_rate_team_rows if row[0] is not None}
 
@@ -841,8 +876,13 @@ async def get_test_run_metrics(
         return JSONResponse(response_payload)
 
     except Exception as e:
-        logger.error(f"獲取測試執行指標失敗: {e}")
-        raise HTTPException(status_code=500, detail={"error": "無法載入測試執行指標"})
+        logger.error(f"獲取測試執行指標失敗: {e}", exc_info=True)
+        from app.config import settings as _settings
+
+        _detail = {"error": "無法載入測試執行指標"}
+        if getattr(_settings, "debug", False):
+            _detail["detail"] = f"{type(e).__name__}: {e}"
+        raise HTTPException(status_code=500, detail=_detail)
 
 
 @router.get("/user_activity", include_in_schema=False)

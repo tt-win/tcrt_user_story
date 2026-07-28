@@ -2222,7 +2222,7 @@ function renderTestDataList() {
                 ${buildTestDataCategoryOptions(td.category)}
             </select>
             ${buildTestDataValueEditor(td, idx)}
-            <button type="button" class="btn btn-sm btn-outline-danger remove-test-data-btn" data-idx="${idx}">
+            <button type="button" class="btn btn-outline-danger btn-sm remove-test-data-btn" data-idx="${idx}">
                 <i class="fas fa-trash-alt"></i>
             </button>
         </div>

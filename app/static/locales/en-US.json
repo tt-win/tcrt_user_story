@@ -397,6 +397,15 @@
   "dataMenu": {
     "title": "Data & Records"
   },
+  "adminMenu": {
+    "title": "Admin",
+    "sectionOrg": "Organization",
+    "orgSettings": "Organization & System Settings",
+    "sectionSystem": "System",
+    "auditLogs": "Audit Logs",
+    "systemLogs": "System Logs",
+    "teamStatistics": "Team Statistics"
+  },
     "audit": {
     "viewLogs": "Audit Logs",
     "pageTitle": "Audit Log Review",
@@ -728,7 +737,7 @@
     "warning": "Warning"
   },
   "navigation": {
-    "backToHome": "Home",
+    "backToHome": "Back to Home",
     "backToManagement": "Back to Management",
     "backToSets": "Back to Test Case Sets",
     "pleaseSelect": "Please select...",
@@ -1498,6 +1507,7 @@
     "moveSetImpactConfirmHint": "Do you want to continue moving?",
     "browseMode": "Browse Mode",
     "referenceTestCase": "Reference Test Case",
+    "referenceFrameTitle": "Reference Test Case Content",
     "referenceTestCaseButton": "Reference Test Case",
     "referenceTestCaseSearch": "Search Reference Test Cases",
     "referenceTestCaseSearchPlaceholder": "Enter test case number or title...",

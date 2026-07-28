@@ -1074,13 +1074,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// ===== i18n helper without calling window.i18n.t =====
+// ===== i18n helper routed through the global i18n service (SPEC: locale JSON is the single source) =====
 function getI18n(key, fallback = '') {
-    const container = document.getElementById('org-sync-i18n');
-    if (!container) return fallback || key;
-    const el = container.querySelector(`[data-i18n="${key}"]`);
-    if (el && el.textContent && el.textContent.trim().length > 0) {
-        return el.textContent.trim();
+    if (window.i18n && typeof window.i18n.t === 'function') {
+        return window.i18n.t(key, {}, fallback || key);
     }
     return fallback || key;
 }

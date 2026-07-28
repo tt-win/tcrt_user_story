@@ -59,7 +59,26 @@ const {
   confirmationActionLabelMarkup,
   escapeHtml,
   nextSizeMode,
+  assistantWidgetDisabledForView,
 } = context;
+
+// ---------------------------------------------------------------------- //
+// 彈出視窗不注入 widget
+// ---------------------------------------------------------------------- //
+
+test('assistantWidgetDisabledForView：彈出視窗不注入 widget，一般頁面照常注入', () => {
+  // base.html 由伺服器渲染的權威旗標（/test-case-reference、minimal 模式）
+  assert.equal(assistantWidgetDisabledForView({ assistantWidget: 'off' }, ''), true);
+  // 直接以 minimal/editor query 開啟的 test-case-management 彈窗
+  assert.equal(assistantWidgetDisabledForView({}, '?tc=TC-1&minimal=1&mode=edit'), true);
+  assert.equal(assistantWidgetDisabledForView({}, '?editor=true'), true);
+  // 一般頁面
+  assert.equal(assistantWidgetDisabledForView({}, '?team_id=1&set_id=2'), false);
+  assert.equal(assistantWidgetDisabledForView(null, ''), false);
+  // 近似但不成立的值不得誤判
+  assert.equal(assistantWidgetDisabledForView({ assistantWidget: 'on' }, '?minimal=0'), false);
+  assert.equal(assistantWidgetDisabledForView({}, '?xminimal=1'), false);
+});
 
 // ---------------------------------------------------------------------- //
 // escapeHtml

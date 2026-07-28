@@ -123,9 +123,13 @@ async def list_app_team_test_cases(
     test_result: Optional[str] = Query(None),
     set_id: Optional[int] = Query(None),
     section_id: Optional[int] = Query(None),
-    tcg: Optional[str] = Query(None),
-    ticket: Optional[str] = Query(None),
+    assignee: Optional[str] = Query(None, description="Assignee 關鍵字過濾"),
+    tcg: Optional[str] = Query(None, description="Issue/Ticket 關鍵字過濾（對應 tcg 欄位）"),
+    ticket: Optional[str] = Query(None, description="Issue/Ticket/單號關鍵字（同 tcg 欄位）"),
     include_content: bool = Query(False),
+    include_test_data: bool = Query(
+        False, description="是否回傳每筆 case 的 test_data 陣列（含 id/name/category/value）"
+    ),
     db: AsyncSession = Depends(get_db),
     principal: AppTokenPrincipal = Depends(_require_read_scope),
 ):
@@ -160,6 +164,20 @@ async def list_app_team_test_cases(
         query = query.where(TestCaseLocalDB.test_case_section_id == section_id)
         count_query = count_query.where(TestCaseLocalDB.test_case_section_id == section_id)
 
+    if assignee and assignee.strip():
+        assignee_condition = TestCaseLocalDB.assignee_json.ilike(f"%{assignee.strip()}%")
+        query = query.where(assignee_condition)
+        count_query = count_query.where(assignee_condition)
+
+    # tcg 與 ticket 都比對 tcg_json；同時提供時取 OR（與 /api/mcp/* 列表語意一致）
+    tcg_filters = [value.strip() for value in (tcg, ticket) if value and value.strip()]
+    if tcg_filters:
+        tcg_condition = or_(
+            *[TestCaseLocalDB.tcg_json.ilike(f"%{value}%") for value in tcg_filters]
+        )
+        query = query.where(tcg_condition)
+        count_query = count_query.where(tcg_condition)
+
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
@@ -180,12 +198,28 @@ async def list_app_team_test_cases(
     sets = sets_result.scalars().all()
 
     case_payloads = [
-        _build_case_payload(tc, include_content=include_content) for tc in test_cases
+        _build_case_payload(
+            tc,
+            include_content=include_content,
+            include_test_data=include_test_data,
+        )
+        for tc in test_cases
     ]
 
     return MCPTeamTestCasesResponse(
         team_id=team_id,
-        filters={"search": search, "priority": priority, "test_result": test_result, "set_id": set_id, "section_id": section_id},
+        filters={
+            "search": search,
+            "priority": priority,
+            "test_result": test_result,
+            "set_id": set_id,
+            "section_id": section_id,
+            "assignee": assignee,
+            "tcg": tcg,
+            "ticket": ticket,
+            "include_content": include_content,
+            "include_test_data": include_test_data,
+        },
         sets=[
             MCPTestCaseSetItem(
                 id=s.id,
@@ -263,6 +297,9 @@ async def lookup_app_test_cases(
     test_case_number: Optional[str] = Query(None),
     ticket: Optional[str] = Query(None),
     team_id: Optional[int] = Query(None),
+    include_test_data: bool = Query(
+        False, description="是否回傳每筆 case 的 test_data 陣列（含 id/name/category/value）"
+    ),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -310,7 +347,11 @@ async def lookup_app_test_cases(
                 team_id=team.id,
                 team_name=team.name,
                 match_type=match_type,
-                test_case=_build_case_payload(tc, include_content=False),
+                test_case=_build_case_payload(
+                    tc,
+                    include_content=False,
+                    include_test_data=include_test_data,
+                ),
             )
         )
 
@@ -318,7 +359,13 @@ async def lookup_app_test_cases(
     paged = items[skip : skip + limit] if skip > 0 else items[:limit]
 
     return MCPTestCaseLookupResponse(
-        filters={"q": q, "test_case_number": test_case_number, "ticket": ticket, "team_id": team_id},
+        filters={
+            "q": q,
+            "test_case_number": test_case_number,
+            "ticket": ticket,
+            "team_id": team_id,
+            "include_test_data": include_test_data,
+        },
         items=paged,
         page=MCPPageMeta(skip=skip, limit=limit, total=total, has_next=skip + limit < total),
     )

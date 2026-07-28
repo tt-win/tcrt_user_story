@@ -16,14 +16,14 @@
 {% endblock %}
 
 {% block page_specific_actions %}
-<div class="automation-toolbar">
+<div class="d-flex gap-2 align-items-center">
   <button type="button" class="btn btn-primary btn-sm" id="newSuiteBtn">
     <i class="fas fa-plus me-1"></i><span data-i18n="automationHub.suites.newSuite">New Suite</span>
   </button>
   <button type="button" class="btn btn-secondary btn-sm" id="rescanScriptsBtn">
     <i class="fas fa-sync-alt me-1"></i><span data-i18n="automationHub.scripts.rescan">Rescan</span>
   </button>
-  <span class="automation-toolbar-divider"></span>
+  <div class="vr mx-1"></div>
   <a href="/automation-provider-settings" class="btn btn-secondary btn-sm" id="providerSettingsLink">
     <i class="fas fa-code-branch me-1"></i><span data-i18n="automationHub.settings.gitSources">Git Sources</span>
   </a>
@@ -33,9 +33,9 @@
   <a href="#" target="_blank" rel="noopener" class="btn btn-secondary btn-sm d-none" id="teamDashboardLink">
     <i class="fas fa-chart-line me-1"></i><span data-i18n="automationHub.dashboard.openDashboard">Team Dashboard</span>
   </a>
-  <span class="automation-toolbar-divider"></span>
+  <div class="vr mx-1"></div>
   <a href="/" class="btn btn-secondary btn-sm">
-    <i class="fas fa-home me-1"></i><span data-i18n="navigation.backToHome">Home</span>
+    <i class="fas fa-home me-1"></i><span data-i18n="navigation.backToHome">回到首頁</span>
   </a>
 </div>
 {% endblock %}
@@ -53,7 +53,7 @@
   </div>
 
   <div id="automation-content" class="d-none">
-    <ul class="nav nav-tabs automation-tabs" id="automationHubTabs" role="tablist">
+    <ul class="nav nav-tabs mb-3" id="automationHubTabs" role="tablist">
       <li class="nav-item" role="presentation">
         <button class="nav-link active" id="scripts-tab" data-bs-toggle="tab" data-bs-target="#scripts-pane" type="button" role="tab" aria-controls="scripts-pane" aria-selected="true">
           <i class="fas fa-folder-tree me-1"></i><span data-i18n="automationHub.tabs.scripts">Scripts</span>
@@ -101,10 +101,10 @@
                   <input type="search" class="form-control" id="scriptSearch" data-i18n-placeholder="automationHub.scripts.searchPlaceholder" placeholder="Search scripts">
                 </div>
                 <div class="btn-group btn-group-sm flex-shrink-0" role="group" data-i18n-aria-label="automationHub.scripts.expandCollapseAll" aria-label="Expand or collapse all">
-                  <button type="button" class="btn btn-sm btn-outline-secondary" id="treeExpandAllBtn" data-i18n-title="automationHub.scripts.expandAll" title="Expand all">
+                  <button type="button" class="btn btn-outline-secondary btn-sm" id="treeExpandAllBtn" data-i18n-title="automationHub.scripts.expandAll" title="Expand all">
                     <i class="fas fa-angles-down me-1"></i><span data-i18n="automationHub.scripts.expandAll">Expand all</span>
                   </button>
-                  <button type="button" class="btn btn-sm btn-outline-secondary" id="treeCollapseAllBtn" data-i18n-title="automationHub.scripts.collapseAll" title="Collapse all">
+                  <button type="button" class="btn btn-outline-secondary btn-sm" id="treeCollapseAllBtn" data-i18n-title="automationHub.scripts.collapseAll" title="Collapse all">
                     <i class="fas fa-angles-up me-1"></i><span data-i18n="automationHub.scripts.collapseAll">Collapse all</span>
                   </button>
                 </div>
@@ -168,7 +168,7 @@
 
       <section class="tab-pane fade" id="coverage-pane" role="tabpanel" aria-labelledby="coverage-tab">
         <div class="card automation-panel">
-          <div class="card-header d-flex flex-wrap gap-2 align-items-center justify-content-between py-2">
+          <div class="card-header bg-light d-flex align-items-center justify-content-between flex-wrap gap-2">
             <div class="fw-semibold" data-i18n="automationHub.coverage.title">Automation Coverage</div>
             <button type="button" class="btn btn-secondary btn-sm" id="coverageRefreshBtn">
               <i class="fas fa-redo me-1"></i><span data-i18n="common.refresh">Refresh</span>
@@ -252,7 +252,7 @@
       <section class="tab-pane fade" id="settings-pane" role="tabpanel" aria-labelledby="settings-tab">
         <div class="automation-settings-dashboard">
           <div class="card automation-panel">
-            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+            <div class="card-header bg-light d-flex align-items-center justify-content-between flex-wrap gap-2">
               <div class="fw-semibold" data-i18n="automationHub.settings.gitSourcesTitle">Git Sources</div>
               <a href="/automation-provider-settings" class="btn btn-primary btn-sm" id="settingsProviderLink">
                 <i class="fas fa-code-branch me-1"></i><span data-i18n="automationHub.settings.addGitRepo">Add Git Repo</span>
@@ -281,7 +281,7 @@
           </div>
 
           <div class="card automation-panel">
-            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+            <div class="card-header bg-light d-flex align-items-center justify-content-between flex-wrap gap-2">
               <div class="fw-semibold" data-i18n="automationHub.settings.webhooksTitle">Webhooks</div>
               <a href="/automation-webhook-config" class="btn btn-primary btn-sm" id="settingsWebhookLink">
                 <i class="fas fa-link me-1"></i><span data-i18n="automationHub.settings.webhooks">Webhooks</span>
@@ -305,7 +305,7 @@
           </div>
 
           <div class="card automation-panel automation-panel-wide">
-            <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+            <div class="card-header bg-light d-flex align-items-center justify-content-between flex-wrap gap-2">
               <div class="fw-semibold">
                 <i class="fas fa-layer-group text-primary me-1"></i><span data-i18n="automationHub.environments.cardTitle">Automation Environments</span>
                 <span class="badge bg-light text-dark border ms-1" id="environmentCount">0</span>

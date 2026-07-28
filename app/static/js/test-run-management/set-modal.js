@@ -945,13 +945,13 @@ function buildSetRunDetailRow(run, setData) {
     }
 
     const enterButton = `
-        <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); enterTestRun(${run.id})">
+        <button class="btn btn-outline-primary btn-sm" onclick="event.stopPropagation(); enterTestRun(${run.id})">
             <i class="fas fa-arrow-right me-1"></i><span data-i18n="testRun.sets.detail.actionOpen">進入</span>
         </button>
     `;
     const kebabMenu = menuItems.length ? `
         <div class="dropdown" onclick="event.stopPropagation()">
-            <button type="button" class="btn btn-sm test-run-kebab-btn" data-bs-toggle="dropdown" aria-expanded="false" aria-label="More actions">
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-toggle="dropdown" aria-expanded="false" aria-label="More actions">
                 <i class="fas fa-ellipsis-v"></i>
             </button>
             <ul class="dropdown-menu dropdown-menu-end test-run-row-menu">${menuItems.join('')}</ul>
@@ -990,7 +990,7 @@ function buildAutomationSuiteDetailRow(suite, setData) {
         : '';
 
     const runButton = `
-        <button class="btn btn-sm btn-outline-success flex-shrink-0"
+        <button class="btn btn-outline-success btn-sm flex-shrink-0"
                 data-run-suite-id="${suite.id}" data-run-suite-name="${escapeAttr(suite.name)}">
             <i class="fas fa-play me-1"></i><span data-i18n="testRun.sets.detail.runAutomationSuite">執行</span>
         </button>
@@ -998,7 +998,7 @@ function buildAutomationSuiteDetailRow(suite, setData) {
     const kebabMenu = perms.canUpdate
         ? `
             <div class="dropdown" onclick="event.stopPropagation()">
-                <button type="button" class="btn btn-sm test-run-kebab-btn" data-bs-toggle="dropdown" aria-expanded="false" aria-label="More actions">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-toggle="dropdown" aria-expanded="false" aria-label="More actions">
                     <i class="fas fa-ellipsis-v"></i>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end">
@@ -1259,11 +1259,11 @@ function hideAddToSetDropdown() {
 function generateAddToSetDropdownItems(dropdown) {
     const sets = (Array.isArray(testRunSets) ? testRunSets : []).filter(s => s.status !== 'archived');
     if (!sets.length) {
-        dropdown.innerHTML = `<div class="custom-status-dropdown-item text-muted" data-i18n="testRun.sets.addToSetEmpty">尚無可加入的 Set</div>`;
+        dropdown.innerHTML = `<div class="dropdown-item text-muted" data-i18n="testRun.sets.addToSetEmpty">尚無可加入的 Set</div>`;
         return;
     }
     dropdown.innerHTML = sets.map(s => `
-        <div class="custom-status-dropdown-item" onclick="handleAddToSetSelection(${s.id})">
+        <div class="dropdown-item" onclick="handleAddToSetSelection(${s.id})">
             <i class="fas fa-layer-group me-2"></i>${escapeHtml(s.name)}
         </div>
     `).join('');

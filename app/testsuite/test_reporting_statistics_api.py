@@ -286,6 +286,51 @@ def test_team_statistics_overview_case_trends_and_run_metrics(reporting_stats_db
     assert metrics_payload["per_team_pass_rate"][0]["overall_pass_rate"] == 50.0
 
 
+async def test_team_statistics_test_run_metrics_tolerates_legacy_enum_value(reporting_stats_db):
+    """Regression: DB 中存在 legacy 短形式 'Pass' 時不應 500（LookupError）。
+
+    背景：``TestRunItemResultHistory.new_result`` 為 SQLAlchemy Enum column，DB 直接
+    寫入 legacy 值（如 ``'Pass'``，非 enum value ``'Passed'``）時，SQLAlchemy 讀回會拋
+    ``LookupError: 'Pass' is not among the defined enum values``。endpoint 需以
+    ``cast(String)`` 讀 raw 字串並正規化，不能 crash。
+    """
+    from sqlalchemy import text
+    import app.database as app_database
+
+    # 透過 fixture install 的 async session factory，以 raw SQL 寫入 legacy 'Pass'
+    # （繞過 ORM Enum 驗證，模擬既有 DB 含 legacy 值的情境）
+    async with app_database.SessionLocal() as db:
+        result = await db.execute(
+            text("SELECT id, config_id, team_id FROM test_run_items ORDER BY id LIMIT 1")
+        )
+        row = result.first()
+        assert row is not None, "fixture 應已建立 TestRunItem"
+        await db.execute(
+            text(
+                "INSERT INTO test_run_item_result_history "
+                "(team_id, config_id, item_id, new_result, changed_at, change_source) "
+                "VALUES (:team, :cfg, :item, :result, :ts, :src)"
+            ),
+            {
+                "team": row[2],
+                "cfg": row[1],
+                "item": row[0],
+                "result": "Pass",  # legacy 短形式，非 enum value 'Passed'
+                "ts": datetime.utcnow() - timedelta(days=1),
+                "src": "api",
+            },
+        )
+        await db.commit()
+
+    client = TestClient(app)
+    resp = client.get("/api/admin/team_statistics/test_run_metrics?days=30")
+    assert resp.status_code == 200, resp.text
+    payload = resp.json()
+    # legacy 'Pass' 應正規化為 PASSED 並計入 by_status
+    assert "PASSED" in payload["by_status"]
+    assert payload["by_status"]["PASSED"] >= 2  # 原 1 個 Passed + legacy 1 個 Pass
+
+
 def test_team_statistics_audit_analysis_and_department_stats(reporting_stats_db):
     client = TestClient(app)
 

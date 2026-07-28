@@ -249,53 +249,24 @@
     color: var(--tr-primary-dark);
     font-weight: 500;
 }
-/* 自訂狀態下拉選單 - 使用 fixed positioning 解決層級問題 */
-.custom-status-dropdown {
+/* 浮動下拉選單 - fixed positioning 解決巢狀 dropdown 層級問題（SPEC-DRP-001：使用 Bootstrap dropdown-menu 類別 + fixed 修飾） */
+.tr-dropdown-menu {
     position: fixed !important;
     z-index: 999999 !important;
-    background: white;
-    border: 1px solid #dee2e6;
+    background: var(--tr-bg-content);
+    border: 1px solid var(--tr-border-light);
     border-radius: 0.375rem;
-    box-shadow: 0 0.5rem 1rem rgba(0,0,0,.15);
+    box-shadow: var(--tr-shadow-lg);
     min-width: 120px;
     padding: 0.5rem 0;
     display: none;
 }
 
-.custom-status-dropdown.show {
+.tr-dropdown-menu.show {
     display: block !important;
 }
 
-.custom-status-dropdown-item {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    padding: 0.5rem 1rem;
-    clear: both;
-    font-weight: 400;
-    color: #212529;
-    text-align: inherit;
-    text-decoration: none;
-    white-space: nowrap;
-    background-color: transparent;
-    border: 0;
-    cursor: pointer;
-    transition: all 0.15s ease-in-out;
-    line-height: 1.5;
-}
-
-.custom-status-dropdown-item i {
-    width: 16px;
-    text-align: center;
-    flex-shrink: 0;
-}
-
-.custom-status-dropdown-item:hover {
-    background-color: #f8f9fa;
-    color: #1e2125;
-}
-
-.custom-status-dropdown-overlay {
+.tr-dropdown-overlay {
     position: fixed;
     top: 0;
     left: 0;
@@ -305,7 +276,7 @@
     display: none;
 }
 
-.custom-status-dropdown-overlay.show {
+.tr-dropdown-overlay.show {
     display: block;
 }
 

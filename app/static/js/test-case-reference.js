@@ -33,23 +33,26 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+function _show(id) { document.getElementById(id)?.classList.remove('d-none'); }
+function _hide(id) { document.getElementById(id)?.classList.add('d-none'); }
+
 function showInitial() {
-    document.getElementById('referenceInitialMessagePage').style.display = 'block';
-    document.getElementById('referenceLoadingMessagePage').style.display = 'none';
-    document.getElementById('referenceNoResultsMessagePage').style.display = 'none';
+    _show('referenceInitialMessagePage');
+    _hide('referenceLoadingMessagePage');
+    _hide('referenceNoResultsMessagePage');
     clearResults();
 }
 
 function showLoading() {
-    document.getElementById('referenceInitialMessagePage').style.display = 'none';
-    document.getElementById('referenceLoadingMessagePage').style.display = 'block';
-    document.getElementById('referenceNoResultsMessagePage').style.display = 'none';
+    _hide('referenceInitialMessagePage');
+    _show('referenceLoadingMessagePage');
+    _hide('referenceNoResultsMessagePage');
 }
 
 function showNoResults() {
-    document.getElementById('referenceInitialMessagePage').style.display = 'none';
-    document.getElementById('referenceLoadingMessagePage').style.display = 'none';
-    document.getElementById('referenceNoResultsMessagePage').style.display = 'block';
+    _hide('referenceInitialMessagePage');
+    _hide('referenceLoadingMessagePage');
+    _show('referenceNoResultsMessagePage');
 }
 
 function clearResults() {
@@ -61,17 +64,17 @@ function hideFrame() {
     const frame = document.getElementById('referenceTestCaseFramePage');
     const holder = document.getElementById('referencePlaceholderPage');
     if (frame) {
-        frame.style.display = 'none';
+        _hide('referenceTestCaseFramePage');
         frame.src = 'about:blank'; // 清空 iframe
     }
-    if (holder) holder.style.display = 'flex';  // 顯示占位區
+    if (holder) _show('referencePlaceholderPage');  // 顯示占位區
 }
 
 function showFrame() {
-    const frame = document.getElementById('referenceTestCaseFramePage');
     const holder = document.getElementById('referencePlaceholderPage');
-    if (holder) holder.style.display = 'none'; // 先隱藏占位區
-    if (frame) frame.style.display = 'block';  // 再顯示 iframe
+    const frame = document.getElementById('referenceTestCaseFramePage');
+    if (holder) _hide('referencePlaceholderPage'); // 先隱藏占位區
+    if (frame) _show('referenceTestCaseFramePage');  // 再顯示 iframe
 }
 
 async function doSearch(query) {
@@ -97,9 +100,13 @@ function renderResults(testCases) {
     const missingNumber = window.i18n ? window.i18n.t('common.notSet', {}, '未設定') : '未設定';
     const untitled = window.i18n ? window.i18n.t('userStoryMap.untitled', {}, '無標題') : '無標題';
     clearResults();
-    document.getElementById('referenceInitialMessagePage').style.display = 'none';
-    document.getElementById('referenceLoadingMessagePage').style.display = 'none';
-    document.getElementById('referenceNoResultsMessagePage').style.display = testCases.length ? 'none' : 'block';
+    _hide('referenceInitialMessagePage');
+    _hide('referenceLoadingMessagePage');
+    if (testCases.length) {
+        _hide('referenceNoResultsMessagePage');
+    } else {
+        _show('referenceNoResultsMessagePage');
+    }
 
     testCases.forEach(tc => {
         const div = document.createElement('div');

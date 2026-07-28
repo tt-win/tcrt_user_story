@@ -268,12 +268,12 @@ TOOLS = [
     AssistantTool(
         name="list_test_case_attachments",
         method="GET",
-        path_template="/api/teams/{team_id}/testcases/{test_case_id}/attachments",
+        path_template="/api/teams/{team_id}/testcases/{test_case_id:int}/attachments",
         summary="List attachments on a test case.",
         permission=PermissionType.READ,
         risk_level=READ,
         path_params=("test_case_id",),
-        path_param_schemas={"test_case_id": s_str("test case 的 record_id（可能是 Lark record id 或本地數字 id 的字串形式）")},
+        # test_case_id defaults to integer (matches `{test_case_id:int}` route); do not override to string.
         team_check="resolve",
         resource_team_resolver="test_case",
         projection=("files", "count"),
@@ -281,12 +281,11 @@ TOOLS = [
     AssistantTool(
         name="upload_test_case_attachment",
         method="POST",
-        path_template="/api/teams/{team_id}/testcases/{test_case_id}/attachments",
+        path_template="/api/teams/{team_id}/testcases/{test_case_id:int}/attachments",
         summary="Upload a chat-provided file as a test case attachment.",
         permission=PermissionType.WRITE,
         risk_level=REVERSIBLE_WRITE,
         path_params=("test_case_id",),
-        path_param_schemas={"test_case_id": s_str("test case 的 record_id（可能是 Lark record id 或本地數字 id 的字串形式）")},
         multipart_file_param="files",
         team_check="resolve",
         resource_team_resolver="test_case",
@@ -298,13 +297,13 @@ TOOLS = [
     AssistantTool(
         name="delete_test_case_attachment",
         method="DELETE",
-        path_template="/api/teams/{team_id}/testcases/{test_case_id}/attachments/{target}",
+        path_template="/api/teams/{team_id}/testcases/{test_case_id:int}/attachments/{target}",
         summary="Delete a test case attachment.",
         permission=PermissionType.WRITE,
         risk_level=IRREVERSIBLE,
         path_params=("test_case_id", "target"),
+        # Only `target` (filename) is a string path param; test_case_id stays the default integer.
         path_param_schemas={
-            "test_case_id": s_str("test case 的 record_id（可能是 Lark record id 或本地數字 id 的字串形式）"),
             "target": s_str("要刪除的附件檔名（原始上傳時的檔名，非數字索引）"),
         },
         team_check="resolve",

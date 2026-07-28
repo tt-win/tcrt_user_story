@@ -19,30 +19,7 @@
     <button type="button" class="btn btn-primary btn-sm" id="createTeamBtn">
         <i class="fas fa-plus me-1"></i><span data-i18n="team.createTeam">新增團隊</span>
     </button>
-    <!-- 數據與記錄下拉選單 -->
-    <div class="btn-group" role="group" id="dataMenuGroup">
-        <button type="button" class="btn btn-info btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-            <i class="fas fa-chart-bar me-1"></i><span data-i18n="dataMenu.title">數據與記錄</span>
-        </button>
-        <ul class="dropdown-menu">
-            <li>
-                <a class="dropdown-item" href="/audit-logs">
-                    <i class="fas fa-clipboard-list me-2"></i><span data-i18n="audit.viewLogs">審計記錄</span>
-                </a>
-            </li>
-            <li>
-                <a class="dropdown-item" href="/team-statistics" id="teamStatsLink">
-                    <i class="fas fa-chart-line me-2"></i><span data-i18n="user.menu.teamStatistics">團隊數據統計</span>
-                </a>
-            </li>
-            <li class="d-none">
-                <a class="dropdown-item" href="/system-logs" id="systemLogsLink">
-                    <i class="fas fa-terminal me-2"></i><span data-i18n="systemLogs.menuEntry">系統日誌</span>
-                </a>
-            </li>
-        </ul>
-    </div>
-    <a href="/organization-management" class="btn btn-info btn-sm" id="syncOrgBtn">
+    <a href="/organization-management" class="btn btn-secondary btn-sm" id="syncOrgBtn">
         <i class="fas fa-users me-1"></i><span data-i18n="orgSync.openButton">組織與系統設定</span>
     </a>
     <button type="button" class="btn btn-secondary btn-sm" id="refreshBtn">
@@ -134,12 +111,12 @@
 <div class="modal fade" id="deleteTeamModal" tabindex="-1" aria-labelledby="deleteTeamModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-danger">
-            <div class="modal-header bg-danger text-white">
+            <div class="modal-header">
                 <h5 class="modal-title d-flex align-items-center" id="deleteTeamModalLabel">
-                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <i class="fas fa-exclamation-triangle text-warning me-2"></i>
                     <span data-i18n="team.deleteTeam">刪除團隊</span>
                 </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="關閉"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="關閉"></button>
             </div>
             <div class="modal-body">
                 <p id="deleteTeamConfirmMessage" class="mb-0"></p>
@@ -258,7 +235,7 @@
                     <p class="fw-bold mb-1" data-i18n="appToken.rawTokenWarning">Copy this token now. It will not be shown again.</p>
                     <div class="d-flex gap-2 align-items-center">
                         <code id="appTokenRawToken" class="text-break small flex-grow-1"></code>
-                        <button class="btn btn-sm btn-outline-primary" onclick="copyAppTokenRawToken()" data-i18n-title="common.copy" title="複製">
+                        <button class="btn btn-outline-primary btn-sm" onclick="copyAppTokenRawToken()" data-i18n-title="common.copy" title="複製">
                             <i class="fas fa-copy"></i>
                         </button>
                     </div>

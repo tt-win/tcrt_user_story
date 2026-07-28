@@ -20,7 +20,7 @@
         <i class="fas fa-arrow-left me-1"></i><span data-i18n="audit.backToTeams">返回團隊管理</span>
     </a>
     <a href="/" class="btn btn-secondary btn-sm">
-        <i class="fas fa-home me-1"></i><span data-i18n="navigation.backToHome">首頁</span>
+        <i class="fas fa-home me-1"></i><span data-i18n="navigation.backToHome">回到首頁</span>
     </a>
 </div>
 {% endblock %}
@@ -32,26 +32,26 @@
     </div>
 
     <div id="logViewerMain">
-        <ul class="nav nav-tabs mb-2" id="systemLogsTabs" role="tablist">
+        <ul class="nav nav-tabs mb-3" id="systemLogsTabs" role="tablist">
             <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="logsTabBtn" data-bs-toggle="tab" data-bs-target="#logsTabPane"
-                        type="button" role="tab" aria-controls="logsTabPane" aria-selected="true"
-                        data-i18n="systemLogs.tabs.logs">Logs</button>
+                        type="button" role="tab" aria-controls="logsTabPane" aria-selected="true">
+                        <i class="fas fa-terminal me-1"></i><span data-i18n="systemLogs.tabs.logs">Logs</span></button>
             </li>
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="runtimeSettingsTabBtn" data-bs-toggle="tab" data-bs-target="#runtimeSettingsTabPane"
-                        type="button" role="tab" aria-controls="runtimeSettingsTabPane" aria-selected="false"
-                        data-i18n="systemLogs.tabs.runtimeSettings">Runtime Settings</button>
+                        type="button" role="tab" aria-controls="runtimeSettingsTabPane" aria-selected="false">
+                        <i class="fas fa-cog me-1"></i><span data-i18n="systemLogs.tabs.runtimeSettings">Runtime Settings</span></button>
             </li>
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="knowledgeGraphTabBtn" data-bs-toggle="tab" data-bs-target="#knowledgeGraphTabPane"
-                        type="button" role="tab" aria-controls="knowledgeGraphTabPane" aria-selected="false"
-                        data-i18n="systemLogs.tabs.knowledgeGraph">Knowledge Graph</button>
+                        type="button" role="tab" aria-controls="knowledgeGraphTabPane" aria-selected="false">
+                        <i class="fas fa-project-diagram me-1"></i><span data-i18n="systemLogs.tabs.knowledgeGraph">Knowledge Graph</span></button>
             </li>
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="knowledgeQueryLogTabBtn" data-bs-toggle="tab" data-bs-target="#knowledgeQueryLogTabPane"
-                        type="button" role="tab" aria-controls="knowledgeQueryLogTabPane" aria-selected="false"
-                        data-i18n="systemLogs.tabs.knowledgeQueryLog">Knowledge Query Log</button>
+                        type="button" role="tab" aria-controls="knowledgeQueryLogTabPane" aria-selected="false">
+                        <i class="fas fa-search me-1"></i><span data-i18n="systemLogs.tabs.knowledgeQueryLog">Knowledge Query Log</span></button>
             </li>
         </ul>
         <div class="tab-content">
@@ -116,7 +116,7 @@
                 <div id="rtsMismatchBanner" class="alert alert-warning d-none" role="alert">
                     <i class="fas fa-triangle-exclamation me-2"></i><span data-i18n="systemLogs.settings.workerMismatch">Logs 分頁與此設定快照來自不同 worker process，兩邊資訊不一定對應。</span>
                 </div>
-                <div id="rtsWorkerUnknownNote" class="alert alert-secondary d-none" role="alert">
+                <div id="rtsWorkerUnknownNote" class="alert alert-warning d-none" role="alert">
                     <i class="fas fa-circle-question me-2"></i><span data-i18n="systemLogs.settings.workerUnknown">無法確認 Logs 分頁與此快照是否來自同一 worker。</span>
                 </div>
 
@@ -133,7 +133,7 @@
                         <dt class="col-sm-4" data-i18n="systemLogs.settings.configuredConcurrency">設定的 WEB_CONCURRENCY</dt>
                         <dd class="col-sm-8">
                             <span id="rtsConfiguredConcurrency"></span>
-                            <span class="badge ms-1 d-none" id="rtsConcurrencySourceBadge"></span>
+                            <span class="badge bg-secondary ms-1 d-none" id="rtsConcurrencySourceBadge"></span>
                         </dd>
                         <dt class="col-sm-4" data-i18n="systemLogs.settings.inferredConcurrency">腳本推導預設 worker 數</dt>
                         <dd class="col-sm-8" id="rtsInferredConcurrency"></dd>
@@ -142,7 +142,7 @@
 
                     <h6 class="rts-section-title" data-i18n="systemLogs.settings.sectionDatabase">資料庫</h6>
                     <div class="table-responsive mb-3">
-                        <table class="table table-sm rts-table align-middle">
+                        <table class="table table-sm table-hover align-middle rts-table">
                             <thead>
                                 <tr>
                                     <th data-i18n="systemLogs.settings.dbTarget">目標</th>
@@ -198,7 +198,7 @@
                     </div>
                 </div>
 
-                <div id="kgDisabledBanner" class="alert alert-secondary d-none" role="alert">
+                <div id="kgDisabledBanner" class="alert alert-warning d-none" role="alert">
                     <i class="fas fa-circle-info me-2"></i><span data-i18n="systemLogs.kg.disabled">Knowledge Graph 未啟用（KNOWLEDGE_GRAPH_ENABLED=false），不顯示狀態。</span>
                 </div>
                 <div id="kgLoading" class="text-muted d-none" data-i18n="systemLogs.kg.loading">載入中…</div>
@@ -228,7 +228,7 @@
                     <h6 class="kg-section-title" data-i18n="systemLogs.kg.sectionBackfill">Backfill（initial bulk load）</h6>
                     <p class="text-muted small mb-2" data-i18n="systemLogs.kg.backfillHint">Backfill 需透過 CLI 啟動（`python -m app.services.knowledge backfill --entity <type>`）；此面板僅顯示目前進度，無法從瀏覽器端直接觸發。</p>
                     <div class="table-responsive">
-                        <table class="table table-sm kg-table align-middle">
+                        <table class="table table-sm table-hover align-middle kg-table">
                             <thead>
                                 <tr>
                                     <th data-i18n="systemLogs.kg.entityType">Entity</th>
@@ -279,7 +279,7 @@
 
                 <div id="kqlContent" class="d-none">
                     <div class="table-responsive">
-                        <table class="table table-sm kql-table align-middle">
+                        <table class="table table-sm table-hover align-middle kql-table">
                             <thead>
                                 <tr>
                                     <th data-i18n="systemLogs.kql.colTimestamp">時間</th>

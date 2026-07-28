@@ -278,6 +278,8 @@ async def test_case_management(
             "set_id": resolved_set_id,
             "helper_mode": helper_flag,
             "qa_ai_helper_enabled": qa_ai_helper_enabled,
+            # minimal/editor 模式只在 window.open 彈窗中使用，不注入全域 AI 助手 widget
+            "hide_assistant_widget": minimal_flag,
         },
     )
 

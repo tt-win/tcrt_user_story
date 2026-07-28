@@ -31,19 +31,19 @@
 {% block content %}
 <div class="container-fluid">
     <!-- Tabs for sync categories -->
-    <ul class="nav nav-tabs" id="syncTabs" role="tablist">
+    <ul class="nav nav-tabs mb-3" id="syncTabs" role="tablist">
         <!-- 人員管理分頁（預設隱藏，ADMIN+/SUPER_ADMIN 顯示） -->
         <li class="nav-item" role="presentation" id="tab-personnel-li" style="display: none;">
-            <button class="nav-link active" id="tab-personnel" data-bs-toggle="tab" data-bs-target="#tab-pane-personnel" type="button" role="tab" aria-controls="tab-pane-personnel" aria-selected="true" data-testid="tab-personnel" data-i18n="personnel.tabTitle">人員管理</button>
+            <button class="nav-link active" id="tab-personnel" data-bs-toggle="tab" data-bs-target="#tab-pane-personnel" type="button" role="tab" aria-controls="tab-pane-personnel" aria-selected="true" data-testid="tab-personnel"><i class="fas fa-users me-1"></i><span data-i18n="personnel.tabTitle">人員管理</span></button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="tab-org" data-bs-toggle="tab" data-bs-target="#tab-pane-org" type="button" role="tab" aria-controls="tab-pane-org" aria-selected="false" data-testid="tab-org" data-i18n="orgSync.tabTitle">組織</button>
+            <button class="nav-link" id="tab-org" data-bs-toggle="tab" data-bs-target="#tab-pane-org" type="button" role="tab" aria-controls="tab-pane-org" aria-selected="false" data-testid="tab-org"><i class="fas fa-sitemap me-1"></i><span data-i18n="orgSync.tabTitle">組織</span></button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="tab-service-management" data-bs-toggle="tab" data-bs-target="#tab-pane-service-management" type="button" role="tab" aria-controls="tab-pane-service-management" aria-selected="false" data-testid="tab-service-management" data-i18n="scheduledServices.tabTitle">Service 管理</button>
+            <button class="nav-link" id="tab-service-management" data-bs-toggle="tab" data-bs-target="#tab-pane-service-management" type="button" role="tab" aria-controls="tab-pane-service-management" aria-selected="false" data-testid="tab-service-management"><i class="fas fa-server me-1"></i><span data-i18n="scheduledServices.tabTitle">Service 管理</span></button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="tab-mcp-token" data-bs-toggle="tab" data-bs-target="#tab-pane-mcp-token" type="button" role="tab" aria-controls="tab-pane-mcp-token" aria-selected="false" data-testid="tab-mcp-token" data-i18n="mcpToken.tabTitle">MCP Token</button>
+            <button class="nav-link" id="tab-mcp-token" data-bs-toggle="tab" data-bs-target="#tab-pane-mcp-token" type="button" role="tab" aria-controls="tab-pane-mcp-token" aria-selected="false" data-testid="tab-mcp-token"><i class="fas fa-key me-1"></i><span data-i18n="mcpToken.tabTitle">MCP Token</span></button>
         </li>
         <!-- 組織自動化基礎設施分頁：預設隱藏（fail-closed），由 applyTabVisibility() 依權限決定是否顯示 -->
         <li class="nav-item" role="presentation" style="display: none;">
@@ -65,7 +65,7 @@
                 <!-- 左欄：搜尋與使用者列表 -->
                 <div class="col-12 col-lg-4">
                     <div class="card h-100">
-                        <div class="card-header bg-light d-flex align-items-center">
+                        <div class="card-header bg-light d-flex align-items-center justify-content-between flex-wrap gap-2">
                             <i class="fas fa-user-friends me-2"></i>
                             <strong data-i18n="personnel.userList">使用者清單</strong>
                         </div>
@@ -87,7 +87,7 @@
                 <!-- 右欄：詳情/編輯表單 -->
                 <div class="col-12 col-lg-8">
                     <div class="card h-100">
-                        <div class="card-header bg-light d-flex align-items-center">
+                        <div class="card-header bg-light d-flex align-items-center justify-content-between flex-wrap gap-2">
                             <i class="fas fa-id-card me-2"></i>
                             <strong data-i18n="personnel.userDetail">使用者詳情</strong>
                         </div>
@@ -167,7 +167,7 @@
             <!-- 同步狀態區域 -->
             <div class="mb-4">
                 <div class="card">
-                    <div class="card-header bg-light">
+                    <div class="card-header bg-light d-flex align-items-center justify-content-between flex-wrap gap-2">
                         <h6 class="card-title mb-0">
                             <i class="fas fa-info-circle me-2"></i><span data-i18n="orgSync.currentStatus">當前同步狀態</span>
                         </h6>
@@ -207,7 +207,7 @@
             <!-- 組織統計區域 -->
             <div class="mb-4">
                 <div class="card">
-                    <div class="card-header bg-light">
+                    <div class="card-header bg-light d-flex align-items-center justify-content-between flex-wrap gap-2">
                         <h6 class="card-title mb-0">
                             <i class="fas fa-chart-bar me-2"></i><span data-i18n="orgSync.statsTitle">組織架構統計</span>
                         </h6>
@@ -266,7 +266,7 @@
                 </div>
                 <div class="scheduled-services-hero__meta">
                     <span class="scheduled-services-hero__summary text-muted small" id="scheduledServicesSummary" data-i18n="scheduledServices.summaryIdle">尚未載入排程服務</span>
-                    <span class="badge rounded-pill text-bg-secondary" id="scheduledSchedulerState" data-i18n="scheduledServices.schedulerUnknown">狀態未知</span>
+                    <span class="badge rounded-pill bg-secondary" id="scheduledSchedulerState" data-i18n="scheduledServices.schedulerUnknown">狀態未知</span>
                 </div>
             </div>
 
@@ -305,7 +305,7 @@
                     </div>
                     <div id="mcpTokenListEmpty" class="alert alert-light border text-muted d-none mb-0" role="alert" data-i18n="mcpToken.listEmpty">目前尚未核發任何 token</div>
                     <div class="table-responsive" id="mcpTokenTableWrap">
-                        <table class="table table-sm align-middle mb-0" id="mcpTokenTable">
+                        <table class="table table-sm table-hover align-middle mb-0" id="mcpTokenTable">
                             <thead>
                                 <tr>
                                     <th data-i18n="mcpToken.colName">名稱</th>
@@ -328,7 +328,7 @@
         <div class="tab-pane fade" id="tab-pane-org-automation-infra" role="tabpanel" aria-labelledby="tab-org-automation-infra">
             <!-- Automation Hub 入口開關 -->
             <div class="card mb-3">
-                <div class="card-header bg-light d-flex align-items-center">
+                <div class="card-header bg-light d-flex align-items-center justify-content-between flex-wrap gap-2">
                     <i class="fas fa-robot me-2"></i>
                     <strong data-i18n="automationHubEntryToggle.title">Automation Hub 入口</strong>
                 </div>
@@ -373,7 +373,7 @@
                     <div id="orgInfraContent" class="d-none">
                         <div class="table-responsive">
                             <table class="table table-hover table-sm align-middle mb-0">
-                                <thead class="table-light">
+                                <thead>
                                     <tr>
                                         <th class="text-center" style="width: 64px;" data-i18n="automationHub.providers.slot">Slot</th>
                                         <th data-i18n="common.name">Name</th>
@@ -468,7 +468,7 @@
                             </div>
                         </div>
                         <div class="card mb-3 d-none" id="aaSkillEditorCard">
-                            <div class="card-header bg-light d-flex align-items-center">
+                            <div class="card-header bg-light d-flex align-items-center justify-content-between flex-wrap gap-2">
                                 <i class="fas fa-pen me-2"></i>
                                 <strong id="aaSkillEditorTitle" data-i18n="assistantAdmin.editSkill">編輯 skill</strong>
                             </div>
@@ -704,7 +704,7 @@
                 </div>
                 <div id="orgInfraProviderHealthContent" class="d-none">
                     <div class="d-flex align-items-center gap-2 mb-3">
-                        <span id="orgInfraProviderHealthStatusBadge" class="badge"></span>
+                        <span id="orgInfraProviderHealthStatusBadge" class="badge bg-secondary"></span>
                         <span id="orgInfraProviderHealthStatusLabel" class="fw-semibold"></span>
                     </div>
                     <div id="orgInfraProviderHealthMessage" class="mb-3"></div>
@@ -729,127 +729,4 @@
 <script src="/static/js/organization-management/personnel_management.js"></script>
 <script src="/static/js/organization-management/assistant-admin.js"></script>
 
-<!-- Hidden i18n texts for Organization Sync (used by JS without window.i18n.t) -->
-<div id="org-sync-i18n" class="d-none">
-    <span data-i18n="orgSync.openButton">組織與系統設定</span>
-    <span data-i18n="orgSync.modalTitle">組織與系統設定</span>
-    <span data-i18n="orgSync.currentStatus">當前同步狀態</span>
-    <span data-i18n="orgSync.loadingStatus">載入狀態中...</span>
-    <span data-i18n="orgSync.idle">系統空閒</span>
-    <span data-i18n="orgSync.readyToRun">準備執行新的同步作業</span>
-    <span data-i18n="orgSync.syncing">同步進行中</span>
-    <span data-i18n="orgSync.syncingDesc">正在同步組織架構資料...</span>
-    <span data-i18n="orgSync.preparing">準備開始...</span>
-    <span data-i18n="orgSync.statsTitle">組織架構統計</span>
-    <span data-i18n="orgSync.statsLoading">載入統計資料中...</span>
-    <span data-i18n="orgSync.statsError">統計資料載入失敗</span>
-    <span data-i18n="orgSync.departmentsStats">部門統計</span>
-    <span data-i18n="orgSync.usersStats">用戶統計</span>
-    <span data-i18n="orgSync.total">總數</span>
-    <span data-i18n="orgSync.active">活躍</span>
-    <span data-i18n="orgSync.fullSync">完整同步</span>
-    <span data-i18n="orgSync.departmentsSync">部門同步</span>
-    <span data-i18n="orgSync.contactsSync">用戶同步</span>
-    <span data-i18n="orgSync.table.type">類型</span>
-    <span data-i18n="orgSync.table.status">狀態</span>
-    <span data-i18n="orgSync.table.startTime">開始時間</span>
-    <span data-i18n="orgSync.table.endTime">結束時間</span>
-    <span data-i18n="orgSync.table.duration">耗時</span>
-    <span data-i18n="orgSync.table.stats">統計</span>
-    <span data-i18n="orgSync.table.trigger">觸發者</span>
-    <span data-i18n="orgSync.table.actions">操作</span>
-    <span data-i18n="orgSync.lastSyncPrefix">最後同步:</span>
-    <span data-i18n="orgSync.syncIdPrefix">同步ID:</span>
-    <span data-i18n="orgSync.addTeamFirst">請先新增團隊後再執行同步</span>
-    <span data-i18n="orgSync.syncStarted">組織架構同步已開始</span>
-    <span data-i18n="orgSync.syncCompleted">組織架構同步已完成！</span>
-    <span data-i18n="orgSync.syncCompletedWithIssues">同步完成，但可能有部分錯誤</span>
-    <span data-i18n="orgSync.syncFailedPrefix">同步失敗</span>
-    <span data-i18n="orgSync.startFailedPrefix">啟動同步失敗</span>
-    <span data-i18n="orgSync.triggerFailedPrefix">觸發全域同步失敗</span>
-    <span data-i18n="orgSync.statusTimeout">同步狀態檢查超時，請手動刷新頁面查看結果</span>
-    <span data-i18n="orgSync.viewErrorDetails">查看錯誤詳情</span>
-    <span data-i18n="orgSync.errorPrefix">同步錯誤</span>
-    <span data-i18n="orgSync.status.completed">完成</span>
-    <span data-i18n="orgSync.status.failed">失敗</span>
-    <span data-i18n="orgSync.status.running">進行中</span>
-    <span data-i18n="orgSync.status.unknown">未知</span>
-    <span data-i18n="orgSync.type.full">完整同步</span>
-    <span data-i18n="orgSync.type.departments">部門同步</span>
-    <span data-i18n="orgSync.type.users">用戶同步</span>
-    <span data-i18n="orgSync.labels.departments">部門</span>
-    <span data-i18n="orgSync.labels.users">用戶</span>
-    <span data-i18n="mcpToken.createInProgress">產生中...</span>
-    <span data-i18n="mcpToken.createSuccess">MCP machine token 已建立</span>
-    <span data-i18n="mcpToken.createFailedPrefix">建立 token 失敗</span>
-    <span data-i18n="mcpToken.requiredName">請先填寫 token 名稱</span>
-    <span data-i18n="mcpToken.scopeRequired">請至少選擇一個可存取團隊</span>
-    <span data-i18n="mcpToken.invalidExpiresDays">有效天數需為正整數</span>
-    <span data-i18n="mcpToken.noTeamOptions">目前沒有可選擇的團隊</span>
-    <span data-i18n="mcpToken.teamScopeHint">未啟用「所有團隊」時，至少選擇一個團隊。</span>
-    <span data-i18n="mcpToken.teamScopeIgnoredHint">已啟用所有團隊，team scope 將被忽略。</span>
-    <span data-i18n="mcpToken.copySuccess">已複製 token</span>
-    <span data-i18n="mcpToken.copyFallback">無法直接複製，請手動複製 token</span>
-    <span data-i18n="mcpToken.copyModalTitle">手動複製 Token</span>
-    <span data-i18n="mcpToken.copyModalInstruction">請使用 Ctrl/Cmd + C 進行複製</span>
-    <span data-i18n="mcpToken.rawTokenLabel">Raw Token</span>
-    <span data-i18n="mcpToken.createdAt">建立時間</span>
-    <span data-i18n="mcpToken.expiresAt">到期時間</span>
-    <span data-i18n="mcpToken.neverExpires">永不過期</span>
-    <span data-i18n="scheduledServices.tabTitle">Service 管理</span>
-    <span data-i18n="scheduledServices.heroEyebrow">Scheduler Service Registry</span>
-    <span data-i18n="scheduledServices.heroTitle">排程服務管理</span>
-    <span data-i18n="scheduledServices.heroDesc">選擇目前系統可排程的服務，設定每日執行時間，並查看最近執行結果與目前狀態。</span>
-    <span data-i18n="scheduledServices.summaryIdle">尚未載入排程服務</span>
-    <span data-i18n="scheduledServices.summaryLoading">正在載入排程服務...</span>
-    <span data-i18n="scheduledServices.summaryReady">可管理 {count} 個排程服務</span>
-    <span data-i18n="scheduledServices.summaryEmpty">目前沒有可排程服務</span>
-    <span data-i18n="scheduledServices.summaryError">無法取得排程服務資料</span>
-    <span data-i18n="scheduledServices.schedulerUnknown">狀態未知</span>
-    <span data-i18n="scheduledServices.schedulerRunning">Scheduler 運行中</span>
-    <span data-i18n="scheduledServices.schedulerStopped">Scheduler 未啟動</span>
-    <span data-i18n="scheduledServices.loading">載入排程服務中...</span>
-    <span data-i18n="scheduledServices.empty">目前沒有可排程服務</span>
-    <span data-i18n="scheduledServices.loadFailed">載入排程服務失敗</span>
-    <span data-i18n="scheduledServices.enabled">已啟用</span>
-    <span data-i18n="scheduledServices.disabled">未啟用</span>
-    <span data-i18n="scheduledServices.running">執行中</span>
-    <span data-i18n="scheduledServices.statusCompleted">最近成功</span>
-    <span data-i18n="scheduledServices.statusFailed">最近失敗</span>
-    <span data-i18n="scheduledServices.statusInterrupted">啟動時回收</span>
-    <span data-i18n="scheduledServices.statusUnknown">尚未執行</span>
-    <span data-i18n="scheduledServices.nextRun">下次執行</span>
-    <span data-i18n="scheduledServices.lastRun">上次執行</span>
-    <span data-i18n="scheduledServices.runTime">每日時間</span>
-    <span data-i18n="scheduledServices.lastMessage">最近訊息</span>
-    <span data-i18n="scheduledServices.noDescription">尚未提供描述</span>
-    <span data-i18n="scheduledServices.noRecentMessage">尚無執行紀錄</span>
-    <span data-i18n="scheduledServices.enableSchedule">啟用每日排程</span>
-    <span data-i18n="scheduledServices.timeLabel">執行時間</span>
-    <span data-i18n="scheduledServices.saveSchedule">儲存排程</span>
-    <span data-i18n="scheduledServices.timeHint">第一版支援每日固定時間排程；多副本部署需額外處理 leader lock。</span>
-    <span data-i18n="scheduledServices.saving">儲存中...</span>
-    <span data-i18n="scheduledServices.saveSuccess">排程設定已更新</span>
-    <span data-i18n="scheduledServices.saveFailed">更新排程設定失敗</span>
-</div>
-
-<!-- 人員管理 i18n（僅少量，其他直接透過 data-i18n 使用全域字典） -->
-<div id="personnel-i18n" class="d-none">
-    <span data-i18n="personnel.tabTitle">人員管理</span>
-    <span data-i18n="personnel.userList">使用者清單</span>
-    <span data-i18n="personnel.userDetail">使用者詳情</span>
-    <span data-i18n="personnel.fullName">姓名</span>
-    <span data-i18n="personnel.role">角色</span>
-    <span data-i18n="personnel.active">啟用</span>
-    <span data-i18n="personnel.larkUserId">Lark 使用者 ID</span>
-    <span data-i18n="personnel.preview">預覽</span>
-    <span data-i18n="personnel.unlink">解除</span>
-    <span data-i18n="personnel.primaryTeam">主要團隊</span>
-    <span data-i18n="personnel.unsaved">有未儲存的變更</span>
-    <span data-i18n="personnel.create">新增</span>
-    <span data-i18n="personnel.save">儲存</span>
-    <span data-i18n="personnel.resetPassword">重設密碼</span>
-    <span data-i18n="personnel.deactivate">停用/刪除</span>
-    <span data-i18n="personnel.searchPlaceholder">搜尋使用者（名稱/Email）</span>
-</div>
 {% endblock %}

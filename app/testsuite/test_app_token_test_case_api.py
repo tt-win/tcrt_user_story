@@ -358,6 +358,40 @@ class TestTestDataValidation:
             )
             assert resp.status_code == 400, resp.text
 
+    def test_mutation_response_redacts_credential_test_data(self, temp_db):
+        # A write-only token must not be able to read plaintext credential values back
+        # out of a create echo or a partial (no-op on test_data) update response.
+        with temp_db() as session:
+            seeded = _seed_data(session)
+        with TestClient(app) as client:
+            create_resp = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-cases",
+                json={
+                    "test_case_number": "TC-TDR-001",
+                    "title": "Redact test data",
+                    "test_data": [
+                        {"name": "email", "category": "email", "value": "qa@example.com"},
+                        {"name": "pw", "category": "credential", "value": "S3cret!"},
+                    ],
+                },
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert create_resp.status_code == 201, create_resp.text
+            created = {td["name"]: td for td in create_resp.json()["test_data"]}
+            assert created["email"]["value"] == "qa@example.com"
+            assert created["pw"]["value"] == "[REDACTED]"
+            assert created["pw"]["category"] == "credential"
+
+            update_resp = client.put(
+                f"/api/app/teams/{seeded['team_id']}/test-cases/{create_resp.json()['id']}",
+                json={"title": "Renamed"},
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert update_resp.status_code == 200, update_resp.text
+            updated = {td["name"]: td for td in update_resp.json()["test_data"]}
+            assert updated["email"]["value"] == "qa@example.com"
+            assert updated["pw"]["value"] == "[REDACTED]"
+
 
 class TestCaseSetAndSectionManagement:
     def test_create_requires_admin_scope(self, temp_db):

@@ -293,7 +293,7 @@ class ProfileManager {
         }
         
         roleBadge.textContent = roleLabel || role || '-';
-        roleBadge.className = `badge badge-role ${roleClass}`;
+        roleBadge.className = `badge ${roleClass}`;
         
         console.log('[ProfileManager] 角色設定完成，內容:', roleBadge.textContent, '類型:', roleBadge.className);
     }

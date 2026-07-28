@@ -62,5 +62,6 @@ target-version = "py310"
 
 [dependency-groups]
 dev = [
+    "beautifulsoup4>=4.15.0",
     "ruff>=0.15.13",
 ]

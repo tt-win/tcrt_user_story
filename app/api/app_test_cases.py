@@ -68,6 +68,8 @@ router = APIRouter(prefix="/app", tags=["app-test-case-mutations"])
 
 
 def _serialize_test_case(tc: TestCaseLocalDB) -> Dict[str, Any]:
+    # test_data 的 credential value 一律遮蔽：partial update（未帶 test_data）的回應會帶出
+    # 既有項目，否則只有 test_case:write 的 token 能藉 no-op PUT 讀到明文。
     return {
         "id": tc.id,
         "team_id": tc.team_id,
@@ -81,7 +83,9 @@ def _serialize_test_case(tc: TestCaseLocalDB) -> Dict[str, Any]:
         "test_case_set_id": tc.test_case_set_id,
         "test_case_section_id": tc.test_case_section_id,
         "tcg": json.loads(tc.tcg_json) if tc.tcg_json else [],
-        "test_data": json.loads(tc.test_data_json) if tc.test_data_json else [],
+        "test_data": redact_credential_test_data(
+            json.loads(tc.test_data_json) if tc.test_data_json else []
+        ),
     }
 
 

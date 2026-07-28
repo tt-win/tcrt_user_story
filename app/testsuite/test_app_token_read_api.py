@@ -327,6 +327,105 @@ class TestAppReadTestCases:
             assert test_data["email"] == "qa@example.com"
             assert test_data["pw"] == "[REDACTED]"
 
+    def test_app_test_cases_list_include_test_data(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_read_data(session)
+            case = session.query(TestCaseLocal).filter_by(id=seeded["tc_id"]).one()
+            case.test_data_json = json.dumps(
+                [
+                    {"id": "td-1", "name": "email", "category": "email", "value": "qa@example.com"},
+                    {"id": "td-2", "name": "pw", "category": "credential", "value": "S3cret!"},
+                ]
+            )
+            session.commit()
+        with TestClient(app) as client:
+            default_resp = client.get(
+                f"/api/app/teams/{seeded['team_a_id']}/test-cases",
+                headers=_bearer(seeded["app_token"]),
+            )
+            assert default_resp.status_code == 200
+            default_data = default_resp.json()
+            assert default_data["filters"]["include_test_data"] is False
+            assert "test_data" not in default_data["test_cases"][0]
+
+            resp = client.get(
+                f"/api/app/teams/{seeded['team_a_id']}/test-cases",
+                params={"include_test_data": "true"},
+                headers=_bearer(seeded["app_token"]),
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["filters"]["include_test_data"] is True
+            items = {td["name"]: td for td in data["test_cases"][0]["test_data"]}
+            assert items["email"]["category"] == "email"
+            assert items["email"]["value"] == "qa@example.com"
+            assert items["pw"]["category"] == "credential"
+            assert items["pw"]["value"] == "[REDACTED]"
+
+    def test_app_test_cases_list_filters_by_tcg_and_ticket(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_read_data(session)
+            case = session.query(TestCaseLocal).filter_by(id=seeded["tc_id"]).one()
+            case.tcg_json = json.dumps(["TCG-12345"])
+            session.add(
+                TestCaseLocal(
+                    team_id=seeded["team_a_id"],
+                    test_case_number="TC-A-900",
+                    title="Unticketed case",
+                    priority=Priority.MEDIUM,
+                    test_case_set_id=seeded["set_a_id"],
+                    test_case_section_id=seeded["section_a_id"],
+                )
+            )
+            session.commit()
+        with TestClient(app) as client:
+            for param in ("tcg", "ticket"):
+                resp = client.get(
+                    f"/api/app/teams/{seeded['team_a_id']}/test-cases",
+                    params={param: "TCG-12345"},
+                    headers=_bearer(seeded["app_token"]),
+                )
+                assert resp.status_code == 200
+                data = resp.json()
+                assert data["page"]["total"] == 1
+                assert [c["id"] for c in data["test_cases"]] == [seeded["tc_id"]]
+                assert data["filters"][param] == "TCG-12345"
+
+            no_match = client.get(
+                f"/api/app/teams/{seeded['team_a_id']}/test-cases",
+                params={"ticket": "TCG-99999"},
+                headers=_bearer(seeded["app_token"]),
+            )
+            assert no_match.status_code == 200
+            assert no_match.json()["page"]["total"] == 0
+
+    def test_app_test_cases_list_filters_by_assignee(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_read_data(session)
+            case = session.query(TestCaseLocal).filter_by(id=seeded["tc_id"]).one()
+            case.assignee_json = json.dumps({"name": "Amber QA", "email": "amber@example.com"})
+            session.add(
+                TestCaseLocal(
+                    team_id=seeded["team_a_id"],
+                    test_case_number="TC-A-901",
+                    title="Unassigned case",
+                    priority=Priority.MEDIUM,
+                    test_case_set_id=seeded["set_a_id"],
+                    test_case_section_id=seeded["section_a_id"],
+                )
+            )
+            session.commit()
+        with TestClient(app) as client:
+            resp = client.get(
+                f"/api/app/teams/{seeded['team_a_id']}/test-cases",
+                params={"assignee": "Amber"},
+                headers=_bearer(seeded["app_token"]),
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["page"]["total"] == 1
+            assert [c["id"] for c in data["test_cases"]] == [seeded["tc_id"]]
+
     def test_app_test_case_denied_other_team(self, temp_db):
         with temp_db() as session:
             seeded = _seed_read_data(session)
@@ -378,6 +477,38 @@ class TestAppReadLookup:
             assert resp.status_code == 200
             data = resp.json()
             assert len(data["items"]) >= 1
+
+    def test_app_lookup_include_test_data(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_read_data(session)
+            case = session.query(TestCaseLocal).filter_by(id=seeded["tc_id"]).one()
+            case.test_data_json = json.dumps(
+                [
+                    {"id": "td-1", "name": "endpoint", "category": "url", "value": "https://qa"},
+                    {"id": "td-2", "name": "pw", "category": "credential", "value": "S3cret!"},
+                ]
+            )
+            session.commit()
+        with TestClient(app) as client:
+            default_resp = client.get(
+                "/api/app/test-cases/lookup?test_case_number=TC-A-001",
+                headers=_bearer(seeded["app_token"]),
+            )
+            assert default_resp.status_code == 200
+            assert default_resp.json()["filters"]["include_test_data"] is False
+            assert "test_data" not in default_resp.json()["items"][0]["test_case"]
+
+            resp = client.get(
+                "/api/app/test-cases/lookup?test_case_number=TC-A-001&include_test_data=true",
+                headers=_bearer(seeded["app_token"]),
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["filters"]["include_test_data"] is True
+            items = {td["name"]: td for td in data["items"][0]["test_case"]["test_data"]}
+            assert items["endpoint"]["category"] == "url"
+            assert items["endpoint"]["value"] == "https://qa"
+            assert items["pw"]["value"] == "[REDACTED]"
 
 
 class TestMcpCompatWithAppToken:

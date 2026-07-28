@@ -23,27 +23,8 @@ async function applyTeamManagementUiVisibility() {
         const syncBtn = document.getElementById('syncOrgBtn');
         if (syncBtn) syncBtn.style.display = map['syncOrgBtn'] ? '' : 'none';
 
-        // 數據與記錄選單的顯示控制
-        const dataMenuGroup = document.getElementById('dataMenuGroup');
-        if (dataMenuGroup) dataMenuGroup.style.display = map['auditLogBtn'] ? '' : 'none';
-
-        // 系統日誌入口（ui-config 對應 organization_management:manage，僅 super_admin；
-        // 後端另以 require_super_admin 防護）
-        const systemLogsLink = document.getElementById('systemLogsLink');
-        if (systemLogsLink && map['systemLogsLink']) {
-            systemLogsLink.parentElement.classList.remove('d-none');
-        }
-
-        // 控制團隊數據統計連結的顯示（僅 admin 及以上可見）
-        const teamStatsLink = document.getElementById('teamStatsLink');
-        if (teamStatsLink && window.currentUser) {
-            const userRole = window.currentUser.role;
-            if (userRole === 'admin' || userRole === 'super_admin') {
-                teamStatsLink.parentElement.style.display = '';
-            } else {
-                teamStatsLink.parentElement.style.display = 'none';
-            }
-        }
+        // 數據與記錄選單（audit / system-logs / team-statistics）已搬遷至 base.html
+        // 的「管理」Admin dropdown（SPEC-NAV-001），由 base-auth.js 依角色控制可見性。
     } catch (_) {}
 }
 

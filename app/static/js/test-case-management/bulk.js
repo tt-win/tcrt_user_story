@@ -166,7 +166,7 @@ function renderBatchCopyTable() {
                     <input type="text" class="form-control form-control-sm" value="${escapeHtml(it.new_title)}" data-idx="${idx}" data-field="title" />
                 </td>
                 <td class="text-center">
-                    <button type="button" class="btn btn-sm btn-outline-secondary toggle-details-btn py-0 px-2" data-idx="${idx}">
+                    <button type="button" class="btn btn-outline-secondary btn-sm toggle-details-btn py-0 px-2" data-idx="${idx}">
                         <i class="fas fa-chevron-down me-1" id="toggleIcon_${idx}"></i><span class="small" data-i18n="common.view">查看</span>
                     </button>
                 </td>

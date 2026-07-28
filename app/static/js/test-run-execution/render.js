@@ -2128,7 +2128,7 @@ function renderTestDataRow(td, idx) {
     const options = window.TestDataUtils.getCopyOptions(cat, value);
     let copyBtnHtml;
     if (empty) {
-        copyBtnHtml = `<button type="button" class="btn btn-sm btn-outline-secondary" disabled><i class="fas fa-copy"></i></button>`;
+        copyBtnHtml = `<button type="button" class="btn btn-outline-secondary btn-sm" disabled><i class="fas fa-copy"></i></button>`;
     } else if (options) {
         const items = options.map(opt => {
             const label = treTranslate(opt.labelKey, opt.fallback);
@@ -2139,13 +2139,13 @@ function renderTestDataRow(td, idx) {
             </a></li>`;
         }).join('');
         copyBtnHtml = `<div class="dropdown">
-            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+            <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
                 <i class="fas fa-copy"></i>
             </button>
             <ul class="dropdown-menu dropdown-menu-end">${items}</ul>
         </div>`;
     } else {
-        copyBtnHtml = `<button type="button" class="btn btn-sm btn-outline-secondary copy-test-data-btn"
+        copyBtnHtml = `<button type="button" class="btn btn-outline-secondary btn-sm copy-test-data-btn"
                 data-value="${escapeHtml(value)}"
                 data-i18n-title="testRun.copyTestData">
                 <i class="fas fa-copy"></i>

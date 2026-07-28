@@ -25,6 +25,13 @@ allowed_exceptions:
   offline_maintenance:
     - scripts/cleanup_manual_automation_links.py
     - scripts/migrate_attachment_metadata_paths.py
+    - scripts/seed_art_automation_environments.py
+  knowledge_local_store:
+    # Local file-backed embedding cache (raw sqlite3, not main/audit/usm engines).
+    - app/services/knowledge/embedding_service.py
+    # Writes KnowledgeQueryLog into the audit DB; still uses get_audit_session until
+    # migrated onto AuditAccessBoundary (tracked separately).
+    - app/services/knowledge/query_log_service.py
   test_support:
     - app/testsuite/
 

@@ -29,7 +29,7 @@
 }
 
 .first-login-header {
-    background: linear-gradient(135deg, var(--tr-warning, #F97316) 0%, #FACC15 100%);
+    background: linear-gradient(135deg, var(--tr-primary) 0%, var(--tr-primary-dark) 100%);
     color: #1f2937;
     text-align: center;
     padding: 2rem;

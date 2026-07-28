@@ -499,7 +499,12 @@ def test_migrate_mode_aborts_on_non_empty_target_without_force_reset(monkeypatch
 
     assert summary["success"] is False
     assert "non_empty_tables" in summary
-    assert summary["non_empty_tables"]["main"] == [{"table": "teams", "rows": 1}]
+    # upgrade_database seeds assistant_* rows; assert the intentionally inserted
+    # business row is reported rather than requiring an exact table list.
+    main_non_empty = {
+        row["table"]: row["rows"] for row in summary["non_empty_tables"]["main"]
+    }
+    assert main_non_empty.get("teams") == 1
     assert "bootstrap" not in summary["steps"]
 
 

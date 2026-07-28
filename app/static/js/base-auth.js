@@ -239,6 +239,23 @@ class BaseAuthManager {
             }
         }
 
+        // 顯示/隱藏「管理」dropdown（SPEC-NAV-001：admin 及以上可見）
+        const adminDropdown = document.getElementById('adminDropdownGroup');
+        if (adminDropdown) {
+            if (role === 'admin' || role === 'super_admin') {
+                adminDropdown.classList.remove('d-none');
+            } else {
+                adminDropdown.classList.add('d-none');
+            }
+        }
+
+        // 「系統日誌」入口僅 super_admin 可見（與原 ui-config systemLogsLink 門檻一致；
+        // 一般 admin 可見組織設定/稽核日誌/統計分析，但不見系統日誌）
+        const adminMenuSystemLogs = document.getElementById('adminMenuSystemLogs');
+        if (adminMenuSystemLogs) {
+            adminMenuSystemLogs.classList.toggle('d-none', role !== 'super_admin');
+        }
+
         console.log('[BaseAuthManager] 用戶資訊顯示更新完成');
     }
 

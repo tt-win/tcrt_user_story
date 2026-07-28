@@ -9,7 +9,7 @@
 {% block page_specific_actions %}
 <div class="d-flex gap-2">
   {% if ai_helper_enabled %}
-  <button type="button" class="btn btn-info btn-sm" id="openQaAiHelperFromSetListBtn">
+  <button type="button" class="btn btn-outline-primary btn-sm" id="openQaAiHelperFromSetListBtn">
     <i class="fas fa-robot me-1"></i><span data-i18n="qaAiHelper.entryButton">QA AI Helper</span>
   </button>
   {% endif %}
@@ -28,14 +28,14 @@
 
   <!-- 檢視切換 (卡片 / 精簡列表) -->
   <div class="d-flex justify-content-end align-items-center gap-2 mb-3">
-    <button type="button" class="btn btn-sm btn-outline-primary d-none" id="compactAddSetBtn" data-i18n-title="testCaseSet.addSet" title="Add Set">
+    <button type="button" class="btn btn-outline-primary btn-sm d-none" id="compactAddSetBtn" data-i18n-title="testCaseSet.addSet" title="Add Set">
       <i class="fas fa-plus"></i>
     </button>
     <div class="btn-group" role="group" data-i18n-aria-label="common.viewToggle" aria-label="View toggle">
-      <button type="button" class="btn btn-sm btn-outline-secondary active" id="viewToggleCard" data-i18n-title="common.cardView" title="Card view">
+      <button type="button" class="btn btn-outline-secondary btn-sm active" id="viewToggleCard" data-i18n-title="common.cardView" title="Card view">
         <i class="fas fa-th-large"></i>
       </button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" id="viewToggleCompact" data-i18n-title="common.compactView" title="Compact view">
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="viewToggleCompact" data-i18n-title="common.compactView" title="Compact view">
         <i class="fas fa-list"></i>
       </button>
     </div>

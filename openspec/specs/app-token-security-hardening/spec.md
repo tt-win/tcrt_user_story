@@ -114,10 +114,15 @@ App token attachment deletion SHALL scope its lookup by team and return HTTP 404
 
 ### Requirement: Credential test data is redacted in read responses
 
-Read responses on `/api/app/*` and `/api/mcp/*` SHALL redact test_data entries whose category is `credential`, so that read principals cannot retrieve plaintext credential test data.
+Read responses on `/api/app/*` and `/api/mcp/*` SHALL redact test_data entries whose category is `credential`, so that read principals cannot retrieve plaintext credential test data. Test case mutation responses on `/api/app/*` (create, update) SHALL apply the same redaction, so that a `test_case:write` token cannot obtain a plaintext credential value by echoing back a stored test case.
 
 #### Scenario: Credential test data is masked on read
 
 - **WHEN** a read principal fetches a test case detail containing a `credential`-category test_data value
 - **THEN** the value is returned redacted, not in plaintext
+
+#### Scenario: Credential test data is masked in a mutation response
+
+- **WHEN** a token with only `test_case:write` calls `PUT /api/app/teams/{team_id}/test-cases/{case_id}` with a body that does not include `test_data`, on a case holding a `credential`-category value
+- **THEN** the response's `test_data` returns that value redacted, and non-credential values unchanged
 

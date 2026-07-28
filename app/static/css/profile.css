@@ -1,13 +1,13 @@
 .profile-card {
     border: none;
     border-radius: 12px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--tr-shadow-md);
     margin-bottom: 1.5rem;
 }
 
 .profile-header {
-    background: linear-gradient(135deg, var(--tr-primary, #3B82F6) 0%, #60A5FA 100%);
-    color: white;
+    background: linear-gradient(135deg, var(--tr-primary) 0%, var(--tr-primary-dark) 100%);
+    color: var(--tr-bg-content);
     border-radius: 12px 12px 0 0;
     padding: 2rem;
     text-align: center;
@@ -38,6 +38,12 @@
     overflow: hidden;
 }
 
+.profile-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
 .profile-title {
     margin: 0;
     font-size: 1.5rem;
@@ -59,7 +65,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 0.75rem 0;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--tr-border-light);
 }
 
 .info-row:last-child {
@@ -68,27 +74,27 @@
 
 .info-label {
     font-weight: 500;
-    color: #64748b;
+    color: var(--tr-text-muted);
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
 
 .info-value {
-    color: #334155;
+    color: var(--tr-text-primary);
     font-weight: 500;
 }
 
 .form-section {
-    background: white;
+    background: var(--tr-bg-content);
     border-radius: 12px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--tr-shadow-md);
     margin-bottom: 1.5rem;
 }
 
 .form-header {
     padding: 1.5rem 1.5rem 0;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--tr-border-light);
     margin-bottom: 1.5rem;
 }
 
@@ -96,39 +102,33 @@
     padding: 0 1.5rem 1.5rem;
 }
 
-.badge-role {
-    font-size: 0.75rem;
-    padding: 0.4rem 0.8rem;
-    border-radius: 20px;
-    font-weight: 500;
-}
-
+/* Role badges: 僅保留 per-role 背景色（badge base 由 Bootstrap .badge 提供） */
 .badge-admin {
-    background-color: #dc2626;
-    color: white;
+    background-color: var(--tr-danger);
+    color: var(--tr-bg-content);
 }
 
 .badge-manager {
-    background-color: #f59e0b;
-    color: white;
+    background-color: var(--tr-warning);
+    color: var(--tr-bg-content);
 }
 
 .badge-user {
-    background-color: #3b82f6;
-    color: white;
+    background-color: var(--tr-primary);
+    color: var(--tr-bg-content);
 }
 
 .badge-viewer {
-    background-color: #6b7280;
-    color: white;
+    background-color: var(--tr-text-muted);
+    color: var(--tr-bg-content);
 }
 
 .password-strength {
     margin-top: 0.5rem;
     padding: 0.75rem;
     border-radius: 8px;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    background: var(--tr-bg-light);
+    border: 1px solid var(--tr-border-light);
     font-size: 0.875rem;
 }
 
@@ -143,15 +143,15 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    color: #64748b;
+    color: var(--tr-text-muted);
 }
 
 .strength-requirements li.valid {
-    color: #059669;
+    color: var(--tr-success);
 }
 
 .strength-requirements li.invalid {
-    color: #dc2626;
+    color: var(--tr-danger);
 }
 
 @media (max-width: 768px) {

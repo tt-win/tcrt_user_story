@@ -345,32 +345,6 @@ a.btn:active {
     box-shadow: var(--btn-secondary-shadow);
 }
 
-/* 檢視操作按鈕 - 冷灰藍色系 */
-.btn-view {
-    background: var(--btn-secondary-bg);
-    border-color: var(--btn-secondary-border);
-    color: var(--btn-secondary-color);
-}
-
-.btn-view:hover {
-    background: var(--btn-secondary-hover-bg);
-    border-color: var(--btn-secondary-hover-border);
-    color: var(--btn-secondary-hover-color);
-}
-
-/* 編輯操作按鈕 - 中性藍灰色系 */
-.btn-edit {
-    background: var(--btn-secondary-bg);
-    border-color: var(--btn-secondary-border);
-    color: var(--btn-secondary-color);
-}
-
-.btn-edit:hover {
-    background: var(--btn-secondary-hover-bg);
-    border-color: var(--btn-secondary-hover-border);
-    color: var(--btn-secondary-hover-color);
-}
-
 /* 危險操作按鈕 - 低飽和度紅色系 */
 .btn-danger {
     background: var(--btn-danger-bg);
@@ -655,12 +629,15 @@ a.btn:active {
 }
 
 .table th {
-    border-bottom: 2px solid var(--tr-border-light);
+    border-bottom: 2px solid var(--tr-border);
     font-weight: 600;
-    background-color: var(--tr-bg-sidebar);
+    background-color: var(--tr-bg-content);
     color: var(--tr-text-secondary);
     vertical-align: middle;
     padding: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.7rem;
 }
 
 .table td {
@@ -669,8 +646,58 @@ a.btn:active {
     padding: 0.75rem;
 }
 
+.table tbody tr:last-child td {
+    border-bottom: none;
+}
+
 .table-hover tbody tr:hover {
-    background-color: var(--tr-bg-sidebar);
+    background-color: rgba(var(--tr-primary-rgb), 0.04);
+}
+
+/* Dropdown 全域樣式 (SPEC-DRP-001) */
+.dropdown-menu {
+    margin-top: 5px !important;
+    padding: 4px !important;
+}
+
+.dropdown-divider {
+    margin: 4px 0 !important;
+}
+
+.dropdown-header {
+    padding: 0.35rem 0.6rem !important;
+    font-size: 0.68rem !important;
+}
+
+.dropdown-item i.fas,
+.dropdown-item i.far,
+.dropdown-item i.fab {
+    width: 16px;
+    text-align: center;
+}
+
+/* Modal 尺寸 class（取代 inline style，SPEC-MDL-001） */
+.modal-tc-editor {
+    max-width: 85vw;
+    width: 1400px;
+    height: 90vh;
+    max-height: 90vh;
+}
+
+.modal-xl-wide {
+    max-width: 90vw;
+}
+
+.modal-w-1400 {
+    max-width: 1400px;
+}
+
+.modal-w-1200 {
+    max-width: 1200px;
+}
+
+.modal-vmargin-sm {
+    margin: 2.5vh auto;
 }
 
 /* Flash Messages */
@@ -1062,7 +1089,7 @@ code.small {
 /* 表格緊湊樣式 */
 .table th {
     padding: 0.75rem !important;
-    font-size: 0.875rem !important;
+    font-size: 0.7rem !important;
 }
 
 .table td {

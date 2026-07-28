@@ -549,7 +549,7 @@ function renderTestCaseRow(testCase) {
                 <div style="padding-right: 45px;">
                     <code style="color: rgb(194, 54, 120); font-weight: 500;">${testCase.test_case_number || testCase.record_id}</code>
                 </div>
-                <button type="button" class="btn btn-sm btn-edit position-absolute hover-edit-btn"
+                <button type="button" class="btn btn-outline-primary btn-sm position-absolute hover-edit-btn"
                         style="top: 50%; right: 5px; transform: translateY(-50%); z-index: 10;"
                         onclick="quickEdit('${testCase.record_id}', 'test_case_number')" data-i18n-title="tooltips.quickEdit">
                     <i class="fas fa-edit"></i>
@@ -564,7 +564,7 @@ function renderTestCaseRow(testCase) {
                         </div>
                     </div>
                 </div>
-                <button type="button" class="btn btn-sm btn-edit position-absolute hover-edit-btn"
+                <button type="button" class="btn btn-outline-primary btn-sm position-absolute hover-edit-btn"
                         style="top: 50%; right: 5px; transform: translateY(-50%); z-index: 10;"
                         onclick="quickEdit('${testCase.record_id}', 'title')" data-i18n-title="tooltips.quickEdit">
                     <i class="fas fa-edit"></i>
@@ -593,17 +593,17 @@ function renderTestCaseRow(testCase) {
             </td>
             <td class="align-middle text-center" style="width: 100px;">
                 <div class="test-case-actions d-flex justify-content-center gap-2">
-                    <button type="button" class="btn btn-sm btn-view"
+                    <button type="button" class="btn btn-secondary btn-sm"
                             onclick="viewTestCase('${testCase.record_id}')" data-i18n-title="tooltips.viewEdit">
                         <i class="fas fa-eye"></i>
                     </button>
                     ${hasTestCasePermission('testCaseActionCopy') ? `
-                    <button type="button" class="btn btn-sm btn-secondary"
+                    <button type="button" class="btn btn-secondary btn-sm"
                             onclick="copyTestCase('${testCase.record_id}')" title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.copy') : '複製'}">
                         <i class="fas fa-copy"></i>
                     </button>` : ''}
                     ${hasTestCasePermission('testCaseActionDelete') ? `
-                    <button type="button" class="btn btn-sm btn-danger"
+                    <button type="button" class="btn btn-danger btn-sm"
                             onclick="deleteTestCase('${testCase.record_id}')" data-i18n-title="tooltips.delete">
                         <i class="fas fa-trash"></i>
                     </button>` : ''}

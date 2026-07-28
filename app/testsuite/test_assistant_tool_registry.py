@@ -4,9 +4,11 @@
 path_template+method 對得上 app.routes 實際註冊路由、server-fixed 欄位不外洩進 LLM schema、
 low-risk 工具不得暴露高風險欄位、projection allowlist 精確（巢狀 sentinel 驗證只輸出白名單）。
 """
+# ruff: noqa: E402
 from __future__ import annotations
 
 import inspect
+import re
 from pathlib import Path
 import sys
 
@@ -22,7 +24,13 @@ from app.services.assistant.tool_registry import (
     get_tool_registry,
 )
 
-EXPECTED_TOOL_COUNT = 72  # 68 loopback/composite + list_skills + get_skill + plan_batch + generate_chunk_actions
+EXPECTED_TOOL_COUNT = 77  # loopback/composite + local skills/knowledge + plan_batch + generate_chunk_actions
+
+
+def _normalize_route_path(path: str) -> str:
+    """Strip Starlette converters (`{name:int}` → `{name}`) so tool templates match app.routes."""
+    return re.sub(r"\{(\w+):\w+\}", r"{\1}", path)
+
 
 def _app_routes():
     return {
@@ -68,11 +76,12 @@ def test_delete_exemptions_are_exactly_the_documented_two():
 
 def test_every_tool_path_and_method_resolves_against_real_routes():
     registry = get_tool_registry()
-    routes = _app_routes()
+    routes = {(_method, _normalize_route_path(path)) for _method, path in _app_routes()}
     mismatches = [
         tool.name
         for tool in registry.all()
-        if tool.execution_mode == "loopback" and (tool.method, tool.path_template) not in routes
+        if tool.execution_mode == "loopback"
+        and (tool.method, _normalize_route_path(tool.path_template)) not in routes
     ]
     assert not mismatches, f"tools with no matching registered route: {mismatches}"
 
@@ -83,13 +92,16 @@ def test_path_param_llm_schema_types_match_real_endpoint_annotations():
     宣告的 schema 型別跟真實 FastAPI endpoint 的 Python 參數型別註記，防止未來新工具重演同一個
     bug（LLM 被迫捏造假整數,確認卡建成但實際呼叫必然失敗)。"""
     registry = get_tool_registry()
-    endpoints = _app_route_endpoints()
+    endpoints = {
+        (method, _normalize_route_path(path)): endpoint
+        for (method, path), endpoint in _app_route_endpoints().items()
+    }
     type_map = {int: "integer", str: "string"}
     mismatches = []
     for tool in registry.all():
         if tool.execution_mode != "loopback" or not tool.path_params:
             continue
-        endpoint = endpoints.get((tool.method, tool.path_template))
+        endpoint = endpoints.get((tool.method, _normalize_route_path(tool.path_template)))
         if endpoint is None:
             continue  # 由 test_every_tool_path_and_method_resolves_against_real_routes 另外把關
         sig = inspect.signature(endpoint)

@@ -1063,7 +1063,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (dom.addRow && !document.getElementById("addSectionBtn")) {
     const btn = document.createElement("button");
     btn.id = "addSectionBtn";
-    btn.className = "btn btn-sm btn-primary ms-2";
+    btn.className = "btn btn-primary btn-sm ms-2";
     btn.innerHTML =
       '<i class="fas fa-heading me-1"></i><span data-i18n="adhoc.addSection">Add Section</span>';
     btn.onclick = onAddSection;
@@ -1076,7 +1076,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (dom.addRow && !document.getElementById("searchReplaceBtn")) {
     const btn = document.createElement("button");
     btn.id = "searchReplaceBtn";
-    btn.className = "btn btn-sm btn-secondary ms-2";
+    btn.className = "btn btn-secondary btn-sm ms-2";
     btn.innerHTML =
       '<i class="fas fa-search me-1"></i><span data-i18n="adhoc.findReplace">Find & Replace</span>';
     btn.onclick = openSearchModal;
@@ -1399,12 +1399,12 @@ document.addEventListener("DOMContentLoaded", async () => {
                             <input type="text" id="replaceInput" class="form-control form-control-sm" placeholder="Replace with...">
                         </div>
                         <div class="d-flex justify-content-between mb-2">
-                            <button id="findNextBtn" class="btn btn-sm btn-primary flex-grow-1 me-1">Find Next</button>
-                            <button id="findPrevBtn" class="btn btn-sm btn-primary flex-grow-1">Find Prev</button>
+                            <button id="findNextBtn" class="btn btn-primary btn-sm flex-grow-1 me-1">Find Next</button>
+                            <button id="findPrevBtn" class="btn btn-primary btn-sm flex-grow-1">Find Prev</button>
                         </div>
                         <div class="d-flex justify-content-between">
-                            <button id="replaceBtn" class="btn btn-sm btn-secondary flex-grow-1 me-1">Replace</button>
-                            <button id="replaceAllBtn" class="btn btn-sm btn-secondary flex-grow-1">Replace All</button>
+                            <button id="replaceBtn" class="btn btn-secondary btn-sm flex-grow-1 me-1">Replace</button>
+                            <button id="replaceAllBtn" class="btn btn-secondary btn-sm flex-grow-1">Replace All</button>
                         </div>
                         <div id="searchMsg" class="text-muted small mt-2 text-center" style="min-height: 1.2em;"></div>
                     </div>

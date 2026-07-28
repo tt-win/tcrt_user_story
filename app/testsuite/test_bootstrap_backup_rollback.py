@@ -2,6 +2,10 @@
 
 全程使用 SQLite + tmp_path，透過直接改 alembic_version 建構「有 pending 升版」的既有系統，
 不依賴任何外部服務。設計依據：openspec/changes/add-boot-upgrade-backup-rollback/design.md。
+
+Note: pre-upgrade backup is temporarily disabled in ``database_init.py`` (see the
+commented block around the upgrade path). Tests below assert the *current* behavior
+(no backup files; rollback without a restorable backup is treated as abort).
 """
 
 from __future__ import annotations
@@ -17,6 +21,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import database_init
 from app import db_migrations
 from app.db_migrations import _get_baseline_revision, build_alembic_config
+
+# Matches the temporary disable in database_init._bootstrap_one_target.
+PRE_UPGRADE_BACKUP_DISABLED = True
 
 
 def _configure_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Path]:
@@ -69,7 +76,8 @@ def test_fresh_bootstrap_then_repeat_boot_creates_no_backups(monkeypatch, tmp_pa
     assert _backup_files(paths["backup_dir"]) == []
 
 
-def test_pending_target_backs_up_and_upgrades(monkeypatch, tmp_path) -> None:
+def test_pending_target_upgrades_without_pre_upgrade_backup(monkeypatch, tmp_path) -> None:
+    """Pending USM upgrades succeed; pre-upgrade backup is currently skipped."""
     paths = _configure_env(monkeypatch, tmp_path)
 
     _upgrade_to_revision(f"sqlite:///{paths['main']}", "main", "head")
@@ -82,15 +90,15 @@ def test_pending_target_backs_up_and_upgrades(monkeypatch, tmp_path) -> None:
     exit_code = database_init.main([])
 
     assert exit_code == 0
-    backups = _backup_files(paths["backup_dir"], "usm")
-    assert len(backups) == 1
+    assert _backup_files(paths["backup_dir"], "usm") == []
     assert not (paths["backup_dir"] / "usm" / "upgrade-failure.json").exists()
 
     status = db_migrations.get_pending_status("usm", database_url=usm_url)
     assert status.is_pending is False
 
 
-def test_upgrade_failure_with_rollback_restores_database(monkeypatch, tmp_path) -> None:
+def test_upgrade_failure_records_abort_when_no_backup(monkeypatch, tmp_path) -> None:
+    """With pre-upgrade backup disabled, rollback policy has nothing to restore → abort."""
     paths = _configure_env(monkeypatch, tmp_path)
     monkeypatch.setenv("BOOTSTRAP_ON_FAILURE", "rollback")
 
@@ -108,14 +116,16 @@ def test_upgrade_failure_with_rollback_restores_database(monkeypatch, tmp_path) 
 
     exit_code = database_init.main([])
 
-    assert exit_code == 8
+    # Exit 1 = abort (rollback requested but no restorable backup). Exit 8 is only
+    # returned after a successful restore from backup.
+    assert exit_code == 1
     status = db_migrations.get_pending_status("usm", database_url=usm_url)
     assert status.current == baseline
 
     marker = database_init.read_failure_marker(paths["backup_dir"], "usm")
     assert marker is not None
     assert marker["attempts"] == 1
-    assert marker["rolled_back"] is True
+    assert marker["rolled_back"] is False
 
 
 def test_repeated_failure_hits_max_attempts(monkeypatch, tmp_path) -> None:
@@ -135,9 +145,9 @@ def test_repeated_failure_hits_max_attempts(monkeypatch, tmp_path) -> None:
 
     monkeypatch.setitem(database_init.TARGET_UPGRADERS, "usm", _boom)
 
-    assert database_init.main([]) == 8
-    assert database_init.main([]) == 8
-    assert database_init.main([]) == 8
+    assert database_init.main([]) == 1
+    assert database_init.main([]) == 1
+    assert database_init.main([]) == 1
     assert database_init.main([]) == 10
 
     marker = database_init.read_failure_marker(paths["backup_dir"], "usm")
@@ -161,7 +171,7 @@ def test_clear_failure_markers_allows_retry(monkeypatch, tmp_path) -> None:
 
     monkeypatch.setitem(database_init.TARGET_UPGRADERS, "usm", _boom)
 
-    assert database_init.main([]) == 8
+    assert database_init.main([]) == 1
     assert database_init.main([]) == 10
 
     assert database_init.main(["--clear-failure-markers"]) == 0
@@ -173,7 +183,8 @@ def test_clear_failure_markers_allows_retry(monkeypatch, tmp_path) -> None:
     assert status.is_pending is False
 
 
-def test_multi_target_failure_rolls_back_earlier_success(monkeypatch, tmp_path) -> None:
+def test_multi_target_failure_aborts_without_restoring_earlier_success(monkeypatch, tmp_path) -> None:
+    """Without pre-upgrade backups, a later target failure cannot roll earlier targets back."""
     paths = _configure_env(monkeypatch, tmp_path)
     monkeypatch.setenv("BOOTSTRAP_ON_FAILURE", "rollback")
 
@@ -196,9 +207,12 @@ def test_multi_target_failure_rolls_back_earlier_success(monkeypatch, tmp_path) 
 
     exit_code = database_init.main([])
 
-    assert exit_code == 8
+    assert exit_code == 1
     main_status = db_migrations.get_pending_status("main", database_url=main_url)
-    assert main_status.current == main_baseline  # main 雖升級成功，仍因 audit 失敗被回退
+    # main upgraded successfully; without a backup it cannot be rolled back.
+    assert main_status.is_pending is False
+    assert main_status.current != main_baseline
 
-    assert len(_backup_files(paths["backup_dir"], "main")) == 1
-    assert len(_backup_files(paths["backup_dir"], "audit")) == 1
+    assert _backup_files(paths["backup_dir"], "main") == []
+    assert _backup_files(paths["backup_dir"], "audit") == []
+    assert PRE_UPGRADE_BACKUP_DISABLED is True

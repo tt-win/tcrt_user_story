@@ -233,7 +233,7 @@ function renderAttachmentsList() {
             </div>
             <div>
                 ${link}
-                <button type="button" class="btn btn-sm btn-danger remove-attachment-btn"
+                <button type="button" class="btn btn-danger btn-sm remove-attachment-btn"
                         data-index="${index}" data-file-token="${escapeHtml(stored)}" data-filename="${escapeHtml(attachment.name)}" data-i18n-title="tooltips.removeAttachment">
                     <i class="fas fa-times"></i>
                 </button>

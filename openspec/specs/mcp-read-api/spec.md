@@ -144,11 +144,11 @@ team read model 中的 `is_lark_configured` 欄位 SHALL 保留於回應（維�
 - **THEN** id=5 排在 id=12 之前
 
 ### Requirement: MCP Test Case Detail SHALL Expose test_data
-單筆 test case detail 端點 (`GET /api/mcp/teams/{team_id}/test-cases/{test_case_id}`) SHALL 在回應中包含 `test_data` 陣列；陣列中的每一項 SHALL 完整保留 `id` / `name` / `category` / `value` 四個欄位，不在 server 端做任何 redaction。當 test case 沒有 test_data 時，SHALL 回傳 `[]` 而非 `null`。
+單筆 test case detail 端點 (`GET /api/mcp/teams/{team_id}/test-cases/{test_case_id}`) SHALL 在回應中包含 `test_data` 陣列；陣列中的每一項 SHALL 完整保留 `id` / `name` / `category` / `value` 四個欄位。`category="credential"` 的 `value` 依 `app-token-security-hardening` 的 redaction 要求回傳 `[REDACTED]`，其餘分類的 value SHALL 不被截斷或遮罩。當 test case 沒有 test_data 時，SHALL 回傳 `[]` 而非 `null`。
 
 #### Scenario: Detail 端點回傳 test_data 陣列
 - **WHEN** machine principal 呼叫 `GET /api/mcp/teams/{team_id}/test-cases/{test_case_id}`，且該 test case 已有兩筆 test_data（分別為 `category="text"` 與 `category="credential"`）
-- **THEN** 回應 `test_case.test_data` 為長度 2 的陣列，每筆物件包含 `id`、`name`、`category`、`value` 四欄位且 value 未被截斷或遮罩
+- **THEN** 回應 `test_case.test_data` 為長度 2 的陣列，每筆物件包含 `id`、`name`、`category`、`value` 四欄位；`text` 項的 value 未被截斷或遮罩，`credential` 項的 value 為 `[REDACTED]`
 
 #### Scenario: 沒有 test_data 的 test case
 - **WHEN** machine principal 對一個未設定任何 test_data 的 test case 呼叫 detail 端點
@@ -177,12 +177,12 @@ team read model 中的 `is_lark_configured` 欄位 SHALL 保留於回應（維�
 - **WHEN** 呼叫 `GET /api/mcp/teams/{team_id}/test-cases?include_content=true&include_test_data=false`
 - **THEN** 回應的 `test_cases[i]` 包含 `precondition` / `steps` / `expected_result` 但不包含 `test_data`
 
-### Requirement: MCP test_data Payload SHALL Preserve Category Without Server-Side Redaction
-所有 MCP 端點回傳的 `test_data[i]` 物件 SHALL 完整保留 `category` 欄位（值為 `text|number|credential|email|url|identifier|date|json|other` 之一）。對於 `category="credential"` 等敏感分類，server SHALL NOT 在回應中對 `value` 進行截斷、遮罩或雜湊化；redaction 屬下游消費端職責（例如 audit log 寫入時）。
+### Requirement: MCP test_data Payload SHALL Preserve Category
+所有 MCP 端點回傳的 `test_data[i]` 物件 SHALL 完整保留 `category` 欄位（值為 `text|number|credential|email|url|identifier|date|json|other` 之一），且 SHALL NOT 對非 credential 分類的 `value` 進行截斷、遮罩或雜湊化。`category="credential"` 的 `value` 由 server 依 `app-token-security-hardening` 的「Credential test data is redacted in read responses」要求遮罩為 `[REDACTED]`；`category` 本身仍照原值回傳，供消費端判斷該項需另行取得。
 
-#### Scenario: credential 類別 value 完整回傳
+#### Scenario: credential 類別 value 遮罩但保留 category
 - **WHEN** test case 含一筆 `category="credential", name="admin_password", value="P@ssw0rd!"` 的 test_data，machine principal 呼叫 detail 端點
-- **THEN** 回應 `test_case.test_data[0].value == "P@ssw0rd!"` 且 `category == "credential"`
+- **THEN** 回應 `test_case.test_data[0].value == "[REDACTED]"` 且 `category == "credential"`
 
 #### Scenario: 未知 category 字串回傳原值
 - **WHEN** DB 中存有 `category="legacy_secret"`（不在 enum 列表中）的 test_data 項

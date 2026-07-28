@@ -70,6 +70,19 @@ def safe_truncate_text(text: str, max_tokens: int = 300) -> str:
     return truncated + suffix
 
 
+_DEGRADED_MESSAGE = "Knowledge service is temporarily unavailable."
+
+
+def _neutralize_knowledge_markup(value: Any) -> str:
+    return (
+        str(value or "")
+        .replace("<", "＜")
+        .replace(">", "＞")
+        .replace('"', "＂")
+        .replace("'", "＇")
+    )
+
+
 def _is_circuit_open() -> bool:
     """Return True if circuit breaker is currently tripped (open)."""
     global _CIRCUIT_BREAKER_TRIPPED_UNTIL
@@ -170,7 +183,7 @@ class KnowledgeRetrievalService:
                 result = {
                     "status": "degraded",
                     "results": [],
-                    "message": "Knowledge graph service is not enabled.",
+                    "message": _DEGRADED_MESSAGE,
                     "fallback_recommended": True,
                 }
                 return result
@@ -181,7 +194,7 @@ class KnowledgeRetrievalService:
                 result = {
                     "status": "degraded",
                     "results": [],
-                    "message": "Knowledge RAG circuit breaker is open (service busy or recovering).",
+                    "message": _DEGRADED_MESSAGE,
                     "fallback_recommended": True,
                 }
                 return result
@@ -193,7 +206,7 @@ class KnowledgeRetrievalService:
                 result = {
                     "status": "degraded",
                     "results": [],
-                    "message": "Knowledge RAG service is currently experiencing high load.",
+                    "message": _DEGRADED_MESSAGE,
                     "fallback_recommended": True,
                 }
                 return result
@@ -310,7 +323,7 @@ class KnowledgeRetrievalService:
                 result = {
                     "status": "degraded",
                     "results": [],
-                    "message": "Knowledge search timed out.",
+                    "message": _DEGRADED_MESSAGE,
                     "fallback_recommended": True,
                 }
                 return result
@@ -321,7 +334,7 @@ class KnowledgeRetrievalService:
                 result = {
                     "status": "degraded",
                     "results": [],
-                    "message": f"Knowledge search unavailable: {exc}",
+                    "message": _DEGRADED_MESSAGE,
                     "fallback_recommended": True,
                 }
                 return result
@@ -370,7 +383,7 @@ class KnowledgeRetrievalService:
                 result = {
                     "status": "degraded",
                     "results": [],
-                    "message": "Knowledge graph service is not enabled.",
+                    "message": _DEGRADED_MESSAGE,
                     "fallback_recommended": True,
                 }
                 return result
@@ -406,17 +419,23 @@ class KnowledgeRetrievalService:
                 result = {
                     "status": "degraded",
                     "results": [],
-                    "message": "Impact analysis timed out.",
+                    "message": _DEGRADED_MESSAGE,
                     "fallback_recommended": True,
                 }
                 return result
             except Exception as exc:  # noqa: BLE001
-                LOGGER.warning("Impact analysis failed for %s/%s: %s", entity_type, entity_id, exc)
+                LOGGER.warning(
+                    "Impact analysis failed for %s/%s: %s",
+                    entity_type,
+                    entity_id,
+                    exc,
+                    exc_info=True,
+                )
                 diag["degrade_reason"] = f"exception:{type(exc).__name__}"
                 result = {
                     "status": "degraded",
                     "results": [],
-                    "message": f"Impact analysis unavailable: {exc}",
+                    "message": _DEGRADED_MESSAGE,
                     "fallback_recommended": True,
                 }
                 return result
@@ -565,13 +584,20 @@ class KnowledgeRetrievalService:
         max_total_chars = 7500  # ~2000 tokens limit
 
         for h in hits:
-            title = h.get("title", "")
-            snippet = h.get("snippet", "")
-            source = h.get("entity_type", "reference")
+            title = _neutralize_knowledge_markup(h.get("title", ""))
+            snippet = _neutralize_knowledge_markup(h.get("snippet", ""))
+            source = _neutralize_knowledge_markup(h.get("entity_type", "reference"))
             meta = h.get("metadata", {}) or {}
-            t_id = meta.get("team_id", h.get("team_id", "unknown"))
-            t_name = meta.get("team_name", h.get("team_name", f"Team-{t_id}"))
-            line = f'<knowledge_source team_id="{t_id}" team_name="{t_name}" type="{source}" title="{title}">\n{snippet}\n</knowledge_source>'
+            t_id = _neutralize_knowledge_markup(
+                meta.get("team_id", h.get("team_id", "unknown"))
+            )
+            t_name = _neutralize_knowledge_markup(
+                meta.get("team_name", h.get("team_name", f"Team-{t_id}"))
+            )
+            line = (
+                f'<knowledge_source team_id="{t_id}" team_name="{t_name}" '
+                f'type="{source}" title="{title}">\n{snippet}\n</knowledge_source>'
+            )
 
             if total_chars + len(line) > max_total_chars:
                 break
@@ -587,11 +613,19 @@ class KnowledgeRetrievalService:
         """Yield processed and safely truncated result dictionaries using Python Generator."""
         for r in results:
             item = r.model_dump()
-            item["snippet"] = safe_truncate_text(item.get("snippet", ""), max_tokens=300)
+            item["title"] = _neutralize_knowledge_markup(item.get("title", ""))
+            item["snippet"] = _neutralize_knowledge_markup(
+                safe_truncate_text(item.get("snippet", ""), max_tokens=300)
+            )
             meta = item.get("metadata", {}) or {}
             t_id = meta.get("team_id", "unknown")
             t_name = meta.get("team_name", f"Team-{t_id}")
+            safe_t_id = _neutralize_knowledge_markup(t_id)
+            safe_t_name = _neutralize_knowledge_markup(t_name)
             item["team_id"] = t_id
             item["team_name"] = t_name
-            item["xml_snippet"] = f'<knowledge_source team_id="{t_id}" team_name="{t_name}">\n{item["snippet"]}\n</knowledge_source>'
+            item["xml_snippet"] = (
+                f'<knowledge_source team_id="{safe_t_id}" team_name="{safe_t_name}">\n'
+                f'{item["snippet"]}\n</knowledge_source>'
+            )
             yield item

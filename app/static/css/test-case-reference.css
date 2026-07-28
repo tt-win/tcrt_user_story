@@ -25,11 +25,43 @@ body.popup-minimal .container-fluid {
 }
 
 .reference-results-container {
-    height: calc(100vh - 160px); /* 調整高度計算 */
+    height: calc(100vh - var(--header-height, 64px) - var(--footer-height, 60px) - 2rem);
     overflow-y: auto;
+}
+
+/* 左側搜尋面板（取代 inline width/flex-shrink） */
+.ref-sidebar {
+    width: 400px;
+    flex-shrink: 0;
+}
+
+/* 取代 inline 絕對定位填滿（placeholder 與 iframe 共用） */
+.ref-overlay-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1;
+}
+
+.ref-iframe-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+    z-index: 2;
 }
 
 /* 隱藏快速搜尋提示 */
 body.popup-minimal #quickSearchHint {
     display: none !important;
+}
+
+@media (max-width: 768px) {
+    .ref-sidebar {
+        width: 100%;
+    }
 }

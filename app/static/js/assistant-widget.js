@@ -356,6 +356,21 @@ function assistantBubbleShouldKeep(flags) {
   return !!(f.hasText || f.hasToolActivity || f.hasConfirmCard);
 }
 
+/**
+ * 由 window.open 開啟的彈出視窗（參考測試案例、Test Case 編輯器）不注入 widget：
+ * 助手是主視窗的全域入口，彈窗只做單一任務且畫面窄，FAB 只會擋住內容。
+ * 權威來源是 base.html 由伺服器渲染的 `data-assistant-widget="off"`；另外容錯直接以
+ * `minimal=1` / `editor=1` 開啟的 test-case-management 彈窗（同 cache.js 的既有判斷）。
+ * 不使用 URLSearchParams：本檔純函式需在 node:test 的 vm context 下可測。
+ */
+function assistantWidgetDisabledForView(bodyDataset, search) {
+  if (bodyDataset && bodyDataset.assistantWidget === 'off') return true;
+  const query = String(search || '').replace(/^\?/, '');
+  return query
+    .split('&')
+    .some((pair) => /^(minimal|editor)=(1|true)$/.test(pair));
+}
+
 /* ======================================================================
  * IIFE 模組本體
  * ==================================================================== */
@@ -2158,6 +2173,9 @@ const AssistantWidget = (() => {
   /* ---------------- 啟動 ---------------- */
 
   async function init() {
+    const bodyDataset = document.body ? document.body.dataset : null;
+    const search = window.location ? window.location.search : '';
+    if (assistantWidgetDisabledForView(bodyDataset, search)) return;
     if (!(await checkAvailability())) return;
     mount();
   }

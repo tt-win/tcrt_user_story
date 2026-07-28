@@ -397,6 +397,15 @@
   "dataMenu": {
     "title": "數據與記錄"
   },
+  "adminMenu": {
+    "title": "管理",
+    "sectionOrg": "組織",
+    "orgSettings": "組織與系統設定",
+    "sectionSystem": "系統",
+    "auditLogs": "稽核日誌",
+    "systemLogs": "系統日誌",
+    "teamStatistics": "統計分析"
+  },
   "audit": {
     "viewLogs": "稽核記錄",
     "pageTitle": "稽核記錄檢視",
@@ -728,7 +737,7 @@
     "warning": "警告"
   },
   "navigation": {
-    "backToHome": "首頁",
+    "backToHome": "回到首頁",
     "backToManagement": "回到管理",
     "backToSets": "回到 Test Case Sets",
     "pleaseSelect": "請選擇...",
@@ -1498,6 +1507,7 @@
     "moveSetImpactConfirmHint": "是否確認繼續移動？",
     "browseMode": "瀏覽模式",
     "referenceTestCase": "參考測試案例",
+    "referenceFrameTitle": "參考測試案例內容",
     "referenceTestCaseButton": "參考測試案例",
     "referenceTestCaseSearch": "搜尋參考測試案例",
     "referenceTestCaseSearchPlaceholder": "輸入測試案例編號或標題...",

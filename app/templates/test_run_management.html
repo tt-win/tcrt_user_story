@@ -15,41 +15,41 @@
 {% endblock %}
 
 {% block page_specific_actions %}
-<div class="d-flex flex-column flex-md-row gap-3">
+<div class="d-flex flex-column flex-md-row gap-2 align-items-center">
     <!-- 狀態過濾按鈕群組 -->
     <div class="btn-group" role="group" data-i18n-aria-label="testRun.statusFilterButtons" aria-label="Status filter buttons">
         <input type="radio" class="btn-check" name="statusFilter" id="filterAll" value="all" checked>
-        <label class="btn btn-sm btn-secondary" for="filterAll">
+        <label class="btn btn-secondary btn-sm" for="filterAll">
             <i class="fas fa-list me-1"></i><span data-i18n="testRun.filter.all">全部</span>
         </label>
 
         <input type="radio" class="btn-check" name="statusFilter" id="filterDraft" value="draft">
-        <label class="btn btn-sm btn-warning" for="filterDraft">
+        <label class="btn btn-warning btn-sm" for="filterDraft">
             <i class="fas fa-edit me-1"></i><span data-i18n="testRun.filter.draft">草稿</span>
         </label>
 
         <input type="radio" class="btn-check" name="statusFilter" id="filterActive" value="active">
-        <label class="btn btn-sm btn-primary" for="filterActive">
+        <label class="btn btn-primary btn-sm" for="filterActive">
             <i class="fas fa-play me-1"></i><span data-i18n="testRun.filter.active">進行中</span>
         </label>
 
         <input type="radio" class="btn-check" name="statusFilter" id="filterCompleted" value="completed">
-        <label class="btn btn-sm btn-success" for="filterCompleted">
+        <label class="btn btn-success btn-sm" for="filterCompleted">
             <i class="fas fa-check me-1"></i><span data-i18n="testRun.filter.completed">已完成</span>
         </label>
 
         <input type="radio" class="btn-check" name="statusFilter" id="filterArchived" value="archived">
-        <label class="btn btn-sm btn-secondary" for="filterArchived">
+        <label class="btn btn-secondary btn-sm" for="filterArchived">
             <i class="fas fa-archive me-1"></i><span data-i18n="testRun.filter.archived">已歸檔</span>
         </label>
     </div>
 
     <!-- 其他操作按鈕 -->
     <div class="d-flex gap-2">
-        <button type="button" class="btn btn-sm btn-secondary" id="refreshBtn">
+        <button type="button" class="btn btn-secondary btn-sm" id="refreshBtn">
             <i class="fas fa-sync-alt me-1"></i><span data-i18n="common.refresh">重新整理</span>
         </button>
-        <a href="/" class="btn btn-sm btn-secondary">
+        <a href="/" class="btn btn-secondary btn-sm">
             <i class="fas fa-home me-1"></i><span data-i18n="navigation.backToHome">回到首頁</span>
         </a>
     </div>
@@ -90,10 +90,10 @@
     <!-- 檢視切換 (卡片 / 精簡列表)，套用至下方三個區塊 -->
     <div class="d-flex justify-content-end align-items-center gap-2 mb-3">
         <div class="btn-group" role="group" data-i18n-aria-label="common.viewToggle" aria-label="View toggle">
-            <button type="button" class="btn btn-sm btn-outline-secondary active" id="trmViewToggleCard" data-i18n-title="common.cardView" title="Card view">
+            <button type="button" class="btn btn-outline-secondary btn-sm active" id="trmViewToggleCard" data-i18n-title="common.cardView" title="Card view">
                 <i class="fas fa-th-large"></i>
             </button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="trmViewToggleCompact" data-i18n-title="common.compactView" title="Compact view">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="trmViewToggleCompact" data-i18n-title="common.compactView" title="Compact view">
                 <i class="fas fa-list"></i>
             </button>
         </div>
@@ -453,10 +453,10 @@
                 <!-- Configuration details will be dynamically loaded by JavaScript -->
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">關閉</button>
-                <button type="button" class="btn btn-warning" id="editConfigBtn">
+                <button type="button" class="btn btn-outline-primary me-auto" id="editConfigBtn">
                     <i class="fas fa-edit me-2"></i><span data-i18n="common.edit">編輯</span>
                 </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">關閉</button>
                 <button type="button" class="btn btn-danger" id="deleteConfigBtn">
                     <i class="fas fa-trash me-2"></i><span data-i18n="common.delete">刪除</span>
                 </button>
@@ -552,7 +552,7 @@
                         <i class="fas fa-chart-line me-1"></i><span data-i18n="testRun.sets.detail.report">報告</span>
                     </button>
                     <div class="dropdown" id="setDetailMoreActions">
-                        <button type="button" class="btn btn-sm test-run-kebab-btn" data-bs-toggle="dropdown" aria-expanded="false" data-i18n-aria-label="common.actions" aria-label="More actions">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-toggle="dropdown" aria-expanded="false" data-i18n-aria-label="common.actions" aria-label="More actions">
                             <i class="fas fa-ellipsis-v"></i>
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end">
@@ -606,7 +606,7 @@
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <h6 class="mb-0" data-i18n="testRun.sets.detail.automationRuns">Automation Runs</h6>
                         <span class="badge bg-secondary" id="setDetailAutomationRunsCount">0</span>
-                        <button type="button" class="btn btn-sm test-run-kebab-btn ms-auto" id="setDetailAutomationRunsRefreshBtn"
+                        <button type="button" class="btn btn-secondary btn-sm ms-auto" id="setDetailAutomationRunsRefreshBtn"
                                 title="重新整理" data-i18n-title="testRun.sets.detail.automationRunsRefresh">
                             <i class="fas fa-redo"></i>
                         </button>
@@ -614,8 +614,8 @@
                     <div id="setDetailAutomationRunsLoading" class="text-muted small py-2 d-none" data-i18n="common.loading">Loading...</div>
                     <div id="setDetailAutomationRunsEmpty" class="text-muted small py-2 d-none" data-i18n="testRun.sets.detail.automationRunsEmpty">尚無執行紀錄。點「執行 Automation Suites」以觸發一筆。</div>
                     <div class="table-responsive">
-                        <table class="table table-sm table-hover mb-0 d-none" id="setDetailAutomationRunsTable">
-                            <thead class="table-light">
+                        <table class="table table-sm table-hover align-middle mb-0 d-none" id="setDetailAutomationRunsTable">
+                            <thead>
                                 <tr>
                                     <th data-i18n="testRun.sets.detail.automationRunsColSuite">Suite</th>
                                     <th data-i18n="testRun.sets.detail.automationRunsColBranch">Branch</th>
@@ -640,7 +640,7 @@
 
 <!-- Test Run Set Report Modal -->
 <div class="modal fade" id="testRunSetReportModal" tabindex="-1">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width: 1400px;">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-w-1400">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title d-flex align-items-center gap-2">
@@ -671,8 +671,8 @@
                 </div>
 
                 <div class="table-responsive border rounded">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead class="table-light">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead>
                             <tr>
                                 <th data-i18n="testRun.sets.report.testRun">Test Run</th>
                                 <th data-i18n="common.status">狀態</th>
@@ -791,12 +791,12 @@
 <div class="modal fade" id="deleteConfigModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content border-danger">
-      <div class="modal-header bg-danger text-white">
+      <div class="modal-header">
         <h5 class="modal-title d-flex align-items-center">
-          <i class="fas fa-exclamation-triangle me-2"></i>
+          <i class="fas fa-exclamation-triangle text-warning me-2"></i>
           <span data-i18n="common.confirm">確認刪除</span>
         </h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <p id="deleteConfirmMessage" class="mb-3"></p>
@@ -822,12 +822,12 @@
 <div class="modal fade" id="deleteTestRunSetModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content border-danger">
-      <div class="modal-header bg-danger text-white">
+      <div class="modal-header">
         <h5 class="modal-title d-flex align-items-center">
-          <i class="fas fa-exclamation-triangle me-2"></i>
+          <i class="fas fa-exclamation-triangle text-warning me-2"></i>
           <span data-i18n="common.confirm">確認刪除</span>
         </h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <div class="alert alert-danger mb-0">
@@ -873,15 +873,15 @@
   </div>
 </div>
 
-<!-- 自訂狀態下拉選單 - Fixed positioning -->
-<div class="custom-status-dropdown-overlay" id="statusDropdownOverlay" onclick="hideCustomStatusDropdown()"></div>
-<div class="custom-status-dropdown" id="customStatusDropdown">
+<!-- 自訂狀態下拉選單 - Fixed positioning (Bootstrap dropdown-menu + fixed override for nested context) -->
+<div class="tr-dropdown-overlay" id="statusDropdownOverlay" onclick="hideCustomStatusDropdown()"></div>
+<div class="dropdown-menu tr-dropdown-menu" id="customStatusDropdown">
     <!-- 選項將由 JavaScript 動態生成 -->
 </div>
 
 <!-- 加入 Set 下拉選單 - Fixed positioning -->
-<div class="custom-status-dropdown-overlay" id="addToSetDropdownOverlay" onclick="hideAddToSetDropdown()"></div>
-<div class="custom-status-dropdown" id="addToSetDropdown">
+<div class="tr-dropdown-overlay" id="addToSetDropdownOverlay" onclick="hideAddToSetDropdown()"></div>
+<div class="dropdown-menu tr-dropdown-menu" id="addToSetDropdown">
     <!-- 選項將由 JavaScript 動態生成 -->
 </div>
 {% endblock %}

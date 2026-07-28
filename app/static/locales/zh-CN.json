@@ -397,6 +397,15 @@
   "dataMenu": {
     "title": "数据与记录"
   },
+  "adminMenu": {
+    "title": "管理",
+    "sectionOrg": "组织",
+    "orgSettings": "组织与系统设定",
+    "sectionSystem": "系统",
+    "auditLogs": "审计日志",
+    "systemLogs": "系统日志",
+    "teamStatistics": "统计分析"
+  },
   "audit": {
     "viewLogs": "审计记录",
     "pageTitle": "审计记录查阅",
@@ -728,7 +737,7 @@
     "warning": "警告"
   },
   "navigation": {
-    "backToHome": "首页",
+    "backToHome": "回到首页",
     "backToManagement": "回到管理",
     "backToSets": "回到 Test Case Sets",
     "pleaseSelect": "请选择...",
@@ -1498,6 +1507,7 @@
     "moveSetImpactConfirmHint": "是否确认继续移动？",
     "browseMode": "浏览模式",
     "referenceTestCase": "参考测试案例",
+    "referenceFrameTitle": "参考测试案例内容",
     "referenceTestCaseButton": "参考测试案例",
     "referenceTestCaseSearch": "搜索参考测试案例",
     "referenceTestCaseSearchPlaceholder": "输入测试案例编号或标题...",

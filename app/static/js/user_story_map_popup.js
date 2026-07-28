@@ -23,15 +23,19 @@ const teamIdParam = parseInt(urlParams.get('teamId'));
 const RELATION_EDGE_PATH_OPTIONS = { offset: 120, borderRadius: 18 };
 
 // HTML sanitization utility
-const escapeHtml = (value) => {
-    if (value === undefined || value === null) return '';
-    return String(value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-};
+// escapeHtml 由全域 assistant-widget.js 提供（若載入）。此處僅在缺漏時補上 fallback，
+// 避免與其他 classic script 同名宣告衝突（SyntaxError: Identifier 'escapeHtml' has already been declared）。
+if (typeof window.escapeHtml !== 'function') {
+    window.escapeHtml = (value) => {
+        if (value === undefined || value === null) return '';
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    };
+}
 
 // Custom Node Component
 const CustomNode = ({ data, id }) => {
@@ -854,7 +858,7 @@ const UserStoryMapFlow = () => {
                                             ${escapeHtml(rel.team_name || '')} / ${escapeHtml(rel.map_name || '')}
                                         </small>
                                     </div>
-                                    ${isCrossMap ? `<button type="button" class="btn btn-sm btn-info" data-related-popup-idx="${idx}" data-map-id="${rel.map_id || rel.mapId || ''}" data-team-id="${rel.team_id || rel.teamId || ''}" title="在新視窗開啟外部地圖" style="flex-shrink: 0; position: relative; z-index: 2; pointer-events: auto;"><i class="fas fa-external-link-alt"></i></button>` : ''}
+                                    ${isCrossMap ? `<button type="button" class="btn btn-info btn-sm" data-related-popup-idx="${idx}" data-map-id="${rel.map_id || rel.mapId || ''}" data-team-id="${rel.team_id || rel.teamId || ''}" title="在新視窗開啟外部地圖" style="flex-shrink: 0; position: relative; z-index: 2; pointer-events: auto;"><i class="fas fa-external-link-alt"></i></button>` : ''}
                                 </div>
                             `;
                         }).join('')}

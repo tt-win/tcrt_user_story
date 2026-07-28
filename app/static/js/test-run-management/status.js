@@ -66,7 +66,7 @@ function generateCustomStatusDropdownItems(config, dropdown) {
         const icon = getStatusIcon(status);
         
         html += `
-            <div class="custom-status-dropdown-item" onclick="handleCustomStatusChange('${status}')">
+            <div class="dropdown-item" onclick="handleCustomStatusChange('${status}')">
                 <i class="${icon} me-2"></i>${statusText}
             </div>
         `;
