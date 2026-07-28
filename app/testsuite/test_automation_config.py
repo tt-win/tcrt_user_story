@@ -6,7 +6,6 @@ absence of either disables the integration (empty base_url).
 """
 from __future__ import annotations
 
-import pytest
 
 from app.config import AllureConfig, AutomationProviderConfig
 

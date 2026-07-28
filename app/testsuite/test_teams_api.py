@@ -1,4 +1,3 @@
-# ruff: noqa: E402
 """Team CRUD API contract tests.
 
 覆蓋 `remove-team-lark-repo-settings` change 的驗收條件：team 建立／編輯不再需要
@@ -8,16 +7,11 @@ Lark Bitable 欄位、回應不再帶 `lark_config`，且既有 team 資料庫�
 
 from __future__ import annotations
 
-from pathlib import Path
-import sys
 from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.auth.dependencies import get_current_user
 from app.auth.models import UserRole

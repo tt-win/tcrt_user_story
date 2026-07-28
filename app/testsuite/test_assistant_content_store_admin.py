@@ -2,24 +2,19 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-import sys
 
 import pytest
 from fastapi.testclient import TestClient
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.auth.dependencies import get_current_user  # noqa: E402
-from app.auth.models import UserRole  # noqa: E402
-from app.database import get_db  # noqa: E402
-from app.db_access.main import get_main_access_boundary  # noqa: E402
-from app.main import app  # noqa: E402
-from app.models.database_models import User  # noqa: E402
-from app.services.assistant import content_store as store  # noqa: E402
-from app.services.assistant.content_store import (  # noqa: E402
+from app.auth.dependencies import get_current_user
+from app.auth.models import UserRole
+from app.database import get_db
+from app.db_access.main import get_main_access_boundary
+from app.main import app
+from app.models.database_models import User
+from app.services.assistant import content_store as store
+from app.services.assistant.content_store import (
     SKILL_CATALOG_TOKEN,
     assemble_system_prompt_for_agent,
     ensure_seeded,
@@ -27,7 +22,7 @@ from app.services.assistant.content_store import (  # noqa: E402
     list_enabled_skills,
     load_factory_system_prompt,
 )
-from app.testsuite.db_test_helpers import (  # noqa: E402
+from app.testsuite.db_test_helpers import (
     create_managed_test_database,
     dispose_managed_test_database,
     install_main_database_overrides,

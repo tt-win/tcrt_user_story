@@ -52,10 +52,17 @@ packages = ["app"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["app/testsuite"]
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 120
 target-version = "py310"
+# These are source templates with deliberate {{PLACEHOLDER}} tokens. They are
+# linted after rendering by the automation tooling, not as standalone Python.
+extend-exclude = [
+    "tools/skills/tcrt-automation-init/templates/**",
+    "tools/skills/tcrt-automation-pomify/templates/**",
+]
 
 [tool.ruff.lint.per-file-ignores]
 "scripts/check_emit_usage.py" = ["T201"]  # allow print in linter script

@@ -150,10 +150,13 @@ async def start_sync_workers() -> None:
         get_write_service,
         is_knowledge_graph_enabled,
     )
+    queue = get_task_queue()
     if not is_knowledge_graph_enabled():
+        # Stop a real queue left by an earlier lifespan before the feature is
+        # disabled.  get_task_queue() will return the null queue afterwards.
+        await queue.stop()
         LOGGER.debug("start_sync_workers: knowledge graph disabled, skipping")
         return
-    queue = get_task_queue()
 
     # Wire the worker to call write_service.write_entity with the
     # operation extracted from the payload.

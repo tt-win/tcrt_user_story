@@ -2,21 +2,13 @@
 
 from __future__ import annotations
 
-import asyncio
-import json
 import os
 from pathlib import Path
-from typing import Any, Dict, List
-from unittest.mock import AsyncMock, MagicMock, patch
-import sys
+from unittest.mock import patch
 
-import pytest
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.config import Settings, InspectionRoleConfig, InspectionConfig
+from app.config import Settings, InspectionConfig
 
 
 # ── Task 10.1 — Config ─────────────────────────────────────────────
@@ -126,7 +118,7 @@ class TestInspectionPrompts:
         assert "ticket=TCG-123" in rendered
 
     def test_inspection_stages_in_prompt_stage_type(self):
-        from app.services.qa_ai_helper_prompt_service import QAAIHelperPromptStage, PROMPT_FILE_MAP
+        from app.services.qa_ai_helper_prompt_service import PROMPT_FILE_MAP
 
         # QAAIHelperPromptStage is a Literal type; check PROMPT_FILE_MAP keys
         assert "inspection_extraction" in PROMPT_FILE_MAP

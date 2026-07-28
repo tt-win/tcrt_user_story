@@ -7,23 +7,18 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-import sys
 
 import pytest
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.auth.models import PermissionType, UserRole  # noqa: E402
-from app.config import AssistantConfig  # noqa: E402
-from app.database import get_db  # noqa: E402
-from app.db_access.main import get_main_access_boundary  # noqa: E402
-from app.main import app  # noqa: E402
-from app.models.database_models import Team  # noqa: E402
-from app.services.assistant import content_store as store  # noqa: E402
-from app.services.assistant.capability_context import (  # noqa: E402
+from app.auth.models import PermissionType, UserRole
+from app.config import AssistantConfig
+from app.database import get_db
+from app.db_access.main import get_main_access_boundary
+from app.main import app
+from app.models.database_models import Team
+from app.services.assistant import content_store as store
+from app.services.assistant.capability_context import (
     NO_TEAM_CONTEXT,
     OTHER_WRITE,
     ROLE_INSUFFICIENT,
@@ -33,14 +28,14 @@ from app.services.assistant.capability_context import (  # noqa: E402
     capability_category,
     tools_for_turn,
 )
-from app.services.assistant.content_store import (  # noqa: E402
+from app.services.assistant.content_store import (
     assemble_system_prompt_for_agent,
     get_system_prompt_row,
     update_system_prompt,
 )
-from app.services.assistant.tool_executor import ToolExecutor  # noqa: E402
-from app.services.assistant.tool_registry import get_tool_registry  # noqa: E402
-from app.testsuite.db_test_helpers import (  # noqa: E402
+from app.services.assistant.tool_executor import ToolExecutor
+from app.services.assistant.tool_registry import get_tool_registry
+from app.testsuite.db_test_helpers import (
     create_managed_test_database,
     dispose_managed_test_database,
     install_main_database_overrides,

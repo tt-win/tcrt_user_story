@@ -195,6 +195,13 @@ class TestSubscription:
         h.emit(_make_record("m"))
         assert h.subscriber_count() == 0 and len(sub.pending) == 0
 
+    async def test_close_subscribers_wakes_waiting_streams(self):
+        h = _handler()
+        sub, _, _ = h.subscribe()
+        h.close_subscribers()
+        await asyncio.sleep(0)
+        assert sub.dead and sub.wake_event.is_set() and h.subscriber_count() == 0
+
 
 class TestRedaction:
     @pytest.mark.parametrize(

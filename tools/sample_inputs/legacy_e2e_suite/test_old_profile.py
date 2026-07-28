@@ -4,7 +4,6 @@ This file mixes async and sync Playwright calls (oops). Pomify should
 detect Playwright async and convert the sync one too, with a
 `TODO(pomify): verify async conversion` comment.
 """
-import pytest
 from playwright.sync_api import Page
 
 

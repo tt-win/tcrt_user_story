@@ -1,4 +1,3 @@
-# ruff: noqa: E402
 """HTTP-level regression test for `POST /api/teams/{team_id}/automation-scripts/sync`.
 
 Entering the Automation Hub before any storage provider is configured makes the
@@ -12,16 +11,11 @@ This pins the contract: an unconfigured storage slot is a precondition gap →
 """
 from __future__ import annotations
 
-from pathlib import Path
-import sys
 from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.main import app
 from app.auth.dependencies import get_current_user

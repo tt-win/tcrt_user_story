@@ -6,7 +6,6 @@ set TCRT_RUN_KG_INTEGRATION=1 to enable.
 
 from __future__ import annotations
 
-import asyncio
 import os
 import uuid
 from pathlib import Path

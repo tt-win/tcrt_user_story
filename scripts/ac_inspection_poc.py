@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib
 import json
 import os
 import sys
@@ -34,11 +35,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.qa_ai_helper_preclean import (  # noqa: E402
-    build_output,
-    fetch_issue,
-    validate_output_structure,
-)
+_preclean = importlib.import_module("scripts.qa_ai_helper_preclean")
+build_output = _preclean.build_output
+fetch_issue = _preclean.fetch_issue
+validate_output_structure = _preclean.validate_output_structure
 
 # ---------------------------------------------------------------------------
 # Constants

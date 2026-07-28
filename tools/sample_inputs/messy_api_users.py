@@ -4,7 +4,6 @@ This is a pure API suite: no browser, no Page Object. The pomify skill
 should detect 'no UI' and pass it through as `tests/api/test_*.py`
 without emitting any `pages/` files.
 """
-import pytest
 import requests
 
 API = "https://api.acme.test/v1"

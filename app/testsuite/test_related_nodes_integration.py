@@ -5,11 +5,7 @@ Tests both frontend-backend integration and API functionality
 """
 
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-import json
-from uuid import uuid4
 
 # This test file is a template for integration testing
 # To be run with actual application context
@@ -124,7 +120,7 @@ class TestRelatedNodesIntegration:
     def test_permission_viewer_cannot_create_relation(self, client):
         """Test that viewers cannot create relations"""
         # Would need to set user role to 'viewer'
-        response = client.post(
+        client.post(
             '/api/user-story-maps/1/nodes/node-1/relations',
             json={
                 'target_node_id': 'node-2',
@@ -161,7 +157,7 @@ class TestRelatedNodesIntegration:
         )
         
         assert create_response.status_code == 200
-        relation_id = create_response.json()['relation_id']
+        assert "relation_id" in create_response.json()
         
         # Get the map
         map_response = client.get('/api/user-story-maps/1')

@@ -5,8 +5,6 @@ These tests use fakes to simulate failure scenarios.
 
 from __future__ import annotations
 
-import asyncio
-import json
 from pathlib import Path
 
 import pytest
@@ -14,7 +12,6 @@ import pytest
 from app.config import EmbeddingConfig, KnowledgeGraphConfig, QdrantConfig
 from app.services.knowledge.embedding_service import EmbeddingService
 from app.services.knowledge.knowledge_write_service import KnowledgeWriteService
-from app.services.knowledge.qdrant_client import QdrantKnowledgeClient
 
 
 class FailingQdrant:

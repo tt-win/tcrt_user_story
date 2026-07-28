@@ -609,16 +609,18 @@ class AuditService:
         except Exception as e:
             logger.error(f"批次寫入審計記錄失敗: {e}", exc_info=True)
             # 失敗的記錄放回緩衝區（避免遺失），但設上限避免審計 DB 持續故障時無限增長
-            async with self._batch_lock:
-                merged = records_to_write + self._batch_buffer
-                max_buffer = max(1, self.config.max_buffer_size)
-                if len(merged) > max_buffer:
-                    dropped = len(merged) - max_buffer
-                    merged = merged[-max_buffer:]
-                    logger.warning(
-                        "審計重排緩衝已達上限 %s，丟棄最舊 %s 筆記錄", max_buffer, dropped
-                    )
-                self._batch_buffer = merged
+            # _flush_batch() is normally called while _batch_lock is already
+            # held by log_action()/force_flush().  Re-acquiring that same
+            # asyncio.Lock here deadlocks whenever the DB write fails.
+            merged = records_to_write + self._batch_buffer
+            max_buffer = max(1, self.config.max_buffer_size)
+            if len(merged) > max_buffer:
+                dropped = len(merged) - max_buffer
+                merged = merged[-max_buffer:]
+                logger.warning(
+                    "審計重排緩衝已達上限 %s，丟棄最舊 %s 筆記錄", max_buffer, dropped
+                )
+            self._batch_buffer = merged
 
 
 # 全域審計服務實例

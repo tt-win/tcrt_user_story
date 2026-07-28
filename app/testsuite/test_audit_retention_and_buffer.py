@@ -4,20 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import importlib
-from pathlib import Path
-import sys
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-# `app.audit.__init__` exports the `audit_service` instance, which shadows the
-# submodule of the same name on attribute access; import_module resolves the real module.
-audit_service_module = importlib.import_module("app.audit.audit_service")
 from app.audit import audit_service as audit_service_singleton
 from app.audit.audit_service import AuditService
 from app.audit.models import ActionType, AuditLogCreate, ResourceType
 from app.services.scheduler import TaskScheduler
+
+
+# `app.audit.__init__` exports the `audit_service` instance, which shadows the
+# submodule of the same name on attribute access; import_module resolves the real module.
+audit_service_module = importlib.import_module("app.audit.audit_service")
 
 
 def _make_record(i: int) -> AuditLogCreate:
@@ -48,6 +44,31 @@ def test_retry_buffer_is_bounded_on_flush_failure(monkeypatch):
     assert len(service._batch_buffer) == 10
     # Newest records are retained (oldest dropped).
     assert service._batch_buffer[-1].resource_id == "res-49"
+
+
+def test_log_action_db_failure_does_not_deadlock_when_requeueing(monkeypatch):
+    service = AuditService()
+    service.config.batch_size = 1
+
+    class _BoomManager:
+        def get_session(self):
+            raise RuntimeError("audit DB down")
+
+    monkeypatch.setattr(audit_service_module, "audit_db_manager", _BoomManager())
+
+    asyncio.run(
+        service.log_action(
+            user_id=1,
+            username="tester",
+            role="app-token",
+            action_type=ActionType.READ,
+            resource_type=ResourceType.SYSTEM,
+            resource_id="res-deadlock",
+            team_id=None,
+        )
+    )
+
+    assert len(service._batch_buffer) == 1
 
 
 def test_audit_cleanup_service_is_registered():

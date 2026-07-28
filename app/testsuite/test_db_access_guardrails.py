@@ -2,14 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-import sys
 
-import pytest
 from sqlalchemy import func, select
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.audit.database import AuditLogTable
 from app.audit.models import ActionType, AuditSeverity, ResourceType
@@ -23,6 +17,8 @@ from app.testsuite.db_test_helpers import (
     install_audit_database_overrides,
     install_usm_database_overrides,
 )
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_install_audit_database_overrides_supports_boundary_reads(

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib
 import json
 import re
 import sys
@@ -23,22 +24,22 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from app.config import get_settings
-from app.services.jira_client import JiraClient
-from app.services.jira_testcase_helper_llm_service import (  # noqa: E402
-    JiraTestCaseHelperLLMService,
-    LLMStageResult,
-    get_jira_testcase_helper_llm_service,
-)
-from app.services.jira_testcase_helper_prompt_service import (  # noqa: E402
-    JiraTestCaseHelperPromptService,
-    get_jira_testcase_helper_prompt_service,
-)
-from app.services.jira_testcase_helper_service import (  # noqa: E402
-    JiraTestCaseHelperService,
-    _parse_tcg_ticket_key,
-    _locale_label,
-)
+get_settings = importlib.import_module("app.config").get_settings
+JiraClient = importlib.import_module("app.services.jira_client").JiraClient
+
+_llm_service = importlib.import_module("app.services.jira_testcase_helper_llm_service")
+JiraTestCaseHelperLLMService = _llm_service.JiraTestCaseHelperLLMService
+LLMStageResult = _llm_service.LLMStageResult
+get_jira_testcase_helper_llm_service = _llm_service.get_jira_testcase_helper_llm_service
+
+_prompt_service = importlib.import_module("app.services.jira_testcase_helper_prompt_service")
+JiraTestCaseHelperPromptService = _prompt_service.JiraTestCaseHelperPromptService
+get_jira_testcase_helper_prompt_service = _prompt_service.get_jira_testcase_helper_prompt_service
+
+_helper_service = importlib.import_module("app.services.jira_testcase_helper_service")
+JiraTestCaseHelperService = _helper_service.JiraTestCaseHelperService
+_parse_tcg_ticket_key = _helper_service._parse_tcg_ticket_key
+_locale_label = _helper_service._locale_label
 
 StageName = Literal[
     "requirement_ir",

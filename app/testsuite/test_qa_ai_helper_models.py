@@ -1,9 +1,7 @@
-# ruff: noqa: E402
 
 from __future__ import annotations
 
 from pathlib import Path
-import sys
 
 import pytest
 from pydantic import ValidationError
@@ -11,9 +9,6 @@ from sqlalchemy import inspect
 from sqlalchemy.dialects import mysql, sqlite
 import yaml
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 import database_init
 from app.audit.database import AuditBase

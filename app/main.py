@@ -1,4 +1,5 @@
-# ruff: noqa: E402
+import importlib
+
 from fastapi import FastAPI, Request, Query, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -12,6 +13,10 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from app.utils.responses import ORJSONCompatResponse
+
+
+def _import_attr(module_name: str, attribute_name: str):
+    return getattr(importlib.import_module(module_name), attribute_name)
 
 
 @asynccontextmanager
@@ -41,9 +46,10 @@ try:
 except Exception as _e:
     logging.warning(f"GZipMiddleware 啟用失敗（不影響服務）：{_e}")
 
-from app.middlewares import AuditMiddleware
-from app.database import get_db, run_sync
-from app.models.database_models import TestCaseLocal
+AuditMiddleware = _import_attr("app.middlewares", "AuditMiddleware")
+get_db = _import_attr("app.database", "get_db")
+run_sync = _import_attr("app.database", "run_sync")
+TestCaseLocal = _import_attr("app.models.database_models", "TestCaseLocal")
 
 app.add_middleware(AuditMiddleware)
 
@@ -51,8 +57,8 @@ app.add_middleware(AuditMiddleware)
 logging.basicConfig(level=logging.INFO)
 
 # Super Admin log viewer：旁路 ring buffer handler（stdout 輸出不受影響）
-from app.config import settings as _app_settings
-from app.utils.system_log_buffer import install_system_log_handler
+_app_settings = _import_attr("app.config", "settings")
+install_system_log_handler = _import_attr("app.utils.system_log_buffer", "install_system_log_handler")
 
 install_system_log_handler(
     buffer_size=_app_settings.log_viewer.buffer_size,
@@ -61,8 +67,10 @@ install_system_log_handler(
 )
 
 # 初始化版本服務
-from app.services.version_service import get_version_service
-from app.audit import init_audit_database, cleanup_audit_database, audit_service
+get_version_service = _import_attr("app.services.version_service", "get_version_service")
+init_audit_database = _import_attr("app.audit", "init_audit_database")
+cleanup_audit_database = _import_attr("app.audit", "cleanup_audit_database")
+audit_service = _import_attr("app.audit", "audit_service")
 
 version_service = get_version_service()
 logging.info(f"應用啟動，伺服器版本時間戳: {version_service.get_server_timestamp()}")
@@ -141,7 +149,7 @@ async def apply_version_headers(request: Request, call_next):
 
 # Assistant 服務層例外 -> HTTPException：assistant 路由的擁有權/狀態檢查（get_conversation_owned
 # 等）直接拋 AssistantError，統一在此轉換，避免每個 endpoint 各自 try/except 漏接。
-from app.services.assistant.errors import AssistantError
+AssistantError = _import_attr("app.services.assistant.errors", "AssistantError")
 
 
 @app.exception_handler(AssistantError)
@@ -150,11 +158,11 @@ async def _assistant_error_handler(_request: Request, exc: AssistantError) -> JS
 
 
 # 包含 API 路由
-from app.api import api_router
-from app.api.system import router as system_router
-from app.api.user_story_maps import router as usm_router
-from app.api.adhoc import router as adhoc_router
-from app.api.knowledge import router as knowledge_router
+api_router = _import_attr("app.api", "api_router")
+system_router = _import_attr("app.api.system", "router")
+usm_router = _import_attr("app.api.user_story_maps", "router")
+adhoc_router = _import_attr("app.api.adhoc", "router")
+knowledge_router = _import_attr("app.api.knowledge", "router")
 
 app.include_router(api_router, prefix="/api")
 app.include_router(system_router)

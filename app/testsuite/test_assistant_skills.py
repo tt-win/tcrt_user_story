@@ -4,26 +4,22 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-import sys
 
 import pytest
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from app.services.assistant.content_store import (  # noqa: E402
+from app.services.assistant.content_store import (
     _parse_frontmatter,
     load_factory_skills,
 )
-from app.services.assistant.skills import (  # noqa: E402
+from app.services.assistant.skills import (
     format_skill_catalog_for_prompt,
     get_skill,
     list_skill_catalog,
     load_skills,
 )
-from app.services.assistant.tool_registry import get_tool_registry  # noqa: E402
+from app.services.assistant.tool_registry import get_tool_registry
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _SKILLS_DIR = PROJECT_ROOT / "prompts" / "assistant" / "skills"
 # Backtick token that looks like a tool name (snake_case with action-ish prefix or multi-part).
 # Tool names are multi-segment snake_case (e.g. list_test_cases), not params like set_id.

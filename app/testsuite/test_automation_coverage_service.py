@@ -167,7 +167,7 @@ async def test_list_cases_status_filters_and_links(automation_coverage_db):
         assert by_num["TC-002"]["status"] == "covers"
         assert by_num["TC-003"]["status"] == "uncovered"
         assert by_num["TC-004"]["status"] == "uncovered"
-        assert [(l["script_name"], l["link_type"]) for l in by_num["TC-001"]["links"]] == [
+        assert [(link["script_name"], link["link_type"]) for link in by_num["TC-001"]["links"]] == [
             ("test_login.py", "PRIMARY"),
         ]
 

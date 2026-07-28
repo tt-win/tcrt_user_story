@@ -11,7 +11,7 @@ import io
 import json
 import tarfile
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -245,7 +245,7 @@ class _ProcessingThenReadyAllureClient(_FakeAllureClient):
                 return httpx.Response(
                     400,
                     json={"meta_data": {"message": (
-                        f"Processing files for project_id 'x'. Try later!"
+                        "Processing files for project_id 'x'. Try later!"
                     )}},
                     request=httpx.Request("GET", url),
                 )

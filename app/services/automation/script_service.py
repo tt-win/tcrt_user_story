@@ -51,6 +51,18 @@ from app.services.automation.marker_sync import (  # noqa: F401
     parse_marker_note,
 )
 
+__all__ = [
+    "MarkerHit",
+    "TestEntry",
+    "AI_SUGGEST_PREFIX",
+    "MARKER_SYNC_CREATED_BY",
+    "build_marker_note",
+    "is_ai_suggest_link",
+    "is_marker_sync_link",
+    "parse_ai_suggest_user_id",
+    "parse_marker_note",
+]
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_MANIFEST_PATH = "tcrt-automation.yml"

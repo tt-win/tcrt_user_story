@@ -362,7 +362,8 @@ npm run lint:templates # inline style only
 - 後端目標測試優先：`uv run pytest app/testsuite/<target> -q`
 - 後端全套：`uv run pytest app/testsuite -q`
 - 前端 component spec：`uv run pytest app/testsuite/test_component_spec.py -q`
-- Ruff：`uv run ruff check app scripts database_init.py`
+- Ruff 必須零診斷：`uv run ruff check .`。
+- 新增或修改任何 Python 檔，尤其是 `app/testsuite/` 測試檔，完成前先執行 `uv run ruff check <changed-file>`，再執行全 repo Ruff；不得留下 E/F/語法診斷，也不得用新的 `# noqa`、per-file ignore 或關閉規則掩蓋問題。只有 `pyproject.toml` 明確排除的尚未渲染 automation skeleton 例外。
 - 前端 lint：`npm run lint`
 - i18n coverage：`node scripts/check-i18n-coverage.mjs`
 - 修改 JS 時至少跑對應 `node --check app/static/js/<file>.js`

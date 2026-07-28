@@ -1,20 +1,14 @@
-# ruff: noqa: E402
 """Tests for the app token pins API (/api/app/teams/{team_id}/pins)."""
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta
 import json
-from pathlib import Path
-import sys
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.auth.app_token_dependencies import generate_app_token
 import app.api.app_pins as app_pins_api

@@ -2,16 +2,11 @@
 from __future__ import annotations
 
 import asyncio
-import sys
 from datetime import timedelta
-from pathlib import Path
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import update
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.config import AssistantConfig
 from app.database import get_db

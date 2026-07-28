@@ -14,6 +14,33 @@ from app.db_migrations import upgrade_database
 from app.db_url import normalize_async_database_url, normalize_sync_database_url
 
 
+class _DiscardAuditSession:
+    """Minimal sink for API tests that do not install an audit database."""
+
+    def add_all(self, _records) -> None:
+        pass
+
+    async def commit(self) -> None:
+        pass
+
+
+class _DiscardAuditDatabaseManager:
+    """Prevent disposable API tests from touching the developer's audit DB."""
+
+    @asynccontextmanager
+    async def get_session(self):
+        yield _DiscardAuditSession()
+
+
+def _patch_audit_service_manager(monkeypatch, manager) -> None:
+    import importlib
+
+    audit_database = importlib.import_module("app.audit.database")
+    audit_service_module = importlib.import_module("app.audit.audit_service")
+    monkeypatch.setattr(audit_database, "audit_db_manager", manager)
+    monkeypatch.setattr(audit_service_module, "audit_db_manager", manager)
+
+
 def sqlite_database_url(db_path: Path) -> str:
     return f"sqlite:///{db_path}"
 
@@ -67,6 +94,10 @@ def install_main_database_overrides(
     async_session_factory,
 ):
     import app.database as app_database
+    from app.audit import audit_service
+    import app.services.knowledge as knowledge_module
+    from app.services.knowledge import get_query_log_service
+    from app.services.knowledge.task_queue import NullKnowledgeSyncTaskQueue
 
     monkeypatch.setattr(app_database, "engine", async_engine)
     monkeypatch.setattr(app_database, "SessionLocal", async_session_factory)
@@ -76,6 +107,20 @@ def install_main_database_overrides(
             yield db
 
     app.dependency_overrides[get_db_dependency] = override_get_db
+
+    # Do not carry audit records or a query-log worker from a previous
+    # TestClient into this disposable-database fixture.
+    audit_service._batch_buffer.clear()
+    _patch_audit_service_manager(monkeypatch, _DiscardAuditDatabaseManager())
+    query_log_service = get_query_log_service()
+    monkeypatch.setattr(query_log_service, "_force_disabled", True)
+
+    # These fixtures use disposable databases and must not start a real
+    # Qdrant/embedding worker from the developer's environment.  Besides
+    # making tests nondeterministic, the worker's asyncio primitives would be
+    # reused across TestClient lifespan loops.
+    monkeypatch.setattr(knowledge_module, "is_knowledge_graph_enabled", lambda settings=None: False)
+    monkeypatch.setattr(knowledge_module, "_task_queue", NullKnowledgeSyncTaskQueue())
     return override_get_db
 
 
@@ -87,6 +132,14 @@ def install_audit_database_overrides(
     import app.audit.database as audit_database
     import app.db_access.audit as audit_db_access
     audit_service_module = importlib.import_module("app.audit.audit_service")
+
+    class _TestAuditDatabaseManager:
+        @asynccontextmanager
+        async def get_session(self):
+            async with async_session_factory() as db:
+                yield db
+
+    _patch_audit_service_manager(monkeypatch, _TestAuditDatabaseManager())
 
     @asynccontextmanager
     async def override_get_audit_session():

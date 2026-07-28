@@ -8,34 +8,29 @@ assistant-action-confirmation「confirm 的有效 team 取自 turn 快照」）�
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
-import sys
 from types import SimpleNamespace
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
-import pytest  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
+import pytest
+from fastapi.testclient import TestClient
 
-from app.auth.dependencies import get_current_user  # noqa: E402
-from app.auth.models import UserRole  # noqa: E402
-from app.config import settings  # noqa: E402
-from app.database import get_db  # noqa: E402
-from app.db_access.main import get_main_access_boundary  # noqa: E402
-from app.main import app  # noqa: E402
-from app.models.database_models import (  # noqa: E402
+from app.auth.dependencies import get_current_user
+from app.auth.models import UserRole
+from app.config import settings
+from app.database import get_db
+from app.db_access.main import get_main_access_boundary
+from app.main import app
+from app.models.database_models import (
     AssistantTurn,
     Team,
     TestCaseSet,
     TestCaseSection,
     User,
 )
-import app.services.assistant.assistant_llm_service as llm_mod  # noqa: E402
-from app.services.assistant import conversation_service as conversation_service_module  # noqa: E402
-from app.services.assistant.team_context import effective_team_id  # noqa: E402
-from app.testsuite.db_test_helpers import (  # noqa: E402
+import app.services.assistant.assistant_llm_service as llm_mod
+from app.services.assistant import conversation_service as conversation_service_module
+from app.services.assistant.team_context import effective_team_id
+from app.testsuite.db_test_helpers import (
     create_managed_test_database,
     dispose_managed_test_database,
     install_main_database_overrides,

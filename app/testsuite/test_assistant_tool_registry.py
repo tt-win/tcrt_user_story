@@ -4,17 +4,11 @@
 path_template+method 對得上 app.routes 實際註冊路由、server-fixed 欄位不外洩進 LLM schema、
 low-risk 工具不得暴露高風險欄位、projection allowlist 精確（巢狀 sentinel 驗證只輸出白名單）。
 """
-# ruff: noqa: E402
 from __future__ import annotations
 
 import inspect
 import re
-from pathlib import Path
-import sys
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.main import app
 from app.services.assistant.projection import project_and_redact

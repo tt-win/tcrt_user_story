@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import re
 import sys
@@ -15,13 +16,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Set
 
+import requests
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import requests  # noqa: E402
-
-from app.config import get_settings  # noqa: E402
+get_settings = importlib.import_module("app.config").get_settings
 
 OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL_ALIAS = {

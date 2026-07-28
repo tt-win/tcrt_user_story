@@ -19,7 +19,6 @@ if TYPE_CHECKING:
     from app.services.knowledge.neo4j_client import Neo4jClient
     from app.services.knowledge.qdrant_client import QdrantKnowledgeClient
     from app.services.knowledge.task_queue import KnowledgeSyncTaskQueue as _KnowledgeSyncTaskQueue
-    from app.services.knowledge.task_queue import NullKnowledgeSyncTaskQueue  # noqa: F401
     KnowledgeSyncTaskQueue = _KnowledgeSyncTaskQueue  # explicit re-export
 
 LOGGER = logging.getLogger(__name__)
@@ -124,16 +123,21 @@ def get_retrieval_service() -> Any:
 def get_task_queue() -> Any:
     """取得 task queue。若知識圖譜停用，回傳 NullKnowledgeSyncTaskQueue。"""
     global _task_queue
-    if _task_queue is None:
-        if is_knowledge_graph_enabled():
-            from app.services.knowledge.task_queue import KnowledgeSyncTaskQueue
+    from app.services.knowledge.task_queue import KnowledgeSyncTaskQueue, NullKnowledgeSyncTaskQueue
 
+    enabled = is_knowledge_graph_enabled()
+    if _task_queue is None:
+        if enabled:
             _task_queue = KnowledgeSyncTaskQueue(
                 write_service_factory=get_write_service,
             )
         else:
-            from app.services.knowledge.task_queue import NullKnowledgeSyncTaskQueue
-
+            _task_queue = NullKnowledgeSyncTaskQueue()
+    elif isinstance(_task_queue, KnowledgeSyncTaskQueue) and not enabled:
+        # A process can change configuration between TestClient lifespans (or
+        # a test can disable KG).  Never leave a stopped real queue as the
+        # enqueue target when the feature is disabled.
+        if not _task_queue.is_running:
             _task_queue = NullKnowledgeSyncTaskQueue()
     return _task_queue
 
@@ -157,6 +161,8 @@ def reset_singletons_for_test() -> None:
     _write_service = None
     _hybrid_search = None
     _retrieval_service = None
-    _task_queue = None
+    if _task_queue is None or not getattr(_task_queue, "is_running", False):
+        _task_queue = None
+    else:
+        LOGGER.warning("保留執行中的 KnowledgeSyncTaskQueue，避免測試重置遺留 worker")
     _query_log_service = None
-

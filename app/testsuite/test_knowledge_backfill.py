@@ -7,17 +7,13 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-import uuid
 from pathlib import Path
-from typing import AsyncIterator
 
 import pytest
 
 from app.config import EmbeddingConfig, KnowledgeGraphConfig, QdrantConfig
 from app.services.knowledge.embedding_service import EmbeddingService
-from app.services.knowledge.knowledge_write_service import BackfillProgress, KnowledgeWriteService
-from app.services.knowledge.qdrant_client import QdrantKnowledgeClient
+from app.services.knowledge.knowledge_write_service import KnowledgeWriteService
 
 
 class FakeQdrant:

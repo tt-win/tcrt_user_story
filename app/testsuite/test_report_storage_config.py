@@ -1,17 +1,12 @@
 from pathlib import Path
-import sys
 import pytest
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.config import PROJECT_ROOT as CONFIG_PROJECT_ROOT, Settings
 from app.services.attachment_storage import (
     build_attachment_metadata,
     build_attachment_url,
     get_attachment_access_url,
-    get_attachments_root_dir,
     normalize_attachment_metadata,
     resolve_attachment_metadata_path,
 )

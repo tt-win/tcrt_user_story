@@ -370,6 +370,9 @@ async def stream_system_logs(
                     except asyncio.TimeoutError:
                         yield ": keep-alive\n\n"
                         continue
+                    if sub.dead:
+                        yield _sse_frame("end", {"reason": "handler_reset"})
+                        break
                     for entry in handler.take_batch(sub):
                         if entry["seq"] > replay_latest_seq:  # 與 replay 去重
                             yield _sse_frame("log", _redacted(entry), seq=entry["seq"])

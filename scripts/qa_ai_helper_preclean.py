@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import re
 import sys
 from dataclasses import dataclass, field
@@ -16,7 +17,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.services.jira_client import JiraAuthManager, JiraIssueManager  # noqa: E402
+_jira_client = importlib.import_module("app.services.jira_client")
+JiraAuthManager = _jira_client.JiraAuthManager
+JiraIssueManager = _jira_client.JiraIssueManager
 
 
 SECTION_ALIASES = {

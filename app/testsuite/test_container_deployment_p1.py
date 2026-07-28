@@ -61,7 +61,14 @@ with bootstrap_lock():
 
 def test_leader_lock_is_exclusive_across_processes(tmp_path):
     """一個行程持有 leader 鎖時，另一個行程 try_acquire 應失敗。"""
-    env = {**os.environ, "TCRT_RUNTIME_LOCK_DIR": str(tmp_path)}
+    lock_database = tmp_path / "runtime-lock-test.db"
+    sqlite_url = f"sqlite:///{lock_database}"
+    env = {
+        **os.environ,
+        "DATABASE_URL": sqlite_url,
+        "SYNC_DATABASE_URL": sqlite_url,
+        "TCRT_RUNTIME_LOCK_DIR": str(tmp_path),
+    }
     holder = subprocess.Popen(
         [sys.executable, "-c", _LEADER_HOLDER],
         cwd=str(REPO),

@@ -181,6 +181,29 @@ async def test_task_queue_dedup_key_separates_upsert_and_delete() -> None:
     assert "delete" in received
 
 
+def test_task_queue_rebinds_async_state_on_new_event_loop() -> None:
+    """A queue singleton must be reusable across TestClient lifespan loops."""
+    from app.services.knowledge.task_queue import KnowledgeSyncTaskQueue
+
+    queue = KnowledgeSyncTaskQueue(write_service_factory=lambda: object())
+
+    async def _run_once() -> None:
+        await queue.start()
+        assert await queue.enqueue("test_cases", "TC-LOOP") is True
+        await queue.stop()
+
+    asyncio.run(_run_once())
+    asyncio.run(_run_once())
+
+
+@pytest.mark.asyncio
+async def test_task_queue_rejects_enqueue_when_stopped() -> None:
+    from app.services.knowledge.task_queue import KnowledgeSyncTaskQueue
+
+    queue = KnowledgeSyncTaskQueue(write_service_factory=lambda: object())
+    assert await queue.enqueue("test_cases", "TC-STOPPED") is False
+
+
 
 # ---- hooks module: enqueue_test_case_sync ----
 

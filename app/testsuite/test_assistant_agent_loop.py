@@ -7,12 +7,7 @@ runner 屬 SSE/API 層行為，覆蓋於 test_assistant_conversations_api.py。
 """
 from __future__ import annotations
 
-from pathlib import Path
-import sys
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from types import SimpleNamespace
 
@@ -196,7 +191,7 @@ async def test_viewer_role_write_tool_filtered_from_catalog(agent_db, monkeypatc
     """VIEWER 角色的工具目錄預過濾（design D2）：write 工具在迴圈層級就不在目錄內，
     LLM 呼叫它會被視為 unknown_tool（縱深防禦，非僅靠 executor 的 permission 檢查）。"""
     executor, conv_svc, registry, cfg = _make_services()
-    llm = _install_llm(monkeypatch, [
+    _install_llm(monkeypatch, [
         AssistantLLMResult(content=None, tool_calls=[ParsedToolCall(provider_tool_call_id="p1", name="create_test_run_config", arguments={"name": "x"})]),
         AssistantLLMResult(content="cannot write as viewer", tool_calls=[]),
     ])
@@ -299,7 +294,7 @@ async def test_only_first_tool_call_processed_when_provider_returns_multiple(age
 async def test_llm_tool_call_id_is_server_normalized_and_unique_even_with_missing_provider_ids(agent_db, monkeypatch):
     """provider 未回傳或重用 call id 時，llm_tool_call_id 仍須由伺服器正規化且對話內唯一。"""
     executor, conv_svc, registry, cfg = _make_services()
-    llm = _install_llm(monkeypatch, [
+    _install_llm(monkeypatch, [
         AssistantLLMResult(content=None, tool_calls=[ParsedToolCall(provider_tool_call_id=None, name="list_test_cases", arguments={"limit": 1})]),
         AssistantLLMResult(content=None, tool_calls=[ParsedToolCall(provider_tool_call_id=None, name="list_test_cases", arguments={"limit": 2})]),
         AssistantLLMResult(content="done", tool_calls=[]),

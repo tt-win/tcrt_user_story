@@ -1,12 +1,7 @@
-import sys
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 import pytest
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.db_access.coordinator import CrossDatabaseCoordinator
 from app.db_access.core import BoundaryContract, DatabaseTarget, ManagedAccessBoundary

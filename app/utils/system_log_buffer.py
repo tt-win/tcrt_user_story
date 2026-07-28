@@ -107,6 +107,17 @@ class Subscriber:
         self.dead = False
 
 
+def _schedule_subscriber_wakeup(sub: Subscriber) -> bool:
+    """Wake a subscriber from any thread without touching its loop directly."""
+    try:
+        sub.loop.call_soon_threadsafe(sub.wake_event.set)
+        return True
+    except RuntimeError:
+        # The stream's event loop may already be closed during test/app
+        # shutdown.  The caller removes that subscriber from the registry.
+        return False
+
+
 class RingBufferLogHandler(logging.Handler):
     def __init__(self, buffer_size: int, max_message_chars: int, subscriber_queue_size: int):
         super().__init__()
@@ -144,11 +155,10 @@ class RingBufferLogHandler(logging.Handler):
                     sub.pending.append(entry)  # deque maxlen：滿即淘汰最舊未投遞筆
                     if not sub.wakeup_scheduled:
                         sub.wakeup_scheduled = True
-                        try:
-                            sub.loop.call_soon_threadsafe(sub.wake_event.set)
-                        except RuntimeError:
+                        if not _schedule_subscriber_wakeup(sub):
                             dead_subscribers.append(sub)
                 for sub in dead_subscribers:
+                    sub.dead = True
                     self._subscribers.discard(sub)
         except Exception:
             # 捕捉層故障只能導致 viewer 缺資料，不得影響 log 呼叫端
@@ -200,6 +210,18 @@ class RingBufferLogHandler(logging.Handler):
         with self._lock:
             sub.dead = True
             self._subscribers.discard(sub)
+
+    def close_subscribers(self) -> None:
+        """Mark all streams closed and wake any generator waiting on an event."""
+        with self._lock:
+            subscribers = list(self._subscribers)
+            self._subscribers.clear()
+            for sub in subscribers:
+                sub.dead = True
+                sub.pending.clear()
+                sub.wakeup_scheduled = True
+        for sub in subscribers:
+            _schedule_subscriber_wakeup(sub)
 
     def take_batch(self, sub: Subscriber) -> List[dict]:
         """generator 醒來後自取 batch；flag/event/pending 狀態轉換在同一 critical section。"""
@@ -263,6 +285,7 @@ def reset_system_log_handler() -> None:
     """測試用：卸載並清除單例。"""
     global _handler
     if _handler is not None:
+        _handler.close_subscribers()
         _detach(logging.getLogger(), _handler)
         for name in _UVICORN_LOGGERS:
             _detach(logging.getLogger(name), _handler)
