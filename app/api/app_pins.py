@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.api.mcp import _ensure_team_exists
+from app.services.external_read import TeamNotFoundError, ensure_team_exists
 from app.audit import ActionType
 from app.auth.app_token_dependencies import (
     AppTokenErrorCodes,
@@ -113,7 +113,13 @@ async def list_app_team_pins(
     principal: AppTokenPrincipal = Depends(_require_pin_read_scope),
 ) -> dict:
     """List a team's shared pins, grouped by entity_type."""
-    await _ensure_team_exists(db, team_id)
+    try:
+        await ensure_team_exists(db, team_id)
+    except TeamNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
     await require_app_team_access(team_id, request, principal)
 
     main_boundary = create_main_access_boundary_for_session(db)

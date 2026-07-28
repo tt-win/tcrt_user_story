@@ -10,8 +10,34 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
+import shutil
+import tempfile
+
 from app.db_migrations import upgrade_database
 from app.db_url import normalize_async_database_url, normalize_sync_database_url
+
+# Cache of migrated schema template files, keyed by migration target name.
+# Created once per process; subsequent tests copy the file instead of
+# re-running all Alembic migrations (which takes seconds per invocation).
+_SCHEMA_TEMPLATE_CACHE: dict[str, Path] = {}
+
+
+def _get_schema_template(target_name: str) -> Path:
+    """Return a template SQLite DB with the full schema for *target_name*.
+
+    The template is built once per process via Alembic and reused via
+    ``shutil.copy2`` — cutting per-test-file setup from seconds to milliseconds.
+    """
+    if target_name not in _SCHEMA_TEMPLATE_CACHE:
+        template_path = Path(tempfile.gettempdir()) / f"tcrt_test_schema_{target_name}.db"
+        if template_path.exists():
+            template_path.unlink()
+        upgrade_database(
+            database_url=sqlite_database_url(template_path),
+            target_name=target_name,
+        )
+        _SCHEMA_TEMPLATE_CACHE[target_name] = template_path
+    return _SCHEMA_TEMPLATE_CACHE[target_name]
 
 
 class _DiscardAuditSession:
@@ -50,18 +76,26 @@ def create_managed_test_database(
     *,
     target_name: str = "main",
 ) -> dict[str, Any]:
+    from sqlalchemy.pool import NullPool
+
+    # Copy cached schema template instead of re-running all Alembic migrations.
+    template_path = _get_schema_template(target_name)
+    shutil.copy2(template_path, db_path)
+
     database_url = sqlite_database_url(db_path)
-    upgrade_database(database_url=database_url, target_name=target_name)
 
     sync_engine = create_engine(
         normalize_sync_database_url(database_url),
         connect_args={"check_same_thread": False, "timeout": 30},
         pool_pre_ping=True,
     )
+    # NullPool ensures aiosqlite worker threads terminate when sessions close,
+    # rather than lingering in the pool and causing segfaults when many test
+    # files run sequentially.
     async_engine = create_async_engine(
         normalize_async_database_url(database_url),
         connect_args={"timeout": 30},
-        pool_pre_ping=True,
+        poolclass=NullPool,
     )
 
     sync_session_factory = sessionmaker(
@@ -172,5 +206,20 @@ def install_usm_database_overrides(
 
 
 def dispose_managed_test_database(database_bundle: dict[str, Any]) -> None:
-    asyncio.run(database_bundle["async_engine"].dispose())
-    database_bundle["sync_engine"].dispose()
+    import threading
+
+    async_engine = database_bundle["async_engine"]
+    sync_engine = database_bundle["sync_engine"]
+
+    try:
+        asyncio.run(async_engine.dispose())
+    except Exception:
+        pass
+
+    # Wait for lingering aiosqlite worker threads to terminate so they do
+    # not segfault the next test file's Alembic migration.
+    for thread in list(threading.enumerate()):
+        if "aiosqlite" in getattr(thread, "name", ""):
+            thread.join(timeout=5)
+
+    sync_engine.dispose()

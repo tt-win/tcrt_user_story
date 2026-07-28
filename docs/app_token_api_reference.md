@@ -803,6 +803,35 @@ curl -X POST "$BASE/api/app/teams/1/test-run-sets/10/generate-report" -H "$AUTH"
 5. **稽核**：所有 `/api/app/*` 請求（含拒絕）皆記錄 actor、endpoint、IP、User-Agent；429 限流前的暴力嘗試也會留下 deny audit。
 6. **刪除類操作**：`test_case:admin` / `test_run:admin` 的刪除與 archive 不可透過 API 還原，呼叫端請先以 impact-preview / 列表端點確認範圍。
 
+## 21. Migration / 遷移指南（Read API 統一實作）
+
+> **2026-07-28**：`/api/app/*` 與 `/api/mcp/*` 的六個 read 操作已共用單一實作
+> (`app/services/external_read/`)。以下列出對 `/api/app/*` client 可觀察的行為變更。
+
+1. **未知 `set_id` 不再回空清單**
+   - 變更前：未知 `set_id` 直接當過濾條件 → 0 筆結果。
+   - 變更後：未知 `set_id` 預設忽略 set 過濾、回傳整 team，並在 `filters.set_not_found` 標記 `true`。
+   - 需要 404 時：傳 `strict_set=true`。
+   - `set_id=0` 也套用「已提供」語意（不再被 `if set_id:` 忽略）。
+
+2. **lookup 多 filter 為 AND 非 OR**
+   - 變更前：`q`、`test_case_number`、`ticket` 之間為 OR。
+   - 變更後：所有 filter 取**交集 (AND)**；team scope 固定以 AND 加入，不進入 OR 群組。
+
+3. **`test_case_number` 子字串比對 + `match_type`**
+   - 變更前：精確 `==` 比對。
+   - 變更後：子字串 `ilike` 比對；`match_type` 區分 `exact` / `partial`。
+   - `q` 也涵蓋 `tcg_json` 欄位。
+
+4. **預設不回 archived → `include_archived=true`**
+   - 變更前：test-runs 回傳所有 set（含 archived）。
+   - 變更後：`include_archived` 預設 `false`；要包含 archived 請傳 `include_archived=true`。
+
+5. **summary 用 `*_count`；舊 key deprecated**
+   - 變更前：`summary` = `{ "sets", "unassigned", "adhoc" }`。
+   - 變更後：canonical keys 為 `set_count`、`set_run_count`、`unassigned_count`、`adhoc_count`、`total_runs`。
+   - 舊 key `sets` / `unassigned` / `adhoc` 仍保留但標記 **deprecated**，值與對應的 `*_count` 相同；未來 change 將移除。
+
 ## 相關文件
 
 - [app_token_auth.md](app_token_auth.md) — 憑證模型、生命週期與 rollback 概觀

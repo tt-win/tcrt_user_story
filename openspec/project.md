@@ -33,6 +33,7 @@ Test Case Repository Tool（TCRT）是一個以 `FastAPI + Jinja2 + 原生 JS/CS
   - API：`app/api/automation_*.py`（providers / scripts / links / script_groups / coverage / environments / webhooks / result）
 - **排程服務**：`app/services/scheduler.py`
 - **MCP 讀取 API / 驗證（相容期）**：`app/api/mcp.py`、`app/auth/mcp_dependencies.py`
+- **外部 read 共用實作**：`app/services/external_read/`（teams / test-cases / detail / lookup / sections / test-runs 六個唯讀查詢，由 `/api/mcp/*` 與 `/api/app/*` 共用）
 - **App Token 外部 API（canonical）**：`app/api/app_tokens.py`（管理）、`app/api/app_read.py`（read）、`app/api/app_test_cases.py`、`app/api/app_test_runs.py`、`app/api/app_automation.py`（mutation / trigger）、`app/auth/app_token_dependencies.py`、`app/models/app_token.py`；詳見 `docs/app_token_auth.md` 與 `openspec/changes/add-team-app-token-apis/`
 - **報告儲存**：`app/services/html_report_service.py`，並由 `reports.root_dir` 控制輸出根目錄
 - **容器化**：`Dockerfile`、`docker-compose.app.yml`、`docker-compose.mysql.yml`、`docker-compose.postgres.yml`、`docker/app-entrypoint.sh`

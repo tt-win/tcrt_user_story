@@ -5,23 +5,8 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
 
-from app.api.mcp import (
-    _build_case_payload,
-    _config_payload,
-    _ensure_team_exists,
-    _get_section_case_counts,
-    _get_team_case_counts,
-    _lookup_match_type,
-    _normalize_priority_filter,
-    _normalize_result_filter,
-    _parse_run_types,
-    _parse_status_filters,
-    _status_match,
-)
 from app.auth.app_token_dependencies import (
     AppTokenErrorCodes,
     get_current_app_token_principal,
@@ -30,30 +15,27 @@ from app.auth.app_token_dependencies import (
 )
 from app.database import get_db
 from app.models.app_token import READ_SCOPES, AppTokenPrincipal
-from app.models.database_models import (
-    AdHocRun,
-    Team as TeamDB,
-    TestCaseLocal as TestCaseLocalDB,
-    TestCaseSection as TestCaseSectionDB,
-    TestCaseSet as TestCaseSetDB,
-    TestRunConfig as TestRunConfigDB,
-    TestRunSet as TestRunSetDB,
-    TestRunSetMembership as TestRunSetMembershipDB,
-)
 from app.models.mcp import (
-    MCPAdhocRunItem,
-    MCPCrossTeamTestCaseItem,
-    MCPPageMeta,
     MCPTestCaseDetailResponse,
     MCPTestCaseLookupResponse,
-    MCPTestCaseSectionItem,
-    MCPTestCaseSetItem,
-    MCPTeamItem,
     MCPTeamTestCasesResponse,
     MCPTeamTestCaseSectionsResponse,
     MCPTeamTestRunsResponse,
     MCPTeamsResponse,
-    MCPTestRunSetItem,
+)
+from app.services.external_read import (
+    MissingLookupFilterError,
+    TestCaseNotFoundError,
+    TestCaseSetNotFoundError,
+    TeamNotFoundError,
+    UnknownRunTypeError,
+    ensure_team_exists,
+    get_team_test_case_detail_read,
+    list_team_test_case_sections_read,
+    list_team_test_cases_read,
+    list_team_test_runs_read,
+    list_teams_read,
+    lookup_test_cases_read,
 )
 
 router = APIRouter(prefix="/app", tags=["app-read"])
@@ -84,32 +66,7 @@ async def list_app_teams(
     principal: AppTokenPrincipal = Depends(_require_read_scope),
 ):
     """List teams accessible to the app token (sanitized metadata only)."""
-    result = await db.execute(select(TeamDB).order_by(TeamDB.id))
-    teams = result.scalars().all()
-
-    filtered = []
-    for team in teams:
-        if principal.can_access_team(team.id):
-            filtered.append(team)
-
-    team_case_counts = await _get_team_case_counts(db)
-    items = [
-        MCPTeamItem(
-            id=team.id,
-            name=team.name,
-            description=team.description,
-            status=team.status.value if hasattr(team.status, "value") else str(team.status),
-            test_case_count=team_case_counts.get(team.id, 0),
-            created_at=team.created_at,
-            updated_at=team.updated_at,
-            last_sync_at=team.last_sync_at,
-            # Deprecated：team 層級 Lark Bitable 設定已移除，欄位僅為相容保留且恆為 False。
-            is_lark_configured=False,
-            is_jira_configured=bool(team.jira_project_key),
-        )
-        for team in filtered
-    ]
-    return MCPTeamsResponse(total=len(items), items=items)
+    return await list_teams_read(db, allowed_team_ids=principal.accessible_team_ids())
 
 
 @router.get("/teams/{team_id}/test-cases", response_model=MCPTeamTestCasesResponse)
@@ -126,6 +83,7 @@ async def list_app_team_test_cases(
     assignee: Optional[str] = Query(None, description="Assignee 關鍵字過濾"),
     tcg: Optional[str] = Query(None, description="Issue/Ticket 關鍵字過濾（對應 tcg 欄位）"),
     ticket: Optional[str] = Query(None, description="Issue/Ticket/單號關鍵字（同 tcg 欄位）"),
+    strict_set: bool = Query(False),
     include_content: bool = Query(False),
     include_test_data: bool = Query(
         False, description="是否回傳每筆 case 的 test_data 陣列（含 id/name/category/value）"
@@ -134,107 +92,37 @@ async def list_app_team_test_cases(
     principal: AppTokenPrincipal = Depends(_require_read_scope),
 ):
     """List test cases for a team (app-token read)."""
-    await _ensure_team_exists(db, team_id)
+    try:
+        await ensure_team_exists(db, team_id)
+    except TeamNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
     await require_app_team_access(team_id, request, principal)
-
-    query = select(TestCaseLocalDB).where(TestCaseLocalDB.team_id == team_id)
-    count_query = select(func.count()).select_from(TestCaseLocalDB).where(
-        TestCaseLocalDB.team_id == team_id
-    )
-
-    if search:
-        query = query.where(TestCaseLocalDB.title.ilike(f"%{search}%"))
-        count_query = count_query.where(TestCaseLocalDB.title.ilike(f"%{search}%"))
-
-    priority_filter = _normalize_priority_filter(priority)
-    if priority_filter is not None:
-        query = query.where(TestCaseLocalDB.priority == priority_filter)
-        count_query = count_query.where(TestCaseLocalDB.priority == priority_filter)
-
-    result_filter = _normalize_result_filter(test_result)
-    if result_filter is not None:
-        query = query.where(TestCaseLocalDB.test_result == result_filter)
-        count_query = count_query.where(TestCaseLocalDB.test_result == result_filter)
-
-    if set_id:
-        query = query.where(TestCaseLocalDB.test_case_set_id == set_id)
-        count_query = count_query.where(TestCaseLocalDB.test_case_set_id == set_id)
-
-    if section_id:
-        query = query.where(TestCaseLocalDB.test_case_section_id == section_id)
-        count_query = count_query.where(TestCaseLocalDB.test_case_section_id == section_id)
-
-    if assignee and assignee.strip():
-        assignee_condition = TestCaseLocalDB.assignee_json.ilike(f"%{assignee.strip()}%")
-        query = query.where(assignee_condition)
-        count_query = count_query.where(assignee_condition)
-
-    # tcg 與 ticket 都比對 tcg_json；同時提供時取 OR（與 /api/mcp/* 列表語意一致）
-    tcg_filters = [value.strip() for value in (tcg, ticket) if value and value.strip()]
-    if tcg_filters:
-        tcg_condition = or_(
-            *[TestCaseLocalDB.tcg_json.ilike(f"%{value}%") for value in tcg_filters]
-        )
-        query = query.where(tcg_condition)
-        count_query = count_query.where(tcg_condition)
-
-    total_result = await db.execute(count_query)
-    total = total_result.scalar() or 0
-
-    set_count_rows = await db.execute(
-        select(TestCaseLocalDB.test_case_set_id, func.count(TestCaseLocalDB.id))
-        .where(TestCaseLocalDB.team_id == team_id)
-        .group_by(TestCaseLocalDB.test_case_set_id)
-    )
-    set_count_map = {set_id_value: count for set_id_value, count in set_count_rows.all()}
-
-    query = query.order_by(TestCaseLocalDB.id).offset(skip).limit(limit)
-    result = await db.execute(query)
-    test_cases = result.scalars().all()
-
-    sets_result = await db.execute(
-        select(TestCaseSetDB).where(TestCaseSetDB.team_id == team_id).order_by(TestCaseSetDB.id)
-    )
-    sets = sets_result.scalars().all()
-
-    case_payloads = [
-        _build_case_payload(
-            tc,
+    try:
+        return await list_team_test_cases_read(
+            db,
+            team_id,
+            set_id=set_id,
+            search=search,
+            priority=priority,
+            test_result=test_result,
+            assignee=assignee,
+            tcg=tcg,
+            ticket=ticket,
+            section_id=section_id,
+            strict_set=strict_set,
             include_content=include_content,
             include_test_data=include_test_data,
+            skip=skip,
+            limit=limit,
         )
-        for tc in test_cases
-    ]
-
-    return MCPTeamTestCasesResponse(
-        team_id=team_id,
-        filters={
-            "search": search,
-            "priority": priority,
-            "test_result": test_result,
-            "set_id": set_id,
-            "section_id": section_id,
-            "assignee": assignee,
-            "tcg": tcg,
-            "ticket": ticket,
-            "include_content": include_content,
-            "include_test_data": include_test_data,
-        },
-        sets=[
-            MCPTestCaseSetItem(
-                id=s.id,
-                name=s.name,
-                description=s.description,
-                is_default=s.is_default,
-                test_case_count=int(set_count_map.get(s.id, 0) or 0),
-                created_at=s.created_at,
-                updated_at=s.updated_at,
-            )
-            for s in sets
-        ],
-        test_cases=case_payloads,
-        page=MCPPageMeta(skip=skip, limit=limit, total=total, has_next=skip + limit < total),
-    )
+    except TestCaseSetNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": AppTokenErrorCodes.RESOURCE_NOT_FOUND, "message": str(exc)},
+        ) from exc
 
 
 @router.get("/teams/{team_id}/test-cases/{case_id}", response_model=MCPTestCaseDetailResponse)
@@ -246,48 +134,21 @@ async def get_app_team_test_case_detail(
     principal: AppTokenPrincipal = Depends(_require_read_scope),
 ):
     """Get test case detail (app-token read)."""
-    await _ensure_team_exists(db, team_id)
-    await require_app_team_access(team_id, request, principal)
-
-    result = await db.execute(
-        select(TestCaseLocalDB)
-        .options(joinedload(TestCaseLocalDB.test_case_set))
-        .where(
-            TestCaseLocalDB.id == case_id,
-            TestCaseLocalDB.team_id == team_id,
-        )
-    )
-    tc = result.scalar_one_or_none()
-    if not tc:
+    try:
+        await ensure_team_exists(db, team_id)
+    except TeamNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": AppTokenErrorCodes.RESOURCE_NOT_FOUND, "message": "Test case not found"},
-        )
-
-    from app.api.mcp import _to_text
-    from app.services.automation.linkage_service import AutomationLinkageService
-
-    linkage_service = AutomationLinkageService(db)
+            detail=str(exc),
+        ) from exc
+    await require_app_team_access(team_id, request, principal)
     try:
-        linked_automation = await linkage_service.list_linked_automation(
-            team_id=team_id,
-            test_case_id=case_id,
-        )
-    except Exception:
-        linked_automation = []
-
-    payload = _build_case_payload(tc, include_content=True, include_extended=True)
-    payload["linked_automation_scripts"] = [
-        {
-            "script_id": item.get("script_id"),
-            "name": item.get("name", ""),
-            "script_format": item.get("script_format", "OTHER"),
-            "ref_path": item.get("ref_path"),
-            "link_type": _to_text(item.get("link_type", "")) or "REFERENCES",
-        }
-        for item in linked_automation
-    ]
-    return MCPTestCaseDetailResponse(team_id=team_id, test_case=payload)
+        return await get_team_test_case_detail_read(db, team_id, case_id)
+    except TestCaseNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": AppTokenErrorCodes.RESOURCE_NOT_FOUND, "message": str(exc)},
+        ) from exc
 
 
 @router.get("/test-cases/lookup", response_model=MCPTestCaseLookupResponse)
@@ -297,6 +158,7 @@ async def lookup_app_test_cases(
     test_case_number: Optional[str] = Query(None),
     ticket: Optional[str] = Query(None),
     team_id: Optional[int] = Query(None),
+    include_content: bool = Query(False),
     include_test_data: bool = Query(
         False, description="是否回傳每筆 case 的 test_data 陣列（含 id/name/category/value）"
     ),
@@ -306,69 +168,33 @@ async def lookup_app_test_cases(
     principal: AppTokenPrincipal = Depends(_require_read_scope),
 ):
     """Cross-team test case lookup (app-token read)."""
-    if not q and not test_case_number and not ticket:
+    if team_id is not None:
+        try:
+            await ensure_team_exists(db, team_id)
+        except TeamNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(exc),
+            ) from exc
+
+    try:
+        return await lookup_test_cases_read(
+            db,
+            q=q,
+            test_case_number=test_case_number,
+            ticket=ticket,
+            team_id=team_id,
+            include_content=include_content,
+            include_test_data=include_test_data,
+            skip=skip,
+            limit=limit,
+            allowed_team_ids=principal.accessible_team_ids(),
+        )
+    except MissingLookupFilterError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": AppTokenErrorCodes.VALIDATION_ERROR, "message": "At least one filter is required"},
-        )
-
-    query = select(TestCaseLocalDB, TeamDB).join(TeamDB, TestCaseLocalDB.team_id == TeamDB.id)
-
-    conditions = []
-    if test_case_number:
-        conditions.append(TestCaseLocalDB.test_case_number == test_case_number)
-    if q:
-        conditions.append(or_(
-            TestCaseLocalDB.title.ilike(f"%{q}%"),
-            TestCaseLocalDB.test_case_number.ilike(f"%{q}%"),
-        ))
-    if ticket:
-        conditions.append(TestCaseLocalDB.tcg_json.ilike(f"%{ticket}%"))
-
-    if conditions:
-        query = query.where(or_(*conditions))
-
-    if team_id:
-        query = query.where(TestCaseLocalDB.team_id == team_id)
-
-    query = query.offset(skip).limit(limit)
-    result = await db.execute(query)
-    rows = result.all()
-
-    items = []
-    for tc, team in rows:
-        if not principal.can_access_team(team.id):
-            continue
-        match_type = _lookup_match_type(
-            tc, keyword=q, test_case_number=test_case_number, ticket=ticket
-        )
-        items.append(
-            MCPCrossTeamTestCaseItem(
-                team_id=team.id,
-                team_name=team.name,
-                match_type=match_type,
-                test_case=_build_case_payload(
-                    tc,
-                    include_content=False,
-                    include_test_data=include_test_data,
-                ),
-            )
-        )
-
-    total = len(items)
-    paged = items[skip : skip + limit] if skip > 0 else items[:limit]
-
-    return MCPTestCaseLookupResponse(
-        filters={
-            "q": q,
-            "test_case_number": test_case_number,
-            "ticket": ticket,
-            "team_id": team_id,
-            "include_test_data": include_test_data,
-        },
-        items=paged,
-        page=MCPPageMeta(skip=skip, limit=limit, total=total, has_next=skip + limit < total),
-    )
+            detail={"code": AppTokenErrorCodes.VALIDATION_ERROR, "message": str(exc)},
+        ) from exc
 
 
 @router.get("/teams/{team_id}/test-case-sections", response_model=MCPTeamTestCaseSectionsResponse)
@@ -378,53 +204,26 @@ async def list_app_team_test_case_sections(
     set_id: Optional[int] = Query(None),
     parent_section_id: Optional[int] = Query(None),
     roots_only: bool = Query(False),
+    include_empty: bool = Query(True),
     db: AsyncSession = Depends(get_db),
     principal: AppTokenPrincipal = Depends(_require_read_scope),
 ):
     """List test case sections for a team (app-token read)."""
-    await _ensure_team_exists(db, team_id)
+    try:
+        await ensure_team_exists(db, team_id)
+    except TeamNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
     await require_app_team_access(team_id, request, principal)
-
-    query = select(TestCaseSectionDB).join(
-        TestCaseSetDB, TestCaseSectionDB.test_case_set_id == TestCaseSetDB.id
-    ).where(TestCaseSetDB.team_id == team_id)
-
-    if set_id:
-        query = query.where(TestCaseSectionDB.test_case_set_id == set_id)
-    if parent_section_id is not None:
-        if roots_only:
-            query = query.where(TestCaseSectionDB.parent_section_id.is_(None))
-        else:
-            query = query.where(TestCaseSectionDB.parent_section_id == parent_section_id)
-    elif roots_only:
-        query = query.where(TestCaseSectionDB.parent_section_id.is_(None))
-
-    query = query.order_by(TestCaseSectionDB.sort_order, TestCaseSectionDB.id)
-    result = await db.execute(query)
-    sections = result.scalars().all()
-
-    case_counts = await _get_section_case_counts(db, team_id)
-
-    items = [
-        MCPTestCaseSectionItem(
-            id=s.id,
-            test_case_set_id=s.test_case_set_id,
-            parent_section_id=s.parent_section_id,
-            name=s.name,
-            description=s.description,
-            level=s.level,
-            sort_order=s.sort_order,
-            test_case_count=case_counts.get(s.id, 0),
-            created_at=s.created_at,
-            updated_at=s.updated_at,
-        )
-        for s in sections
-    ]
-    return MCPTeamTestCaseSectionsResponse(
-        team_id=team_id,
-        filters={"set_id": set_id, "parent_section_id": parent_section_id, "roots_only": roots_only},
-        sections=items,
-        total=len(items),
+    return await list_team_test_case_sections_read(
+        db,
+        team_id,
+        set_id=set_id,
+        parent_section_id=parent_section_id,
+        roots_only=roots_only,
+        include_empty=include_empty,
     )
 
 
@@ -433,87 +232,31 @@ async def list_app_team_test_runs(
     team_id: int,
     request: Request,
     status_filter: Optional[str] = Query(None, alias="status"),
-    run_type: str = Query("all"),
+    run_type: Optional[str] = Query("all"),
+    include_archived: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     principal: AppTokenPrincipal = Depends(_require_read_scope),
 ):
     """List test runs for a team (app-token read)."""
-    await _ensure_team_exists(db, team_id)
+    try:
+        await ensure_team_exists(db, team_id)
+    except TeamNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
     await require_app_team_access(team_id, request, principal)
-
-    status_filters = _parse_status_filters(status_filter)
-    run_type_filters = _parse_run_types(run_type)
-
-    sets_result = await db.execute(
-        select(TestRunSetDB).where(TestRunSetDB.team_id == team_id).order_by(TestRunSetDB.id)
-    )
-    sets = sets_result.scalars().all()
-
-    set_items = []
-    for trs in sets:
-        if status_filters and not _status_match(trs.status, status_filters):
-            continue
-        members_result = await db.execute(
-            select(TestRunConfigDB)
-            .join(TestRunSetMembershipDB, TestRunSetMembershipDB.config_id == TestRunConfigDB.id)
-            .where(TestRunSetMembershipDB.set_id == trs.id)
+    try:
+        return await list_team_test_runs_read(
+            db,
+            team_id,
+            status_filter=status_filter,
+            run_type=run_type,
+            include_archived=include_archived,
+            include_legacy_summary_aliases=True,
         )
-        configs = members_result.scalars().all()
-        set_items.append(
-            MCPTestRunSetItem(
-                id=trs.id,
-                name=trs.name,
-                status=trs.status.value if hasattr(trs.status, "value") else str(trs.status),
-                test_runs=[_config_payload(c) for c in configs],
-            )
-        )
-
-    unassigned_configs = []
-    if "unassigned" in run_type_filters:
-        assigned_ids_result = await db.execute(
-            select(TestRunSetMembershipDB.config_id)
-        )
-        assigned_ids = {r[0] for r in assigned_ids_result.all()}
-
-        unassigned_query = select(TestRunConfigDB).where(TestRunConfigDB.team_id == team_id)
-        if assigned_ids:
-            unassigned_query = unassigned_query.where(~TestRunConfigDB.id.in_(assigned_ids))
-        unassigned_result = await db.execute(unassigned_query)
-        unassigned_configs = unassigned_result.scalars().all()
-
-        if status_filters:
-            unassigned_configs = [c for c in unassigned_configs if _status_match(c.status, status_filters)]
-
-    adhoc_items = []
-    if "adhoc" in run_type_filters:
-        adhoc_result = await db.execute(
-            select(AdHocRun).where(AdHocRun.team_id == team_id).order_by(AdHocRun.id.desc())
-        )
-        adhoc_runs = adhoc_result.scalars().all()
-        for ar in adhoc_runs:
-            if status_filters and not _status_match(ar.status, status_filters):
-                continue
-            adhoc_items.append(
-                MCPAdhocRunItem(
-                    id=ar.id,
-                    name=ar.name,
-                    status=ar.status.value if hasattr(ar.status, "value") else str(ar.status),
-                    created_at=ar.created_at,
-                    updated_at=ar.updated_at,
-                )
-            )
-
-    summary = {
-        "sets": len(set_items),
-        "unassigned": len(unassigned_configs),
-        "adhoc": len(adhoc_items),
-    }
-
-    return MCPTeamTestRunsResponse(
-        team_id=team_id,
-        filters={"status": status_filter, "run_type": run_type},
-        sets=set_items,
-        unassigned=[_config_payload(c) for c in unassigned_configs],
-        adhoc=adhoc_items,
-        summary=summary,
-    )
+    except UnknownRunTypeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc

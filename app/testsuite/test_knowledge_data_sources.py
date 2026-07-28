@@ -14,6 +14,7 @@ from typing import AsyncIterator
 
 import pytest
 import pytest_asyncio
+from sqlalchemy.pool import NullPool
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -65,6 +66,7 @@ async def main_boundary(tmp_path: Path) -> AsyncIterator[MainAccessBoundary]:
     engine = create_async_engine(
         f"sqlite+aiosqlite:///{db_path}",
         connect_args={"check_same_thread": False},
+        poolclass=NullPool,
     )
     factory = async_sessionmaker(bind=engine, expire_on_commit=False)
     async with engine.begin() as conn:
@@ -153,6 +155,7 @@ async def usm_boundary(tmp_path: Path) -> AsyncIterator[UsmAccessBoundary]:
     engine = create_async_engine(
         f"sqlite+aiosqlite:///{db_path}",
         connect_args={"check_same_thread": False},
+        poolclass=NullPool,
     )
     factory = async_sessionmaker(bind=engine, expire_on_commit=False)
     async with engine.begin() as conn:

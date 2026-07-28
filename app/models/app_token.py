@@ -56,12 +56,17 @@ class AppTokenPrincipal(BaseModel):
     is_legacy: bool = False
     legacy_permission: Optional[str] = None
 
-    def can_access_team(self, team_id: int) -> bool:
+    def accessible_team_ids(self) -> Optional[set[int]]:
         if self.allow_all_teams:
-            return True
-        if self.owner_team_id is not None and team_id == self.owner_team_id:
-            return True
-        return team_id in self.team_scope_ids
+            return None
+        ids: set[int] = set(self.team_scope_ids)
+        if self.owner_team_id is not None:
+            ids.add(self.owner_team_id)
+        return ids
+
+    def can_access_team(self, team_id: int) -> bool:
+        allowed = self.accessible_team_ids()
+        return allowed is None or team_id in allowed
 
     def has_scope(self, scope: str) -> bool:
         return scope in self.scopes

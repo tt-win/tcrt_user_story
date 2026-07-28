@@ -1109,3 +1109,33 @@ def test_mcp_sections_endpoint_is_read_only(temp_db):
             )
             # FastAPI returns 405 for unknown methods on a registered path.
             assert resp.status_code == 405
+
+
+
+def test_mcp_unknown_team_404_message_is_verbatim(temp_db):
+    """The team existence check must return the exact Chinese detail string."""
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        resp = client.get(
+            "/api/mcp/teams/999999/test-cases",
+            headers=_bearer(seeded["all_token"]),
+        )
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "找不到團隊 ID 999999"
+
+
+def test_mcp_bogus_run_type_400_message_is_verbatim(temp_db):
+    """Unknown run_type values must surface the exact Chinese detail string."""
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        resp = client.get(
+            f"/api/mcp/teams/{seeded['team_a_id']}/test-runs",
+            params={"run_type": "bogus"},
+            headers=_bearer(seeded["scoped_token"]),
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "run_type 不支援的值: bogus"

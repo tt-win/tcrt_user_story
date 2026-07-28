@@ -145,6 +145,32 @@ async def log_mcp_allow(
     )
 
 
+def _map_app_principal_to_machine(
+    app_principal: AppTokenPrincipal,
+) -> MCPMachinePrincipal:
+    """Map an AppTokenPrincipal to MCPMachinePrincipal defensively.
+
+    Non-allow-all scope SHALL equal ``accessible_team_ids()`` so that the
+    owner team is always included.  Uses the ``allow_all_teams`` flag (not
+    ``allowed or []``) to avoid confusing ``None`` with an empty set.
+    """
+    if app_principal.allow_all_teams:
+        allow_all_teams = True
+        team_scope_ids: list[int] = []
+    else:
+        allow_all_teams = False
+        allowed = app_principal.accessible_team_ids()
+        team_scope_ids = sorted(allowed if allowed is not None else [])
+
+    return MCPMachinePrincipal(
+        credential_id=app_principal.credential_id,
+        credential_name=app_principal.credential_name,
+        permission=app_principal.legacy_permission or "",
+        allow_all_teams=allow_all_teams,
+        team_scope_ids=team_scope_ids,
+    )
+
+
 async def get_current_machine_principal(
     request: Request,
     app_principal: AppTokenPrincipal = Depends(get_current_app_token_principal),
@@ -169,13 +195,7 @@ async def get_current_machine_principal(
             },
         )
 
-    principal = MCPMachinePrincipal(
-        credential_id=app_principal.credential_id,
-        credential_name=app_principal.credential_name,
-        permission=app_principal.legacy_permission or "",
-        allow_all_teams=app_principal.allow_all_teams,
-        team_scope_ids=app_principal.team_scope_ids,
-    )
+    principal = _map_app_principal_to_machine(app_principal)
 
     request.state.mcp_machine_principal = principal
     return principal
