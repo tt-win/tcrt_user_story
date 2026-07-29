@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Mapping
 from typing import Any, AsyncIterator
 
 from sqlalchemy import select
@@ -84,6 +85,7 @@ def _row_to_usm_node_dict(
     row: UserStoryMapNodeDB,
     map_name: str | None,
     team_id: int | None = None,
+    team_name: str | None = None,
 ) -> dict[str, Any]:
     """Convert a UserStoryMapNodeDB ORM row to the dict shape expected by backfill.
 
@@ -99,12 +101,16 @@ def _row_to_usm_node_dict(
         "node_type": row.node_type,
         "map_id": row.map_id,
         "map_name": map_name or "",
+        "team_name": team_name or "",
         "parent_id": row.parent_id or "",
         "level": row.level or 0,
+        "children_ids": list(getattr(row, "children_ids", None) or []),
+        "related_ids": list(getattr(row, "related_ids", None) or []),
         "as_a": row.as_a or "",
         "i_want": row.i_want or "",
         "so_that": row.so_that or "",
         "jira_tickets": list(jira_tickets_attr),
+        "updated_at": row.updated_at,
     }
     if team_id is not None:
         payload["team_id"] = int(team_id)
@@ -186,6 +192,7 @@ async def fetch_usm_nodes(
     *,
     batch_size: int = 100,
     after_id: int | None = None,
+    team_names: Mapping[int, str] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Stream USM nodes from USM DB with parent map name.
 
@@ -214,7 +221,12 @@ async def fetch_usm_nodes(
             result = await session.execute(stmt)
             rows = result.all()
             return [
-                _row_to_usm_node_dict(node, map_name, team_id=map_team_id)
+                _row_to_usm_node_dict(
+                    node,
+                    map_name,
+                    team_id=map_team_id,
+                    team_name=(team_names or {}).get(map_team_id, ""),
+                )
                 for node, map_name, map_team_id in rows
             ]
 
@@ -262,24 +274,59 @@ async def fetch_test_case_by_number(
 
 async def fetch_usm_node_by_id(
     boundary: UsmAccessBoundary,
+    map_id: int,
     node_id: str,
+    *,
+    team_name: str | None = None,
 ) -> dict[str, Any] | None:
-    """Fetch a single USM node dict by node_id for KG sync fallback."""
-    if not node_id:
+    """Fetch one USM node by its map-scoped identity for KG sync fallback."""
+    if map_id <= 0 or not node_id:
         return None
 
     async def _op(session: AsyncSession) -> dict[str, Any] | None:
         stmt = (
             select(UserStoryMapNodeDB, UserStoryMapDB.name, UserStoryMapDB.team_id)
             .join(UserStoryMapDB, UserStoryMapDB.id == UserStoryMapNodeDB.map_id)
-            .where(UserStoryMapNodeDB.node_id == node_id)
+            .where(
+                UserStoryMapNodeDB.map_id == map_id,
+                UserStoryMapNodeDB.node_id == node_id,
+            )
         )
         result = await session.execute(stmt)
         row = result.first()
         if not row:
             return None
         node, map_name, map_team_id = row
-        return _row_to_usm_node_dict(node, map_name, team_id=map_team_id)
+        return _row_to_usm_node_dict(
+            node,
+            map_name,
+            team_id=map_team_id,
+            team_name=team_name,
+        )
 
     return await boundary.run_read(_op)
 
+
+async def fetch_team_names(boundary: MainAccessBoundary) -> dict[int, str]:
+    """Return the authoritative main-DB team name for each team id."""
+
+    async def _op(session: AsyncSession) -> dict[int, str]:
+        result = await session.execute(select(Team.id, Team.name))
+        return {int(team_id): str(team_name or "") for team_id, team_name in result.all()}
+
+    return await boundary.run_read(_op)
+
+
+async def fetch_team_name_by_id(
+    boundary: MainAccessBoundary,
+    team_id: int,
+) -> str:
+    """Return one authoritative team name, or an empty string if absent."""
+    if team_id <= 0:
+        return ""
+
+    async def _op(session: AsyncSession) -> str:
+        result = await session.execute(select(Team.name).where(Team.id == team_id))
+        return str(result.scalar_one_or_none() or "")
+
+    return await boundary.run_read(_op)

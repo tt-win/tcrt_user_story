@@ -39,6 +39,9 @@ class FailingQdrant:
     async def get_collection_dimensions(self, collection: str) -> int | None:
         return None  # Collection doesn't exist
 
+    async def ensure_usm_payload_indexes(self, collection: str) -> None:
+        pass
+
 
 def make_services(tmp_path: Path, failing_qdrant: FailingQdrant | None = None) -> tuple[KnowledgeWriteService, FailingQdrant]:
     q = failing_qdrant or FailingQdrant()

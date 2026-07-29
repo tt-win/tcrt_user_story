@@ -60,3 +60,16 @@
 - [ ] 5.5 Multi-worker write coordination（future phase, Redis/RQ or shared DB）
 - [ ] 5.6 AI Assistant tool integration（future phase）
 - [ ] 5.7 QA AI Helper context integration（future phase）
+
+## Phase 6: USM Payload v2 and Dual-Qdrant Rebuild
+
+- [x] 6.1 Inspect remote MySQL USM metadata read-only; record row counts, identity collisions, field types, nullability, and relation shapes without exposing row contents
+- [x] 6.2 Define the merged `usm_node_v2` payload, composite `(map_id, node_id)` identity, deterministic embedding text, payload indexes, and coordinated rollback design in OpenSpec
+- [x] 6.3 Implement canonical USM payload/text helpers and update runtime write, delete, queue dedup, backfill resume, and event hooks to use composite identity
+- [x] 6.4 Implement the guarded remote-MySQL-to-Qdrant rebuild command with hidden credentials, read-only snapshot, backup/shadow preparation, validation, coordinated cutover, and rollback
+- [x] 6.5 Add regression tests for payload types, legacy relation normalization, duplicate node IDs across maps, required confirmation, secret redaction, and cutover rollback
+- [x] 6.6 Run targeted tests, Ruff, full knowledge tests, full repo Ruff, strict OpenSpec validation, and relevant project gates
+- [x] 6.7 Create and validate backup/shadow collections on local and `10.81.1.49`, then replace both canonical `usm_nodes` collections from the remote MySQL source
+- [x] 6.8 Verify both targets have identical v2 counts/schema/indexes and retain tested rollback collections
+- [x] 6.9 Materialize both canonical names as physical `usm_nodes` collections, verify no canonical alias remains, and retain the verified v2 shadows for rollback
+- [x] 6.10 Pass composite `entity_key` from semantic hits into Neo4j USM graph expansion, with legacy-only `node_id` fallback

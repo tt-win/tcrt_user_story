@@ -36,5 +36,19 @@ TCRT MUST recognize node types via dictionary keys (no class-based dispatch).
 - THEN the entity type is `test_case`
 
 #### Scenario: USMNode identification
-- WHEN a record contains `node_id`
+- WHEN a record contains canonical `entity_key` or legacy `node_id`
 - THEN the entity type is `usm_node`
+
+### Requirement: Composite USM graph lookup
+TCRT MUST use the map-scoped `entity_key` returned by a `usm_node_v2` semantic hit when
+expanding that entity through Neo4j.
+
+#### Scenario: Canonical graph expansion
+- WHEN a semantic USM result has `entity_key="{map_id}:{node_id}"`
+- THEN the Neo4j lookup parameter is that complete `entity_key`
+- AND the query matches `USMNode.entity_key` or its canonical `id`
+- AND the query does not fall back to globally ambiguous `node_id` for canonical nodes
+
+#### Scenario: Legacy graph compatibility
+- WHEN a legacy Neo4j USM node has no `entity_key`
+- THEN the read-only query may match its legacy `node_id`

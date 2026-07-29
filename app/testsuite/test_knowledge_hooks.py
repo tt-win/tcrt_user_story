@@ -81,18 +81,18 @@ async def test_delete_test_case_empty_string_is_noop() -> None:
 @pytest.mark.asyncio
 async def test_delete_usm_node_calls_qdrant_with_filter() -> None:
     svc, fake_qdrant = _make_svc()
-    await svc.delete_usm_node("usm-1.1")
+    await svc.delete_usm_node(7, "usm-1.1")
     call_args = fake_qdrant.delete_by_filter.await_args
     assert call_args.kwargs["collection"] == "u1"
     flt = call_args.kwargs["query_filter"]
-    assert flt.must[0].key == "node_id"
-    assert flt.must[0].match.value == "usm-1.1"
+    assert flt.must[0].key == "entity_key"
+    assert flt.must[0].match.value == "7:usm-1.1"
 
 
 @pytest.mark.asyncio
 async def test_delete_usm_node_empty_string_is_noop() -> None:
     svc, fake_qdrant = _make_svc()
-    await svc.delete_usm_node("")
+    await svc.delete_usm_node(0, "")
     fake_qdrant.delete_by_filter.assert_not_called()
 
 
@@ -110,7 +110,7 @@ async def test_write_entity_delete_dispatches_to_test_case() -> None:
 @pytest.mark.asyncio
 async def test_write_entity_delete_dispatches_to_usm() -> None:
     svc, fake_qdrant = _make_svc()
-    await svc.write_entity("usm_nodes", "usm-1", operation="delete")
+    await svc.write_entity("usm_nodes", "7:usm-1", operation="delete")
     fake_qdrant.delete_by_filter.assert_called_once()
     assert fake_qdrant.delete_by_filter.await_args.kwargs["collection"] == "u1"
 
@@ -298,7 +298,7 @@ async def test_enqueue_test_case_sync_empty_id_returns_false(
 async def test_enqueue_usm_node_sync_enqueues_with_correct_type(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """USM hook uses entity_type='usm_nodes' and the node_id as id."""
+    """USM hook queues the map-scoped composite entity key."""
     import app.services.knowledge as kg_module
 
     fake_queue = AsyncMock()
@@ -311,11 +311,11 @@ async def test_enqueue_usm_node_sync_enqueues_with_correct_type(
     from app.services.knowledge import hooks
     importlib.reload(hooks)
 
-    enqueued = await hooks.enqueue_usm_node_sync("usm-1.1", operation="delete")
+    enqueued = await hooks.enqueue_usm_node_sync(7, "usm-1.1", operation="delete")
     assert enqueued is True
     call = fake_queue.enqueue.await_args
     assert call.kwargs["entity_type"] == "usm_nodes"
-    assert call.kwargs["entity_id"] == "usm-1.1"
+    assert call.kwargs["entity_id"] == "7:usm-1.1"
     assert call.kwargs["payload"]["operation"] == "delete"
 
     importlib.reload(hooks)

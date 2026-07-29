@@ -204,6 +204,69 @@ ticket 結構化解析需求後產生 test case。AI Assistant 提供全域對�
 - 回傳資料自動過濾敏感欄位。
 - `GET /api/knowledge/health`：admin-only 或可配置為任何認證用戶。
 
+### Decision 10：USM identity 使用 `(map_id, node_id)` 複合鍵
+
+2026-07-29 對遠端 MySQL `10.81.0.13:3306` 的唯讀盤點結果：
+
+- `tcrt_usm.user_story_map_nodes` 有 1,774 rows（17 maps）。
+- `(map_id, node_id)` 有 1,774 個唯一值，但全域僅有 1,727 個唯一 `node_id`。
+- 47 組 `node_id` 跨 map 重複；單獨以 `node_id` 產生 point ID 會覆蓋 47 rows。
+- 所有 map 都有 `team_id`，且都能對應 `tcrt_main.teams`。
+
+因此 canonical identity 為 `entity_key = "{map_id}:{node_id}"`，Qdrant point ID 使用
+`UUID5("tcrt-usm-node:{entity_key}")`。`node_id` 保留為 map 內識別與 legacy consumer
+相容欄位；delete、event queue dedup、backfill resume 與 graph relation key 都必須使用
+複合 identity。
+
+Hybrid Search 將 Qdrant hit 的 `entity_key` 原樣傳給 Neo4j graph expansion，並優先查詢
+`USMNode.entity_key` / canonical `id`。只有缺少 `entity_key` 的 legacy Neo4j node 才允許
+退回 `node_id`，避免 canonical v2 graph lookup 同時命中跨 map 的重複節點。
+
+### Decision 11：`usm_node_v2` 融合 payload 與 embedding text
+
+新版 payload 同時保留 TCRT writer 所需的 `last_synced_at`、`parent_id`、team scope，
+以及舊版遠端 ETL 的 `text`、`resource_type`、`updated_at`、`children_ids`、
+`related_node_ids`、`team_name`。額外加入複合關係鍵，避免跨 map 關係歧義：
+
+- `entity_key`、`parent_key`
+- `children_keys`
+- `related_node_keys`
+- `schema_version="usm_node_v2"`
+- `source="tcrt_usm_mysql"`
+
+所有 optional string 正規化為空字串、集合欄位正規化為 `list[str]`，避免同一欄位
+混用 `null`、缺欄與不同 JSON 型別。`text` 是實際送入 embedding provider 的完整文字，
+以 map、node type、title、description、BDD 與 Jira tickets 的固定順序組成；payload 與
+embedding 不得使用不同內容。
+
+### Decision 12：遠端 MySQL 唯讀重建與可回滾切換
+
+USM rebuild 使用 `tcrt_usm.user_story_map_nodes` JOIN `user_story_maps` JOIN
+`tcrt_main.teams` 作為唯一資料來源。連線必須開啟 read-only consistent snapshot，
+不得對 MySQL 執行 DDL/DML。密碼不得放在 CLI argument、repo 或 log。
+
+每個 Qdrant target 的流程：
+
+1. 複製現有 `usm_nodes` 為 timestamped backup collection，並核對 exact count。
+2. 建立 timestamped shadow collection（1024 / Cosine / on-disk vector+payload）。
+3. 建立 `entity_key`、`node_id`、`map_id`、`team_id`、`node_type`、`updated_at`、
+   `last_synced_at` payload indexes。
+4. 從 MySQL 產生 payload 與 embedding，寫入 shadow。
+5. 驗證 point count 等於來源 row count、所有複合鍵唯一、必填欄位覆蓋率 100%、
+   vector 維度 1024，且兩端 shadow 結果一致。
+6. 只有兩端 shadow 都通過時，才移除既有的 `usm_nodes` alias 或舊實體名稱，建立真正
+   名為 `usm_nodes` 的 physical collection，從已驗證 shadow 複製完整 vectors/payload，
+   並重建相同 payload indexes。
+7. 再次驗證 physical `usm_nodes` 的 point IDs、payload checksum、vector 維度、indexes，
+   且確認 `usm_nodes` 不再是 alias。任一 target 失敗時，已切換 target 以 backup alias
+   恢復可用性。
+
+alias 移除到 physical collection 建立完成之間會有短暫讀取中斷；此取捨換取 collection
+列表與 API 均能直接看到實體 `usm_nodes`。兩端切換仍採協調式回滾，避免一端保留未驗證
+結果。
+
+舊 backup 不在同一操作中刪除。若需清除，必須另行取得明確核准。
+
 ## Module Layout
 
 ```

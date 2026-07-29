@@ -9,7 +9,7 @@ helper is a no-op.
 
 Public API:
 - ``enqueue_test_case_sync(test_case_number, operation='upsert')``
-- ``enqueue_usm_node_sync(node_id, operation='upsert')``
+- ``enqueue_usm_node_sync(map_id, node_id, operation='upsert')``
 - ``start_sync_workers()`` / ``stop_sync_workers()`` — lifecycle hooks
   to be wired into FastAPI ``app.on_event("startup")`` /
   ``"shutdown"`` so the background worker is up while the app serves
@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+
+from app.services.knowledge.usm_payload import usm_entity_key
 
 LOGGER = logging.getLogger(__name__)
 
@@ -69,6 +71,7 @@ async def enqueue_test_case_sync(
 
 
 async def enqueue_usm_node_sync(
+    map_id: int,
     node_id: str,
     *,
     operation: str = "upsert",
@@ -81,19 +84,22 @@ async def enqueue_usm_node_sync(
     ``payload`` is the full entity dict (with title, description,
     as_a, i_want, so_that, etc.) when available.
     """
-    if not node_id:
+    if map_id <= 0 or not node_id:
         return False
+    entity_key = usm_entity_key(map_id, node_id)
     queue = _resolve_queue()
     try:
         return await queue.enqueue(
             entity_type="usm_nodes",
-            entity_id=node_id,
+            entity_id=entity_key,
             payload={"operation": operation, "entity": payload} if payload else {"operation": operation},
         )
     except Exception as exc:  # noqa: BLE001
         LOGGER.warning(
             "enqueue_usm_node_sync(%s, op=%s) failed: %s",
-            node_id, operation, exc,
+            entity_key,
+            operation,
+            exc,
         )
         return False
 
@@ -122,6 +128,7 @@ async def enqueue_test_cases_bulk(
 async def enqueue_usm_nodes_bulk(
     node_ids: list[str | dict[str, Any]],
     *,
+    map_id: int | None = None,
     operation: str = "upsert",
 ) -> int:
     """Bulk enqueue USM node syncs. Returns count successfully enqueued.
@@ -132,10 +139,20 @@ async def enqueue_usm_nodes_bulk(
     for item in node_ids:
         if isinstance(item, dict):
             nid = item.get("node_id") or item.get("id") or ""
-            if await enqueue_usm_node_sync(nid, operation=operation, payload=item):
+            item_map_id = int(item.get("map_id") or map_id or 0)
+            if await enqueue_usm_node_sync(
+                item_map_id,
+                nid,
+                operation=operation,
+                payload=item,
+            ):
                 count += 1
         elif isinstance(item, str):
-            if await enqueue_usm_node_sync(item, operation=operation):
+            if await enqueue_usm_node_sync(
+                int(map_id or 0),
+                item,
+                operation=operation,
+            ):
                 count += 1
     return count
 

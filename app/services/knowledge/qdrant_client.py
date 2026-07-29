@@ -106,8 +106,38 @@ class QdrantKnowledgeClient:
                 distance=distance,
                 on_disk=on_disk_payload,
             ),
+            on_disk_payload=on_disk_payload,
         )
         LOGGER.info("Created Qdrant collection: %s (dim=%d)", collection, vector_size)
+
+    async def ensure_usm_payload_indexes(self, collection: str) -> None:
+        """Create the canonical ``usm_node_v2`` payload indexes if missing."""
+        client = await self._get_client()
+        info = await client.get_collection(collection_name=collection)
+        existing = getattr(info, "payload_schema", {}) or {}
+        indexes = {
+            "entity_key": qmodels.PayloadSchemaType.KEYWORD,
+            "node_id": qmodels.PayloadSchemaType.KEYWORD,
+            "node_type": qmodels.PayloadSchemaType.KEYWORD,
+            "map_id": qmodels.PayloadSchemaType.INTEGER,
+            "team_id": qmodels.PayloadSchemaType.INTEGER,
+            "updated_at": qmodels.PayloadSchemaType.DATETIME,
+            "last_synced_at": qmodels.PayloadSchemaType.DATETIME,
+        }
+        for field_name, field_schema in indexes.items():
+            if field_name in existing:
+                continue
+            await client.create_payload_index(
+                collection_name=collection,
+                field_name=field_name,
+                field_schema=field_schema,
+                wait=True,
+            )
+            LOGGER.info(
+                "Created Qdrant payload index: %s.%s",
+                collection,
+                field_name,
+            )
 
     async def ensure_collection(
         self,
