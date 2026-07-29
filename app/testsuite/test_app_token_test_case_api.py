@@ -20,8 +20,13 @@ from app.models.database_models import (
     TestCaseLocal,
     TestCaseSection,
     TestCaseSet,
+    TestRunConfig,
+    TestRunItem,
+    TestRunItemResultHistory,
     User,
 )
+from app.models.lark_types import Priority, TestResultStatus
+from app.models.test_run_config import TestRunStatus
 from app.testsuite.db_test_helpers import (
     create_managed_test_database,
     dispose_managed_test_database,
@@ -668,6 +673,240 @@ class TestBatchOperationsAndBulkClone:
             assert dup.status_code == 200, dup.text
             assert dup.json()["success"] is False
             assert dup.json()["duplicates"] == ["TC-CLONE-001"]
+
+
+class TestGuardedCaseSetMove:
+    def _seed_move(self, session, scopes=None):
+        seeded = _seed_data(
+            session,
+            scopes=scopes
+            or [
+                "test_case:read",
+                "test_case:write",
+                "test_case:admin",
+                "test_run:read",
+            ],
+        )
+        source = TestCaseSet(team_id=seeded["team_id"], name="Source", is_default=True)
+        target = TestCaseSet(team_id=seeded["team_id"], name="Target", is_default=False)
+        session.add_all([source, target])
+        session.flush()
+        source_section = TestCaseSection(
+            test_case_set_id=source.id,
+            name="Unassigned",
+            level=1,
+            sort_order=0,
+        )
+        target_section = TestCaseSection(
+            test_case_set_id=target.id,
+            name="Unassigned",
+            level=1,
+            sort_order=0,
+        )
+        session.add_all([source_section, target_section])
+        session.flush()
+        case = TestCaseLocal(
+            team_id=seeded["team_id"],
+            lark_record_id="local-TC-MOVE-1",
+            test_case_number="TC-MOVE-1",
+            title="Guarded move",
+            priority=Priority.MEDIUM,
+            test_case_set_id=source.id,
+            test_case_section_id=source_section.id,
+        )
+        config = TestRunConfig(
+            team_id=seeded["team_id"],
+            name="Scoped run",
+            status=TestRunStatus.DRAFT,
+            test_case_set_ids_json=json.dumps([source.id]),
+        )
+        session.add_all([case, config])
+        session.flush()
+        item = TestRunItem(
+            team_id=seeded["team_id"],
+            config_id=config.id,
+            test_case_number=case.test_case_number,
+            test_result=TestResultStatus.PENDING,
+        )
+        session.add(item)
+        session.commit()
+        return seeded, case.id, target.id, target_section.id, item.id
+
+    def test_preview_then_guarded_move_cleans_impacted_item(self, temp_db):
+        with temp_db() as session:
+            seeded, case_id, target_id, target_section_id, item_id = self._seed_move(session)
+        with TestClient(app) as client:
+            url = f"/api/app/teams/{seeded['team_id']}/test-cases"
+            preview = client.post(
+                f"{url}/impact-preview/move-test-set",
+                json={"record_ids": [str(case_id)], "target_test_set_id": target_id},
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert preview.status_code == 200, preview.text
+            assert preview.json()["impacted_item_count"] == 1
+            moved = client.post(
+                f"{url}/move-test-set",
+                json={
+                    "record_ids": [str(case_id)],
+                    "target_test_set_id": target_id,
+                    "target_section_id": target_section_id,
+                    "impact_fingerprint": preview.json()["impact_fingerprint"],
+                },
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert moved.status_code == 200, moved.text
+            assert moved.json()["cleanup_summary"]["removed_item_count"] == 1
+            assert moved.json()["placements"][0]["target_section_id"] == target_section_id
+        with temp_db() as session:
+            assert session.get(TestRunItem, item_id) is None
+
+    def test_changed_item_invalidates_fingerprint(self, temp_db, monkeypatch):
+        with temp_db() as session:
+            seeded, case_id, target_id, _target_section_id, item_id = self._seed_move(session)
+
+        audit_calls = []
+
+        async def _capture_audit(*_args, **kwargs):
+            audit_calls.append(kwargs)
+
+        monkeypatch.setattr("app.api.app_test_cases.log_app_token_audit", _capture_audit)
+        with TestClient(app) as client:
+            url = f"/api/app/teams/{seeded['team_id']}/test-cases"
+            preview = client.post(
+                f"{url}/impact-preview/move-test-set",
+                json={"record_ids": [str(case_id)], "target_test_set_id": target_id},
+                headers=_bearer(seeded["write_token"]),
+            ).json()
+            with temp_db() as session:
+                item = session.get(TestRunItem, item_id)
+                item.test_result = TestResultStatus.PASSED
+                item.updated_at = datetime.utcnow()
+                session.commit()
+            moved = client.post(
+                f"{url}/move-test-set",
+                json={
+                    "record_ids": [str(case_id)],
+                    "target_test_set_id": target_id,
+                    "impact_fingerprint": preview["impact_fingerprint"],
+                },
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert moved.status_code == 409, moved.text
+            assert moved.json()["detail"]["code"] == "APP_TOKEN_IMPACT_CHANGED"
+            denied = next(call for call in audit_calls if call.get("allowed") is False)
+            assert set(denied["extra_details"]) == {
+                "case_ids",
+                "target_test_case_set_id",
+                "requested_impact_fingerprint",
+                "current_impact_fingerprint",
+                "impacted_item_count",
+            }
+
+    def test_new_history_invalidates_fingerprint(self, temp_db):
+        with temp_db() as session:
+            seeded, case_id, target_id, _target_section_id, item_id = self._seed_move(session)
+        with TestClient(app) as client:
+            url = f"/api/app/teams/{seeded['team_id']}/test-cases"
+            preview = client.post(
+                f"{url}/impact-preview/move-test-set",
+                json={"record_ids": [str(case_id)], "target_test_set_id": target_id},
+                headers=_bearer(seeded["write_token"]),
+            ).json()
+            with temp_db() as session:
+                item = session.get(TestRunItem, item_id)
+                session.add(
+                    TestRunItemResultHistory(
+                        team_id=seeded["team_id"],
+                        config_id=item.config_id,
+                        item_id=item.id,
+                        new_result=TestResultStatus.PASSED,
+                        change_source="test",
+                    )
+                )
+                session.commit()
+            moved = client.post(
+                f"{url}/move-test-set",
+                json={
+                    "record_ids": [str(case_id)],
+                    "target_test_set_id": target_id,
+                    "impact_fingerprint": preview["impact_fingerprint"],
+                },
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert moved.status_code == 409, moved.text
+            assert moved.json()["detail"]["code"] == "APP_TOKEN_IMPACT_CHANGED"
+
+    def test_preview_requires_test_run_read_scope(self, temp_db):
+        with temp_db() as session:
+            seeded, case_id, target_id, _target_section_id, _item_id = self._seed_move(
+                session,
+                scopes=["test_case:read", "test_case:write", "test_case:admin"],
+            )
+        with TestClient(app) as client:
+            response = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-cases/impact-preview/move-test-set",
+                json={"record_ids": [str(case_id)], "target_test_set_id": target_id},
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert response.status_code == 403
+            assert response.json()["detail"]["code"] == "APP_TOKEN_SCOPE_DENIED"
+
+    def test_duplicate_same_set_move_is_one_noop_and_preserves_section(self, temp_db):
+        with temp_db() as session:
+            seeded, case_id, _target_id, _target_section_id, _item_id = self._seed_move(session)
+            case = session.get(TestCaseLocal, case_id)
+            source_set_id = case.test_case_set_id
+            source_section_id = case.test_case_section_id
+        with TestClient(app) as client:
+            url = f"/api/app/teams/{seeded['team_id']}/test-cases"
+            preview = client.post(
+                f"{url}/impact-preview/move-test-set",
+                json={
+                    "record_ids": [str(case_id), str(case_id)],
+                    "target_test_set_id": source_set_id,
+                },
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert preview.status_code == 200, preview.text
+            moved = client.post(
+                f"{url}/move-test-set",
+                json={
+                    "record_ids": [str(case_id), str(case_id)],
+                    "target_test_set_id": source_set_id,
+                    "impact_fingerprint": preview.json()["impact_fingerprint"],
+                },
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert moved.status_code == 200, moved.text
+            assert moved.json()["processed_count"] == 1
+            assert moved.json()["moved_count"] == 0
+            assert moved.json()["placements"][0]["target_section_id"] == source_section_id
+
+    def test_preview_rejects_more_than_one_hundred_records(self, temp_db):
+        with temp_db() as session:
+            seeded, _case_id, target_id, _target_section_id, _item_id = self._seed_move(session)
+        with TestClient(app) as client:
+            response = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-cases/impact-preview/move-test-set",
+                json={
+                    "record_ids": [f"TC-LIMIT-{index}" for index in range(101)],
+                    "target_test_set_id": target_id,
+                },
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert response.status_code == 422
+
+    def test_generic_cross_set_update_is_rejected(self, temp_db):
+        with temp_db() as session:
+            seeded, case_id, target_id, _target_section_id, _item_id = self._seed_move(session)
+        with TestClient(app) as client:
+            response = client.put(
+                f"/api/app/teams/{seeded['team_id']}/test-cases/{case_id}",
+                json={"test_case_set_id": target_id},
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert response.status_code == 400
+            assert response.json()["detail"]["code"] == "APP_TOKEN_VALIDATION_ERROR"
 
 
 class TestSecurityHardening:

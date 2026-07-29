@@ -208,6 +208,9 @@ tools/**/.DS_Store
 tools/**/__pycache__/
 tools/**/*.py[cod]
 tools/**/*$py.class
+!tools/skills/tcrt-app/SKILL.md
+!tools/skills/tcrt-app/references/api-reference.md
+!tools/skills/tcrt-app/references/api-usage-guide.md
 .DS_Store
 未命名35.txt
 refactor/

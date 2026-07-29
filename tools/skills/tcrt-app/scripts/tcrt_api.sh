@@ -58,11 +58,26 @@ EOF
     exit 2
 }
 
+normalize_base_url() {
+    candidate=${1%/}
+    case "$candidate" in
+        http://*) authority=${candidate#http://} ;;
+        https://*) authority=${candidate#https://} ;;
+        *) die "TCRT_BASE_URL must be an http/https origin without a path, query, fragment, or userinfo" ;;
+    esac
+    case "$authority" in
+        ''|*@*|*/*|*\?*|*\#*)
+            die "TCRT_BASE_URL must be an http/https origin without a path, query, fragment, or userinfo" ;;
+    esac
+    printf '%s' "$candidate"
+}
+
 [ "$#" -gt 0 ] || usage
 command -v curl >/dev/null 2>&1 || die "curl is required; use python3 scripts/tcrt_api.py only when Python is available."
 
 method=$1
 shift
+is_check=0
 path=''
 data=''
 has_data=0
@@ -75,6 +90,7 @@ if [ "$method" = "check" ] || [ "$method" = "CHECK" ]; then
     [ "$#" -eq 0 ] || usage
     method=GET
     path=/api/app/teams
+    is_check=1
 else
     [ "$#" -gt 0 ] || usage
     path=$1
@@ -133,7 +149,8 @@ missing=''
 [ -n "$token" ] || missing="$missing TCRT_APP_TOKEN"
 [ -z "$missing" ] || die "Missing:$missing. Set exported variables or a local env file; never paste a token into chat."
 
-base_url=${base_url%/}
+base_url=$(normalize_base_url "$base_url")
+[ "$is_check" -eq 0 ] || printf '%s\n' "[tcrt-app] TCRT_BASE_URL=$base_url" >&2
 url=$base_url$path
 [ -z "$query" ] || url=$url?$query
 

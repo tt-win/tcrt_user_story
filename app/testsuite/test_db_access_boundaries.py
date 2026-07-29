@@ -1,6 +1,12 @@
+import asyncio
 from contextlib import asynccontextmanager
+import threading
+import time
 
 import pytest
+from sqlalchemy import event, text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 
 from app.db_access.coordinator import CrossDatabaseCoordinator
@@ -64,6 +70,64 @@ async def test_run_write_rolls_back_on_error():
 
     assert session.commit_calls == 0
     assert session.rollback_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_serialized_write_blocks_second_sqlite_connection(tmp_path):
+    database_path = tmp_path / "serialized-boundary.db"
+    engine = create_async_engine(
+        f"sqlite+aiosqlite:///{database_path}",
+        connect_args={"timeout": 2},
+        poolclass=NullPool,
+    )
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _register_sleep(dbapi_connection, _connection_record):
+        dbapi_connection.create_function(
+            "sleep_ms",
+            1,
+            lambda milliseconds: time.sleep(milliseconds / 1000),
+        )
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    def _boundary() -> ManagedAccessBoundary:
+        @asynccontextmanager
+        async def _provider():
+            async with session_factory() as session:
+                yield session
+
+        return ManagedAccessBoundary(
+            contract=BoundaryContract(
+                target=DatabaseTarget.MAIN,
+                session_provider="tests.sqlite_provider",
+            ),
+            session_provider=_provider,
+        )
+
+    order: list[str] = []
+    first_started = threading.Event()
+
+    def _first(sync_session):
+        order.append("first-start")
+        first_started.set()
+        sync_session.execute(text("SELECT sleep_ms(150)"))
+        order.append("first-end")
+
+    def _second(sync_session):
+        order.append("second-start")
+        sync_session.execute(text("SELECT 1"))
+        order.append("second-end")
+
+    try:
+        first_task = asyncio.create_task(_boundary().run_sync_serialized_write(_first))
+        assert await asyncio.to_thread(first_started.wait, 1)
+        second_task = asyncio.create_task(_boundary().run_sync_serialized_write(_second))
+        await asyncio.gather(first_task, second_task)
+    finally:
+        await engine.dispose()
+
+    assert order == ["first-start", "first-end", "second-start", "second-end"]
 
 
 def test_cross_database_coordinator_holds_boundaries():

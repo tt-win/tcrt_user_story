@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import AsyncIterator, Awaitable, Callable, Generic, TypeVar
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -67,6 +68,25 @@ class ManagedAccessBoundary(Generic[T]):
     async def run_sync_write(self, operation: SyncOperation[T]) -> T:
         async with self.session_scope() as session:
             try:
+                result = await session.run_sync(operation)
+                await session.commit()
+                return result
+            except Exception:
+                await session.rollback()
+                raise
+
+    async def run_sync_serialized_write(self, operation: SyncOperation[T]) -> T:
+        """Run a sync write with cross-process writer serialization on SQLite.
+
+        PostgreSQL/MySQL callers establish their row-lock order inside ``operation``.
+        SQLite ignores ``FOR UPDATE``, so ``BEGIN IMMEDIATE`` must be the first
+        database statement in the transaction.
+        """
+        async with self.session_scope() as session:
+            try:
+                bind = session.get_bind()
+                if bind.dialect.name == "sqlite":
+                    await session.execute(text("BEGIN IMMEDIATE"))
                 result = await session.run_sync(operation)
                 await session.commit()
                 return result

@@ -144,7 +144,8 @@
       "testRuns": "Test Run 管理",
       "testCases": "Test Case 管理",
       "userStoryMap": "User Story Map",
-      "automationHub": "Automation Hub"
+      "automationHub": "Automation Hub",
+      "appToken": "App Token"
     },
     "systemOverview": "系統摘要",
     "systemHealth": "系統狀態",
@@ -3718,6 +3719,11 @@
   "appToken": {
     "menuLabel": "App Token",
     "modalTitle": "App Token",
+    "selectTeamLabel": "選擇團隊",
+    "selectTeamPlaceholder": "請選擇要管理的團隊",
+    "selectTeamHelp": "選擇團隊後才會載入 App Token。",
+    "noTeamsAvailable": "目前沒有可管理的團隊。",
+    "loadTeamsFailedWithReason": "載入團隊失敗：{reason}",
     "tokenList": "權杖列表",
     "createButton": "建立權杖",
     "tokenName": "權杖名稱",

@@ -226,14 +226,16 @@ def test_timeout_records_degraded(audit_env) -> None:
     mock_hybrid = AsyncMock()
 
     async def slow(*args, **kwargs):
-        await asyncio.sleep(5.0)
+        await asyncio.sleep(1.0)
         return []
 
     mock_hybrid.hybrid_search.side_effect = slow
-    with patch("app.services.knowledge.retrieval_service.is_knowledge_graph_enabled", return_value=True):
-        with patch("app.services.knowledge.retrieval_service._is_circuit_open", return_value=False):
-            with patch("app.services.knowledge.retrieval_service.get_hybrid_search", return_value=mock_hybrid):
-                res = _run(svc.search_knowledge("login", team_id=1))
+    # Shorten the production timeout instead of waiting the real 2.5s out.
+    with patch("app.services.knowledge.retrieval_service._SEARCH_TIMEOUT_SECONDS", 0.05):
+        with patch("app.services.knowledge.retrieval_service.is_knowledge_graph_enabled", return_value=True):
+            with patch("app.services.knowledge.retrieval_service._is_circuit_open", return_value=False):
+                with patch("app.services.knowledge.retrieval_service.get_hybrid_search", return_value=mock_hybrid):
+                    res = _run(svc.search_knowledge("login", team_id=1))
     assert res["status"] == "degraded"
     _run(get_query_log_service().force_flush())
     rows = _fetch_records(audit_env)
@@ -300,13 +302,15 @@ def test_analyze_impact_timeout(audit_env) -> None:
     mock_hybrid = AsyncMock()
 
     async def slow(*args, **kwargs):
-        await asyncio.sleep(5.0)
+        await asyncio.sleep(1.0)
         return []
 
     mock_hybrid.impact_analysis.side_effect = slow
-    with patch("app.services.knowledge.retrieval_service.is_knowledge_graph_enabled", return_value=True):
-        with patch("app.services.knowledge.retrieval_service.get_hybrid_search", return_value=mock_hybrid):
-            res = _run(svc.analyze_impact("test_case", "TC-1"))
+    # Shorten the production timeout instead of waiting the real 2.5s out.
+    with patch("app.services.knowledge.retrieval_service._SEARCH_TIMEOUT_SECONDS", 0.05):
+        with patch("app.services.knowledge.retrieval_service.is_knowledge_graph_enabled", return_value=True):
+            with patch("app.services.knowledge.retrieval_service.get_hybrid_search", return_value=mock_hybrid):
+                res = _run(svc.analyze_impact("test_case", "TC-1"))
     assert res["status"] == "degraded"
     _run(get_query_log_service().force_flush())
     rows = _fetch_records(audit_env)

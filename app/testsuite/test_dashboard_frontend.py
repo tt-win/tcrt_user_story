@@ -204,7 +204,8 @@ def test_dashboard_quick_actions_use_compact_responsive_layout() -> None:
     assert "action.href.includes('{team_id}')" in source
     assert "action.href.replace('{team_id}', encodeURIComponent(String(preferredTeam.id)))" in source
     assert "navigateWithTeam(preferredTeam, actionHref)" in source
-    assert "actionButton.disabled = requiresTeamPath && !preferredTeam" in source
+    assert "actionButton.disabled = (requiresTeamPath && !preferredTeam)" in source
+    assert "opensAppTokenModal && !preferredTeam && !allowsAppTokenTeamSelection" in source
     assert (
         "renderQuickActions(side, state.dashboard.quick_actions || [], preferredTeam, true)"
         in source
@@ -213,6 +214,53 @@ def test_dashboard_quick_actions_use_compact_responsive_layout() -> None:
     assert 'href="/automation-hub"' in service
     assert 'key="dashboard.quickAction.userStoryMap"' in service
     assert 'href="/user-story-map/{team_id}"' in service
+    assert 'key="dashboard.quickAction.appToken"' in service
+    assert 'href="#app-token"' in service
+    assert 'icon="fa-key"' in service
+    assert "quick_actions.append(_app_token_quick_action())" in service
+    assert "_app_token_quick_action()," in service
+
+
+def test_dashboard_app_token_action_opens_shared_modal_without_navigation() -> None:
+    source = (_ROOT / "app" / "static" / "js" / "index.js").read_text(
+        encoding="utf-8"
+    )
+    controller = (
+        _ROOT / "app" / "static" / "js" / "team-management" / "app-tokens.js"
+    ).read_text(encoding="utf-8")
+    dashboard_template = (_ROOT / "app" / "templates" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    team_template = (
+        _ROOT / "app" / "templates" / "team_management.html"
+    ).read_text(encoding="utf-8")
+    component = (
+        _ROOT / "app" / "templates" / "components" / "app_token_modal.html"
+    ).read_text(encoding="utf-8")
+
+    click_handler = source.split(
+        "actionButton.addEventListener('click', () => {", 1
+    )[1].split("grid.append(actionButton)", 1)[0]
+    assert "const opensAppTokenModal = action.href === '#app-token';" in source
+    assert "controller.open({" in click_handler
+    assert click_handler.index("controller.open({") < click_handler.index(
+        "window.location.href"
+    )
+    assert "teamId: preferredTeam?.id || null" in click_handler
+    assert "allowTeamSelection: allowsAppTokenTeamSelection" in click_handler
+    assert "dashboard_type === 'system_administration'" in source
+    assert "opensAppTokenModal && !preferredTeam" in source
+    assert '{% include "components/app_token_modal.html" %}' in dashboard_template
+    assert '{% include "components/app_token_modal.html" %}' in team_template
+    assert dashboard_template.count("components/app_token_modal.html") == 1
+    assert team_template.count("components/app_token_modal.html") == 1
+    assert "window.AppTokenModal = { open };" in controller
+    assert "options.allowTeamSelection === true" in controller
+    assert "await loadAvailableTeams();" in controller
+    assert "await loadTokens();" in controller
+    assert "onclick=" not in component
+    assert "onchange=" not in component
+    assert "style=" not in component
 
 
 def test_dashboard_quick_action_hover_does_not_move_outside_compact_rail() -> None:

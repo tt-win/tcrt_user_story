@@ -144,7 +144,8 @@
       "testRuns": "Test Run management",
       "testCases": "Test Case management",
       "userStoryMap": "User Story Map",
-      "automationHub": "Automation Hub"
+      "automationHub": "Automation Hub",
+      "appToken": "App Token"
     },
     "systemOverview": "System overview",
     "systemHealth": "System health",
@@ -3718,6 +3719,11 @@
   "appToken": {
     "menuLabel": "App Tokens",
     "modalTitle": "App Token",
+    "selectTeamLabel": "Team",
+    "selectTeamPlaceholder": "Select a team to manage",
+    "selectTeamHelp": "App Tokens are loaded only after you select a team.",
+    "noTeamsAvailable": "There are no teams available to manage.",
+    "loadTeamsFailedWithReason": "Failed to load teams: {reason}",
     "tokenList": "Token List",
     "createButton": "Create Token",
     "tokenName": "Token Name",

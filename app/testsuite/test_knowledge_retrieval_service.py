@@ -124,17 +124,19 @@ async def test_search_knowledge_timeout_degrades() -> None:
     mock_hybrid = AsyncMock()
 
     async def slow_search(*args, **kwargs):
-        await asyncio.sleep(5.0)
+        await asyncio.sleep(1.0)
         return []
 
     mock_hybrid.hybrid_search.side_effect = slow_search
 
-    with patch("app.services.knowledge.retrieval_service.is_knowledge_graph_enabled", return_value=True):
-        with patch("app.services.knowledge.retrieval_service.get_hybrid_search", return_value=mock_hybrid):
-            res = await svc.search_knowledge("login")
-            assert res["status"] == "degraded"
-            assert res["fallback_recommended"] is True
-            assert res["results"] == []
+    # Shorten the production timeout instead of waiting the real 2.5s out.
+    with patch("app.services.knowledge.retrieval_service._SEARCH_TIMEOUT_SECONDS", 0.05):
+        with patch("app.services.knowledge.retrieval_service.is_knowledge_graph_enabled", return_value=True):
+            with patch("app.services.knowledge.retrieval_service.get_hybrid_search", return_value=mock_hybrid):
+                res = await svc.search_knowledge("login")
+                assert res["status"] == "degraded"
+                assert res["fallback_recommended"] is True
+                assert res["results"] == []
 
 
 @pytest.mark.asyncio

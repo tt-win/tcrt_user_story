@@ -35,7 +35,7 @@ Test Case Repository Tool（TCRT）是一個以 `FastAPI + Jinja2 + 原生 JS/CS
 - **排程服務**：`app/services/scheduler.py`
 - **MCP 讀取 API / 驗證（相容期）**：`app/api/mcp.py`、`app/auth/mcp_dependencies.py`
 - **外部 read 共用實作**：`app/services/external_read/`（teams / test-cases / detail / lookup / sections / test-runs 六個唯讀查詢，由 `/api/mcp/*` 與 `/api/app/*` 共用）
-- **App Token 外部 API（canonical）**：`app/api/app_tokens.py`（管理）、`app/api/app_read.py`（read）、`app/api/app_test_cases.py`、`app/api/app_test_runs.py`、`app/api/app_automation.py`（mutation / trigger）、`app/auth/app_token_dependencies.py`、`app/models/app_token.py`；詳見 `docs/app_token_auth.md` 與 `openspec/changes/add-team-app-token-apis/`
+- **App Token 外部 API（canonical）**：`app/api/app_tokens.py`（管理）、`app/api/app_read.py`（read）、`app/api/app_test_cases.py`、`app/api/app_test_runs.py`、`app/api/app_automation.py`（mutation / trigger）、`app/auth/app_token_dependencies.py`、`app/models/app_token.py`；可攜 Agent client 的 canonical source 是 `tools/skills/tcrt-app/`。跨 Test Case Set 搬移使用 impact fingerprint guarded workflow；Test Run membership 搬移使用 expected-source precondition。詳見 `docs/app_token_auth.md`、`docs/app_token_api_reference.md` 與 `openspec/changes/align-tcrt-app-bulk-transfer-workflows/`
 - **報告儲存**：`app/services/html_report_service.py`，並由 `reports.root_dir` 控制輸出根目錄
 - **容器化**：`Dockerfile`、`docker-compose.app.yml`、`docker-compose.mysql.yml`、`docker-compose.postgres.yml`、`docker/app-entrypoint.sh`
 - **前端品質守衛**：stylelint（`.stylelintrc.json`）、i18n coverage linter（`scripts/check-i18n-coverage.mjs`）、inline style checker（`scripts/check-inline-styles.mjs`）
@@ -80,6 +80,7 @@ tcrt_user_story/
 └── tools/                      # 對外工具（sample repo、可攜 AI agent skill）
     ├── sample_automation_repo/         # TCRT Automation Hub 連接示範用的範例 git repo
     └── skills/                         # 可攜 AI agent skill bundle（跨 IDE / Agent 可用）
+        ├── tcrt-app/                   # App Token API 安全工作流與跨平台 client
         └── tcrt-automation-pomify/     # 把使用者 script → POM + TCRT 格式
 ```
 
@@ -211,6 +212,7 @@ Automation Hub 的 script ↔ test case link 現況已收斂為 **marker-derived
 - **進行中（早期）**：
   - `achieve-full-i18n-coverage` — 全站三語系翻譯覆蓋率推到 100%（linter 已建好，後端外部化與前端抽出未開始）
 - **進行中（中期）**：
+  - `align-tcrt-app-bulk-transfer-workflows` — 對齊 `tcrt-app` skill、guarded Test Case 搬移與原子 Test Run membership 批次搬移（實作與 focused tests 完成，待完整 gates）
   - `unify-ui-design-tokens-and-components` — UI design token 收斂與 Jinja macro 元件庫（P0 止血完成，P1/P2 未開始）
   - `redesign-team-settings-information-architecture` — 拆分 `/team-management` 的組織層分頁至新頁面 `/organization-management`（實作完成、經紅隊審查修正，待 archive）
   - `move-assistant-admin-into-organization-tab` — 將原獨立頁面 `/assistant-admin` 併為 `/organization-management` 第 6 個分頁，並修正 `assistantAdmin.*` 三語系文案大小寫（實作完成，待 archive）

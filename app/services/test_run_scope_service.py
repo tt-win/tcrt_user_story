@@ -1,3 +1,4 @@
+import hashlib
 import json
 from typing import Dict, Iterable, List, Optional
 
@@ -9,10 +10,53 @@ from ..models.database_models import (
     TestCaseSet as TestCaseSetDB,
     TestRunConfig as TestRunConfigDB,
     TestRunItem as TestRunItemDB,
+    TestRunItemResultHistory as TestRunItemResultHistoryDB,
+    Team as TeamDB,
 )
 
 
 class TestRunScopeService:
+    @staticmethod
+    def lock_scope_mutation(
+        db: Session,
+        team_id: int,
+        config_ids: Optional[Iterable[int]] = None,
+    ) -> List[TestRunConfigDB]:
+        """Acquire the shared lock order for scope-sensitive Run Item writes.
+
+        The team row is the stable anchor that also serializes creation of a new
+        Test Run Config against guarded case moves. SQLite serialization is
+        supplied by ``ManagedAccessBoundary.run_sync_serialized_write``.
+        """
+        team = (
+            db.query(TeamDB)
+            .filter(TeamDB.id == team_id)
+            .with_for_update()
+            .first()
+        )
+        if team is None:
+            raise ValueError(f"Team {team_id} does not exist")
+
+        query = db.query(TestRunConfigDB).filter(TestRunConfigDB.team_id == team_id)
+        normalized_config_ids = TestRunScopeService.normalize_scope_ids(config_ids)
+        if config_ids is not None:
+            if not normalized_config_ids:
+                return []
+            query = query.filter(TestRunConfigDB.id.in_(normalized_config_ids))
+        return query.order_by(TestRunConfigDB.id.asc()).with_for_update().all()
+
+    @staticmethod
+    def _stable_row_payload(row) -> dict:
+        payload = {}
+        for column in row.__table__.columns:
+            value = getattr(row, column.name)
+            if hasattr(value, "value"):
+                value = value.value
+            elif hasattr(value, "isoformat"):
+                value = value.isoformat()
+            payload[column.name] = value
+        return payload
+
     @staticmethod
     def normalize_scope_ids(scope_ids: Optional[Iterable[int]]) -> List[int]:
         normalized: List[int] = []
@@ -333,6 +377,131 @@ class TestRunScopeService:
             "impacted_test_runs": summary["impacted_test_runs"],
             "trigger": "move_test_case_set",
             "target_test_case_set_id": target_set_id,
+        }
+
+    @classmethod
+    def build_guarded_case_move_preview(
+        cls,
+        db: Session,
+        team_id: int,
+        cases: List[TestCaseLocalDB],
+        target_set_id: int,
+        *,
+        lock: bool = False,
+    ) -> dict:
+        """Build the exact preview and deletion-state fingerprint for a case move."""
+        ordered_cases = sorted(cases, key=lambda case: case.id)
+        all_case_numbers = [case.test_case_number for case in ordered_cases]
+        case_numbers = [
+            case.test_case_number
+            for case in ordered_cases
+            if case.test_case_set_id != target_set_id
+        ]
+        locked_configs = []
+        if lock:
+            locked_configs = (
+                db.query(TestRunConfigDB)
+                .filter(TestRunConfigDB.team_id == team_id)
+                .order_by(TestRunConfigDB.id.asc())
+                .with_for_update()
+                .all()
+            )
+        item_query = (
+            db.query(TestRunItemDB)
+            .filter(
+                TestRunItemDB.team_id == team_id,
+                TestRunItemDB.test_case_number.in_(case_numbers),
+            )
+            .order_by(TestRunItemDB.config_id.asc(), TestRunItemDB.id.asc())
+        )
+        if lock:
+            item_query = item_query.with_for_update()
+        items = item_query.all()
+
+        config_ids = sorted({item.config_id for item in items})
+        if lock:
+            configs = [config for config in locked_configs if config.id in config_ids]
+        else:
+            configs = (
+                db.query(TestRunConfigDB)
+                .filter(
+                    TestRunConfigDB.team_id == team_id,
+                    TestRunConfigDB.id.in_(config_ids),
+                )
+                .order_by(TestRunConfigDB.id.asc())
+                .all()
+            )
+            if not config_ids:
+                configs = []
+        config_scope = {
+            config.id: cls.get_config_scope_ids(
+                db, config, allow_fallback=True, persist_fallback=False
+            )
+            for config in configs
+        }
+        impacted_items = [
+            item for item in items if target_set_id not in config_scope.get(item.config_id, [])
+        ]
+        impacted_item_ids = [item.id for item in impacted_items]
+
+        history_query = (
+            db.query(TestRunItemResultHistoryDB)
+            .filter(TestRunItemResultHistoryDB.item_id.in_(impacted_item_ids))
+            .order_by(
+                TestRunItemResultHistoryDB.item_id.asc(),
+                TestRunItemResultHistoryDB.id.asc(),
+            )
+        )
+        if lock:
+            history_query = history_query.with_for_update()
+        histories = history_query.all() if impacted_item_ids else []
+
+        snapshot = {
+            "team_id": team_id,
+            "target_test_case_set_id": target_set_id,
+            "cases": [
+                {
+                    "id": case.id,
+                    "test_case_number": case.test_case_number,
+                    "test_case_set_id": case.test_case_set_id,
+                    "test_case_section_id": case.test_case_section_id,
+                }
+                for case in ordered_cases
+            ],
+            "config_scopes": [
+                {"config_id": config_id, "scope_ids": config_scope[config_id]}
+                for config_id in sorted(config_scope)
+            ],
+            "impacted_items": [cls._stable_row_payload(item) for item in impacted_items],
+            "histories": [cls._stable_row_payload(history) for history in histories],
+        }
+        fingerprint = hashlib.sha256(
+            json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        summary = cls._summarize_impact_rows(
+            [
+                {
+                    "item_id": item.id,
+                    "config_id": item.config_id,
+                    "config_name": next(
+                        (config.name for config in configs if config.id == item.config_id),
+                        "",
+                    ),
+                }
+                for item in impacted_items
+            ]
+        )
+        return {
+            "impacted_item_count": summary["removed_item_count"],
+            "impacted_test_runs": summary["impacted_test_runs"],
+            "trigger": "move_test_case_set",
+            "target_test_case_set_id": target_set_id,
+            "case_ids": [case.id for case in ordered_cases],
+            "case_numbers": all_case_numbers,
+            "source_test_case_set_ids": cls.normalize_scope_ids(
+                [case.test_case_set_id for case in ordered_cases]
+            ),
+            "impact_fingerprint": fingerprint,
         }
 
     @classmethod

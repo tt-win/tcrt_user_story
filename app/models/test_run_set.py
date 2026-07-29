@@ -7,7 +7,7 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator, validator
 
 from .test_run_config import TestRunConfigSummary
 
@@ -175,6 +175,75 @@ class TestRunSetUpdate(BaseModel):
         if value is None:
             return value
         return TestRunSetBase.validate_automation_suite_ids(value)
+
+
+class ExpectedMembership(BaseModel):
+    """Optimistic precondition for one Test Run Config membership."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    config_id: int = Field(..., gt=0)
+    set_id: Optional[int] = Field(..., gt=0)
+
+
+class _MembershipBulkRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    config_ids: List[int] = Field(..., min_length=1, max_length=100)
+    expected_memberships: List[ExpectedMembership] = Field(..., min_length=1, max_length=100)
+
+    @field_validator("config_ids")
+    @classmethod
+    def validate_config_ids(cls, value: List[int]) -> List[int]:
+        if any(not isinstance(item, int) or isinstance(item, bool) or item <= 0 for item in value):
+            raise ValueError("config_ids must contain positive integers")
+        return list(dict.fromkeys(value))
+
+    @model_validator(mode="after")
+    def validate_expected_memberships(self):
+        expected_ids = [item.config_id for item in self.expected_memberships]
+        if len(expected_ids) != len(set(expected_ids)):
+            raise ValueError("expected_memberships must contain each config exactly once")
+        if expected_ids != self.config_ids:
+            raise ValueError("expected_memberships must match canonical config_ids order")
+        return self
+
+
+class MembershipBatchRequest(_MembershipBulkRequest):
+    """Typed all-or-nothing Test Run membership relocation request."""
+
+    target_set_id: Optional[int] = Field(..., gt=0)
+
+
+class MembershipAttachRequest(_MembershipBulkRequest):
+    """Attach-only request for unassigned or already-target configs."""
+
+
+class MembershipSingleMoveRequest(BaseModel):
+    """Single move/detach request with required nullable fields."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target_set_id: Optional[int] = Field(..., gt=0)
+    expected_source_set_id: Optional[int] = Field(..., gt=0)
+
+
+class MembershipMovement(BaseModel):
+    config_id: int
+    previous_set_id: Optional[int]
+    target_set_id: Optional[int]
+    changed: bool
+
+
+class MembershipMutationSummary(BaseModel):
+    success: bool = True
+    processed_count: int
+    moved_count: int
+    unchanged_count: int
+    target_set_id: Optional[int]
+    config_ids: List[int]
+    affected_set_ids: List[int]
+    movements: List[MembershipMovement]
 
 
 class TestRunSet(BaseModel):

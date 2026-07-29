@@ -272,19 +272,21 @@ async def test_D1_disabled_graph_degrades_and_recommends_fallback():
 
 
 async def test_D2_backend_timeout_degrades_not_raises():
-    """D2: a slow backend (>2.5s) must yield a degraded dict, never raise into
-    the agent loop."""
+    """D2: a backend slower than the search timeout must yield a degraded dict,
+    never raise into the agent loop."""
     svc = KnowledgeRetrievalService()
     mock_hybrid = AsyncMock()
 
     async def _slow(*_a, **_k):
-        await asyncio.sleep(5.0)
+        await asyncio.sleep(1.0)
         return []
 
     mock_hybrid.hybrid_search.side_effect = _slow
-    with patch("app.services.knowledge.retrieval_service.is_knowledge_graph_enabled", return_value=True):
-        with patch("app.services.knowledge.retrieval_service.get_hybrid_search", return_value=mock_hybrid):
-            res = await svc.search_knowledge("login", allowed_team_ids=[1])
+    # Shorten the production timeout instead of waiting the real 2.5s out.
+    with patch("app.services.knowledge.retrieval_service._SEARCH_TIMEOUT_SECONDS", 0.05):
+        with patch("app.services.knowledge.retrieval_service.is_knowledge_graph_enabled", return_value=True):
+            with patch("app.services.knowledge.retrieval_service.get_hybrid_search", return_value=mock_hybrid):
+                res = await svc.search_knowledge("login", allowed_team_ids=[1])
     assert res["status"] == "degraded"
     assert res["fallback_recommended"] is True
 

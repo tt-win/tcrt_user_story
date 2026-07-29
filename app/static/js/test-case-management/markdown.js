@@ -146,13 +146,14 @@ function addHelpButtonsToToolbars() {
         if (toolbar && !toolbar.querySelector('.markdown-help-btn')) {
             const helpButton = document.createElement('button');
             helpButton.type = 'button';
-            helpButton.className = 'btn btn-info btn-xs markdown-help-btn';
+            helpButton.className = 'btn btn-info btn-sm markdown-help-btn ms-2';
             helpButton.setAttribute('data-i18n-title', 'markdown.help');
             helpButton.title = window.i18n
                 ? window.i18n.t('markdown.help', {}, 'Markdown 語法說明')
                 : 'Markdown 語法說明';
-            helpButton.style.marginLeft = '8px';
-            helpButton.onclick = () => window.open('https://www.markdownguide.org/cheat-sheet/', '_blank');
+            helpButton.addEventListener('click', () => {
+                window.open('https://www.markdownguide.org/cheat-sheet/', '_blank');
+            });
             helpButton.innerHTML = '<i class="fas fa-question-circle"></i>';
             toolbar.appendChild(helpButton);
 
@@ -252,7 +253,7 @@ function setEditorMode(mode) {
     markdownFields.forEach(fieldId => {
         const toolbar = document.querySelector(`.markdown-toolbar[data-target="${fieldId}"]`);
         if (toolbar) {
-            toolbar.style.display = mode === 'preview' ? 'none' : 'block';
+            toolbar.classList.toggle('d-none', mode === 'preview');
         }
     });
 

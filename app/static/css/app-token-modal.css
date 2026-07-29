@@ -1,0 +1,79 @@
+#appTokenModal .modal-dialog {
+    max-width: min(1140px, calc(100% - 2rem));
+}
+
+#appTokenModal .app-token-team-picker {
+    max-width: 28rem;
+    margin-bottom: 1rem;
+}
+
+#appTokenModal .app-token-expiry-days {
+    width: 7.5rem;
+    flex: 0 0 auto;
+}
+
+#appTokenModal .app-token-table-responsive {
+    max-height: 56vh;
+    overflow: auto;
+}
+
+#appTokenModal .app-token-table {
+    min-width: 940px;
+    table-layout: fixed;
+}
+
+#appTokenModal .app-token-table__name {
+    width: 16%;
+}
+
+#appTokenModal .app-token-table__prefix {
+    width: 14%;
+}
+
+#appTokenModal .app-token-table__status {
+    width: 10%;
+}
+
+#appTokenModal .app-token-table__scopes {
+    width: 22%;
+}
+
+#appTokenModal .app-token-table__expires-at {
+    width: 11%;
+}
+
+#appTokenModal .app-token-table__last-used-at {
+    width: 14%;
+}
+
+#appTokenModal .app-token-table__actions {
+    width: 13%;
+}
+
+#appTokenModal .app-token-table th {
+    white-space: nowrap;
+}
+
+#appTokenModal .app-token-table td:nth-child(1),
+#appTokenModal .app-token-table td:nth-child(2),
+#appTokenModal .app-token-table td:nth-child(3),
+#appTokenModal .app-token-table td:nth-child(7) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#appTokenModal .app-token-table td:nth-child(4) {
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 767.98px) {
+    #appTokenModal .modal-dialog {
+        max-width: calc(100% - 1rem);
+        margin: 0.5rem auto;
+    }
+
+    #appTokenModal .app-token-team-picker {
+        max-width: none;
+    }
+}

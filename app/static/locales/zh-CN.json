@@ -144,7 +144,8 @@
       "testRuns": "Test Run 管理",
       "testCases": "Test Case 管理",
       "userStoryMap": "User Story Map",
-      "automationHub": "Automation Hub"
+      "automationHub": "Automation Hub",
+      "appToken": "App Token"
     },
     "systemOverview": "系统摘要",
     "systemHealth": "系统状态",
@@ -3718,6 +3719,11 @@
   "appToken": {
     "menuLabel": "应用令牌",
     "modalTitle": "App Token",
+    "selectTeamLabel": "选择团队",
+    "selectTeamPlaceholder": "请选择要管理的团队",
+    "selectTeamHelp": "选择团队后才会加载 App Token。",
+    "noTeamsAvailable": "目前没有可管理的团队。",
+    "loadTeamsFailedWithReason": "加载团队失败：{reason}",
     "tokenList": "令牌列表",
     "createButton": "创建令牌",
     "tokenName": "令牌名称",
