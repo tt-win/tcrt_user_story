@@ -93,6 +93,32 @@ def all_page_routes():
     return [pytest.param(name, route, id=name) for name, route in PAGE_ROUTES]
 
 
+def test_index_is_dashboard_shell_without_current_team_badge_and_keeps_ai_widget(client):
+    """The homepage is dashboard-owned while the global Assistant remains available."""
+    soup = render_page(client, "/")
+    assert soup.find(id="dashboard-root") is not None
+    assert soup.find(id="dashboard-content") is not None
+    assert soup.find(id="team-name-badge") is None
+    script_sources = [script.get("src", "") for script in soup.find_all("script")]
+    assert any("js/index.js" in source for source in script_sources)
+    assert any("js/assistant-widget.js" in source for source in script_sources)
+
+
+def test_index_dashboard_modals_use_canonical_structure(client):
+    """Dashboard preference and activity dialogs follow SPEC-MDL-001."""
+    soup = render_page(client, "/")
+    for modal_id in ("dashboard-preference-modal", "dashboard-activity-modal"):
+        modal = soup.find(id=modal_id)
+        assert modal is not None
+        dialog = modal.find(class_="modal-dialog")
+        assert dialog is not None
+        assert dialog.get("style") is None
+        header = modal.find(class_="modal-header")
+        assert header is not None
+        assert header.find("h5", class_="modal-title") is not None
+        assert header.find("button", class_="btn-close") is not None
+
+
 # --------------------------------------------------------------------------- #
 # SPEC-HOM-001 — Home button unification
 # --------------------------------------------------------------------------- #

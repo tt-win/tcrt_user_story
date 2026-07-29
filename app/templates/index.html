@@ -1,48 +1,107 @@
 {% extends "base.html" %}
 
-{% set page_title_i18n_key = "navigation.title" %}
+{% set page_title_i18n_key = "dashboard.pageTitle" %}
+{% set body_class = "dashboard-page" %}
 
-<!-- 覆寫頁面標題 -->
-{% block page_title_text %}<span data-i18n="navigation.title">Test Case Repository</span>{% endblock %}
-{% block page_subtitle_text %}<span data-i18n="navigation.subtitle">選擇團隊開始管理測試案例</span>{% endblock %}
-{% block page_specific_actions %}
-<a href="/team-management" class="btn btn-primary btn-sm" id="teamSettingsButton">
-    <i class="fas fa-cog me-1"></i><span data-i18n="navigation.teamSettings">團隊設定</span>
-</a>
+{% block page_title %}
+<div class="py-2">
+    <h1 id="dashboard-page-title" class="h5 mb-0"><span data-i18n="dashboard.pageTitle">個人工作台</span></h1>
+</div>
 {% endblock %}
 
+{% block page_subtitle %}{% endblock %}
+
 {% block head %}
-<link rel="stylesheet" href="/static/css/index.css">
+<link rel="stylesheet" href="{{ asset_url('css/index.css') }}">
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-
-    <!-- 載入狀態 -->
-    <div id="loading-state" class="text-center py-5" style="display: none;">
+<div id="dashboard-root" class="dashboard-shell" aria-live="polite">
+    <div id="dashboard-loading" class="dashboard-loading text-center py-5">
         <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden" data-i18n="common.loading">載入中...</span>
+            <span class="visually-hidden" data-i18n="dashboard.loading">正在載入工作台…</span>
         </div>
-        <div class="mt-3 text-muted" data-i18n="messages.loadingTeams">載入團隊資料中...</div>
+        <div class="mt-3 text-muted" data-i18n="dashboard.loading">正在載入工作台…</div>
     </div>
 
-    <!-- 團隊列表區域 -->
-    <div id="teams-section">
-        <!-- 將由 JavaScript 動態載入 -->
+    <div id="dashboard-error" class="dashboard-error d-none" role="alert">
+        <div class="card">
+            <div class="card-header bg-light d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <h6 class="mb-0"><i class="fas fa-triangle-exclamation text-warning me-1"></i><span data-i18n="dashboard.errorTitle">暫時無法載入工作台</span></h6>
+            </div>
+            <div class="card-body">
+                <p class="mb-3 text-muted" data-i18n="dashboard.errorBody">請重新整理頁面後再試一次。</p>
+                <button id="dashboard-retry" type="button" class="btn btn-primary btn-sm">
+                    <i class="fas fa-rotate me-1"></i><span data-i18n="common.refresh">重新整理</span>
+                </button>
+            </div>
+        </div>
     </div>
 
-    <!-- 無團隊時的提示區域 -->
-    <div id="no-teams-section" style="display: none;"></div>
+    <div id="dashboard-content" class="d-none"></div>
+</div>
 
-    <!-- 有團隊時的列表區域 -->
-    <div id="teams-list" style="display: none;">
-        <div class="row" id="teams-container">
-            <!-- 團隊卡片和新增團隊卡片將在此處動態生成 -->
+<div id="dashboard-preference-modal" class="modal fade" tabindex="-1" aria-labelledby="dashboard-preference-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 id="dashboard-preference-title" class="modal-title">
+                    <i class="fas fa-star text-primary me-2"></i><span data-i18n="dashboard.preferenceModalTitle">選擇偏好團隊</span>
+                </h5>
+                <button id="dashboard-preference-close" type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉" data-i18n-aria-label="common.close"></button>
+            </div>
+            <div class="modal-body">
+                <p id="dashboard-preference-intro" class="text-muted mb-3" data-i18n="dashboard.preferenceFirstVisit">請先選擇常用團隊；之後可隨時修改。</p>
+                <div id="dashboard-preference-options" class="dashboard-preference-options" role="radiogroup" aria-labelledby="dashboard-preference-title"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="dashboard-preference-cancel" type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">
+                    <span data-i18n="common.cancel">取消</span>
+                </button>
+                <button id="dashboard-preference-save" type="button" class="btn btn-primary btn-sm" disabled>
+                    <i class="fas fa-check me-1"></i><span data-i18n="dashboard.savePreference">儲存偏好</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="dashboard-activity-modal" class="modal fade" tabindex="-1" aria-labelledby="dashboard-activity-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-fullscreen-lg-down modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 id="dashboard-activity-modal-title" class="modal-title">
+                    <i class="fas fa-clock-rotate-left text-primary me-2"></i><span data-i18n="dashboard.activityModalTitle">近期活動</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉" data-i18n-aria-label="common.close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive dashboard-activity-detail-table-wrap">
+                    <table class="table table-sm table-hover align-middle mb-0 dashboard-activity-detail-table">
+                        <thead class="sticky-top">
+                            <tr>
+                                <th scope="col" data-i18n="dashboard.activityEvent">活動</th>
+                                <th scope="col" data-i18n="dashboard.activityContext">團隊 / Test Run</th>
+                                <th scope="col" data-i18n="dashboard.activityTestCase">Test Case</th>
+                                <th scope="col" data-i18n="dashboard.activityResult">結果</th>
+                                <th scope="col" data-i18n="dashboard.activityTime">時間</th>
+                                <th scope="col"><span class="visually-hidden" data-i18n="common.actions">操作</span></th>
+                            </tr>
+                        </thead>
+                        <tbody id="dashboard-activity-modal-list" class="dashboard-activity-detail-list"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">
+                    <span data-i18n="common.close">關閉</span>
+                </button>
+            </div>
         </div>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/index.js"></script>
+<script src="{{ asset_url('js/index.js') }}"></script>
 {% endblock %}

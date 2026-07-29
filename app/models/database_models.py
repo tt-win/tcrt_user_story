@@ -306,6 +306,7 @@ class TestRunItem(Base):
     test_case_number = Column(String(100), nullable=False, index=True)
 
     # 執行資訊
+    assignee_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     assignee_id = Column(String(64), nullable=True)
     assignee_name = Column(String(255), nullable=True)
     assignee_en_name = Column(String(255), nullable=True)
@@ -338,6 +339,7 @@ class TestRunItem(Base):
 
     # 關聯
     config = relationship("TestRunConfig", back_populates="items")
+    assignee_user = relationship("User", foreign_keys=[assignee_user_id])
     # 歷程關聯（若存在）
     histories = relationship("TestRunItemResultHistory", back_populates="item", cascade="all, delete-orphan")
 
@@ -345,6 +347,7 @@ class TestRunItem(Base):
         UniqueConstraint("config_id", "test_case_number", name="uq_test_run_item_config_case"),
         Index("ix_test_run_items_team", "team_id"),
         Index("ix_test_run_items_result", "test_result"),
+        Index("ix_test_run_items_assignee_user_updated", "assignee_user_id", "updated_at"),
         Index("ix_test_run_items_files_uploaded", "result_files_uploaded"),
     )
 
@@ -385,6 +388,7 @@ class TestRunItemResultHistory(Base):
     __table_args__ = (
         Index("ix_result_history_team_config", "team_id", "config_id"),
         Index("ix_result_history_item_time", "item_id", "changed_at"),
+        Index("ix_result_history_changed_by_time", "changed_by_id", "changed_at"),
     )
 
 

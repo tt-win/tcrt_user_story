@@ -207,6 +207,7 @@ function initializeMarkdownEditor() {
 // 設置編輯器模式
 function setEditorMode(mode) {
     currentEditorMode = mode;
+    const shouldUpdatePreview = mode === 'preview' || mode === 'split';
 
     // 更新按鈕狀態
     document.querySelectorAll('#previewModeBtn, #splitModeBtn').forEach(btn => {
@@ -239,12 +240,10 @@ function setEditorMode(mode) {
             case 'preview':
                 editColumn.className = 'col-12 d-none edit-column';
                 previewColumn.className = 'col-12 preview-column';
-                updateMarkdownPreview(fieldId);
                 break;
             case 'split':
                 editColumn.className = 'col-6 edit-column';
                 previewColumn.className = 'col-6 preview-column';
-                updateMarkdownPreview(fieldId);
                 break;
         }
     });
@@ -256,6 +255,10 @@ function setEditorMode(mode) {
             toolbar.style.display = mode === 'preview' ? 'none' : 'block';
         }
     });
+
+    if (shouldUpdatePreview) {
+        updateMarkdownPreview();
+    }
 }
 
 // 插入 Markdown 語法到指定欄位
@@ -326,8 +329,6 @@ function updateMarkdownPreview(fieldId) {
         // 更新所有欄位
         markdownFields.forEach(id => updateSingleFieldPreview(id));
     }
-    // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
-    adjustTestCasesScrollHeight();
 }
 
 function escapeMarkdownHtml(value) {
@@ -445,6 +446,4 @@ function updateSingleFieldPreview(fieldId) {
 
     const content = textarea.value;
     renderMarkdownToElement(content, previewDiv);
-    // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
-    adjustTestCasesScrollHeight();
 }

@@ -411,8 +411,7 @@ function createItemRow(item, index, canUpdate) {
                            data-item-id="${item.id}"
                            data-assignee-selector
                            data-i18n-placeholder="testRun.enterAssigneeName"
-                           placeholder="${escapeHtml(treTranslate('testRun.enterAssigneeName', '輸入執行者姓名'))}"
-                           onblur="updateAssignee(${item.id}, this.value)">
+                           placeholder="${escapeHtml(treTranslate('testRun.enterAssigneeName', '輸入執行者姓名'))}">
                 ` : `
                     ${escapeHtml(assigneeName)}
                 `}
@@ -451,11 +450,12 @@ function bindItemEventHandlers(canUpdate) {
             const options = {
                 teamId: currentTeamId,
                 allowCustomValue: true,
+                includeLocalUsers: true,
                 onSelect: (contact) => {
-                    updateAssignee(itemId, contact.name);
+                    updateAssignee(itemId, contact);
                 },
                 onClear: () => {
-                    updateAssignee(itemId, '');
+                    updateAssignee(itemId, null);
                 }
             };
 
@@ -846,6 +846,22 @@ function getBatchAssigneeValue() {
     return value;
 }
 
+function getBatchAssigneeSelection() {
+    const input = document.getElementById('batchAssigneeInput');
+    const selector = input && input._assigneeSelector;
+    const selectedContact = selector && typeof selector.getSelectedContact === 'function'
+        ? selector.getSelectedContact()
+        : null;
+    return selectedContact || getBatchAssigneeValue();
+}
+
+function hasAssigneeSelection(selection) {
+    const update = buildAssigneeUpdate(selection);
+    if (update.assignee_user_id) return true;
+    if (update.assignee) return Boolean(update.assignee.id || update.assignee.email);
+    return Boolean(update.assignee_name);
+}
+
 function showBatchModifyModal() {
     if (!getTrePermissions().canBatchModify) {
         showExecutionPermissionDenied();
@@ -881,7 +897,7 @@ function showBatchModifyModal() {
     // 重置表單
     syncBatchAssigneeInput(getBatchAssigneePrefillValue());
     document.getElementById('batchResultSelect').value = '';
-    document.getElementById('batchModifyAssignee').checked = true;
+    document.getElementById('batchModifyAssignee').checked = false;
     document.getElementById('batchModifyResult').checked = false;
     document.getElementById('batchCommentInput').value = '';
     document.getElementById('batchModifyComment').checked = false;
@@ -920,7 +936,7 @@ async function handleBatchModifyConfirm() {
         const modifyAssignee = document.getElementById('batchModifyAssignee').checked;
         const modifyResult = document.getElementById('batchModifyResult').checked;
         const modifyComment = document.getElementById('batchModifyComment').checked;
-        const assigneeName = getBatchAssigneeValue();
+        const assigneeSelection = modifyAssignee ? getBatchAssigneeSelection() : null;
         const testResult = document.getElementById('batchResultSelect').value;
         const comment = document.getElementById('batchCommentInput').value.trim();
         
@@ -930,7 +946,7 @@ async function handleBatchModifyConfirm() {
             return;
         }
         
-        if (modifyAssignee && !assigneeName) {
+        if (modifyAssignee && !hasAssigneeSelection(assigneeSelection)) {
             const enterAssigneeMsg = treTranslate('testRun.enterAssigneeName', '請輸入執行者姓名');
             AppUtils.showWarning(enterAssigneeMsg);
             return;
@@ -948,7 +964,14 @@ async function handleBatchModifyConfirm() {
             return;
         }
         
-        await batchModifyItems({ modifyAssignee, modifyResult, modifyComment, assigneeName, testResult, comment });
+        await batchModifyItems({
+            modifyAssignee,
+            modifyResult,
+            modifyComment,
+            assigneeSelection,
+            testResult,
+            comment
+        });
         batchModifyModal.hide();
         
     } catch (error) {
@@ -964,13 +987,19 @@ async function batchModifyItems(modifications) {
     }
     try {
         const itemsToModify = Array.from(selectedItems);
+        if (modifications.modifyAssignee && !hasAssigneeSelection(modifications.assigneeSelection)) {
+            throw new Error(treTranslate('testRun.enterAssigneeName', '請輸入執行者姓名'));
+        }
+        const assigneeUpdate = modifications.modifyAssignee
+            ? buildAssigneeUpdate(modifications.assigneeSelection)
+            : null;
 
         // 為每個選中的項目建立更新資料
         const updates = itemsToModify.map(itemId => {
             const updateData = { id: itemId };
 
-            if (modifications.modifyAssignee) {
-                updateData.assignee_name = modifications.assigneeName || null;
+            if (assigneeUpdate) {
+                Object.assign(updateData, assigneeUpdate);
             }
 
             if (modifications.modifyResult) {
@@ -1283,14 +1312,15 @@ function initializeTestCaseAssigneeSelector(testCase) {
     const options = {
         teamId: currentTeamId,
         allowCustomValue: true,
+        includeLocalUsers: true,
         onSelect: (contact) => {
             // 更新當前 Test Run Item 的 assignee（以本地 SQLite 為準）
             const item = (testRunItems || []).find(i => i.test_case_number === testCase.test_case_number);
-            if (item) updateAssignee(item.id, contact.name);
+            if (item) updateAssignee(item.id, contact);
         },
         onClear: () => {
             const item = (testRunItems || []).find(i => i.test_case_number === testCase.test_case_number);
-            if (item) updateAssignee(item.id, '');
+            if (item) updateAssignee(item.id, null);
         }
     };
 
@@ -1502,8 +1532,14 @@ function displayTestCaseDetail(testCase) {
     const prevBtn = document.getElementById('prevExecCaseBtn');
     const nextBtn = document.getElementById('nextExecCaseBtn');
     if (prevBtn && nextBtn) {
-        prevBtn.onclick = () => navigateExecCase(testCase, -1);
-        nextBtn.onclick = () => navigateExecCase(testCase, 1);
+        prevBtn.onclick = (event) => {
+            AppUtils.releasePointerFocus(event);
+            return navigateExecCase(testCase, -1);
+        };
+        nextBtn.onclick = (event) => {
+            AppUtils.releasePointerFocus(event);
+            return navigateExecCase(testCase, 1);
+        };
         // 依序號狀態啟用/停用
         const idx = (testRunItems || []).findIndex(i => i.test_case_number === testCase.test_case_number);
         prevBtn.disabled = idx <= 0;
@@ -1913,31 +1949,67 @@ function showTestCaseDetailError() {
     if (errorEl) errorEl.style.display = 'block';
 }
 
-async function updateAssignee(itemId, assigneeName) {
+function buildAssigneeUpdate(selection) {
+    if (selection && typeof selection === 'object' && selection.local_user_id) {
+        const localUserId = Number(selection.local_user_id);
+        if (Number.isInteger(localUserId) && localUserId > 0) {
+            return { assignee_user_id: localUserId };
+        }
+    }
+
+    if (selection && typeof selection === 'object') {
+        const larkId = selection.id ? String(selection.id).trim() : '';
+        const email = selection.email ? String(selection.email).trim().toLowerCase() : '';
+        if (larkId || email) {
+            const structuredAssignee = {};
+            const name = selection.name || selection.display_name;
+            if (larkId) structuredAssignee.id = larkId;
+            else if (email) structuredAssignee.email = email;
+            if (name) structuredAssignee.name = String(name).trim();
+            if (selection.en_name) structuredAssignee.en_name = String(selection.en_name).trim();
+            return { assignee: structuredAssignee };
+        }
+    }
+
+    const name = selection && typeof selection === 'object'
+        ? (selection.name || selection.display_name)
+        : selection;
+    const cleanName = name ? String(name).trim() : '';
+    return { assignee_name: cleanName || null };
+}
+
+async function updateAssignee(itemId, selection) {
     if (!getTrePermissions().canAssign) {
         showExecutionPermissionDenied();
         return;
     }
     try {
-        // 清理輸入值
-        const cleanAssignee = assigneeName ? assigneeName.trim() : '';
+        const assigneeUpdate = buildAssigneeUpdate(selection);
         
         const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${itemId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                assignee_name: cleanAssignee || null
-            })
+            body: JSON.stringify(assigneeUpdate)
         });
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
         
+        const updatedItem = await response.json();
+
         // 更新本地資料
         const itemIndex = testRunItems.findIndex(item => item.id === itemId);
         if (itemIndex !== -1) {
-            testRunItems[itemIndex].assignee_name = cleanAssignee || null;
+            [
+                'assignee_user_id',
+                'assignee_id',
+                'assignee_name',
+                'assignee_en_name',
+                'assignee_email',
+            ].forEach((field) => {
+                testRunItems[itemIndex][field] = updatedItem[field] ?? null;
+            });
         }
         
         // 不顯示成功訊息，讓編輯過程更流暢
@@ -1950,7 +2022,12 @@ async function updateAssignee(itemId, assigneeName) {
         const input = document.querySelector(`input[data-item-id="${itemId}"]`);
         if (input) {
             const originalItem = testRunItems.find(item => item.id === itemId);
-            input.value = originalItem ? (originalItem.assignee_name || '') : '';
+            const originalName = originalItem ? (originalItem.assignee_name || '') : '';
+            if (input._assigneeSelector && typeof input._assigneeSelector.setValue === 'function') {
+                input._assigneeSelector.setValue(originalName);
+            } else {
+                input.value = originalName;
+            }
         }
     }
 }

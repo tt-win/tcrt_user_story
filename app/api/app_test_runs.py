@@ -27,7 +27,6 @@ from app.api.test_run_items import (
     TestRunItemUpdate,
     _add_result_history,
     _db_to_response,
-    _to_json,
     _verify_team_and_config,
     apply_batch_item_update_sync,
 )
@@ -58,6 +57,13 @@ from app.models.test_run_config import TestRunConfigCreate, TestRunConfigUpdate,
 from app.models.test_run_set import TestRunSetCreate, TestRunSetStatus, TestRunSetUpdate
 from app.services.attachment_storage import build_attachment_metadata, get_attachments_root_dir
 from app.services.test_run_scope_service import TestRunScopeService
+from app.services.test_run_assignee import (
+    AssigneeValidationError,
+    ResolvedAssignee,
+    apply_resolved_assignee,
+    has_assignee_input,
+    resolve_assignee,
+)
 from app.services.test_run_set_status import (
     apply_config_status_transition_sync,
     recalculate_set_status_sync,
@@ -716,6 +722,24 @@ async def batch_create_app_test_run_items(
 
     def _create(sync_db: Session) -> Dict[str, Any]:
         config_db = _verify_team_and_config(team_id, config_id, sync_db)
+        resolved_assignees: List[ResolvedAssignee] = []
+        for index, requested_item in enumerate(payload.items):
+            try:
+                resolved_assignees.append(
+                    resolve_assignee(
+                        sync_db,
+                        team_id=team_id,
+                        payload=requested_item.model_dump(exclude_unset=True),
+                        for_create=True,
+                        allow_local_user_id=False,
+                        allow_structured_local_link=False,
+                    )
+                )
+            except AssigneeValidationError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"items[{index}] assignee: {exc}",
+                ) from exc
         config_scope_ids = TestRunScopeService.get_config_scope_ids(
             sync_db, config_db, allow_fallback=True, persist_fallback=False
         )
@@ -766,15 +790,11 @@ async def batch_create_app_test_run_items(
                     team_id=team_id,
                     config_id=config_id,
                     test_case_number=item.test_case_number,
-                    assignee_id=item.assignee.id if item.assignee else None,
-                    assignee_name=item.assignee.name if item.assignee else None,
-                    assignee_en_name=item.assignee.en_name if item.assignee else None,
-                    assignee_email=item.assignee.email if item.assignee else None,
-                    assignee_json=_to_json(item.assignee.model_dump()) if item.assignee else None,
                     test_result=item.test_result,
                     executed_at=item.executed_at,
                     execution_duration=item.execution_duration,
                 )
+                apply_resolved_assignee(db_item, resolved_assignees[idx])
                 sync_db.add(db_item)
                 created += 1
             except Exception as exc:  # noqa: BLE001
@@ -826,6 +846,24 @@ async def update_app_test_run_item_result(
         if not item:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Test run item not found")
 
+        try:
+            resolved_assignee = (
+                resolve_assignee(
+                    sync_db,
+                    team_id=team_id,
+                    payload=data,
+                    allow_local_user_id=False,
+                    allow_structured_local_link=False,
+                )
+                if has_assignee_input(data)
+                else ResolvedAssignee(preserve=True)
+            )
+        except AssigneeValidationError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+
         prev_result = item.test_result
         prev_executed_at = item.executed_at
 
@@ -835,11 +873,7 @@ async def update_app_test_run_item_result(
             item.executed_at = data["executed_at"]
         if "execution_duration" in data:
             item.execution_duration = data["execution_duration"]
-        if "assignee_name" in data:
-            name = (data.get("assignee_name") or "").strip()
-            item.assignee_name = name or None
-            if not name:
-                item.assignee_id = item.assignee_en_name = item.assignee_email = item.assignee_json = None
+        apply_resolved_assignee(item, resolved_assignee)
 
         _add_result_history(
             sync_db, item, prev_result, prev_executed_at, item.test_result, item.executed_at,
@@ -860,7 +894,7 @@ async def update_app_test_run_item_result(
         action_type=ActionType.UPDATE, team_id=team_id,
         extra_details={"item_id": item_id, "test_result": data.get("test_result")},
     )
-    return response
+    return response.model_dump(exclude={"assignee_user_id"})
 
 
 @router.post("/teams/{team_id}/test-run-configs/{config_id}/items/batch-update-results")
@@ -886,15 +920,38 @@ async def batch_update_app_test_run_item_results(
 
     def _batch(sync_db: Session):
         _verify_team_and_config(team_id, config_id, sync_db)
+        resolved_assignees: List[Optional[ResolvedAssignee]] = []
+        for index, update_payload in enumerate(payload.updates):
+            if not has_assignee_input(update_payload):
+                resolved_assignees.append(None)
+                continue
+            try:
+                resolved_assignees.append(
+                    resolve_assignee(
+                        sync_db,
+                        team_id=team_id,
+                        payload=update_payload,
+                        allow_local_user_id=False,
+                        allow_structured_local_link=False,
+                    )
+                )
+            except AssigneeValidationError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"updates[{index}] assignee: {exc}",
+                ) from exc
         success = 0
         errors: List[str] = []
 
-        for upd in payload.updates:
+        for update_index, upd in enumerate(payload.updates):
             try:
                 item_id = upd.get("id")
                 comment_raw = upd.get("comment") if "comment" in upd else None
                 comment_text = comment_raw.strip() if isinstance(comment_raw, str) else None
-                has_basic_update = any(key in upd for key in ["test_result", "assignee_name", "executed_at"])
+                has_basic_update = any(
+                    key in upd
+                    for key in ["test_result", "assignee_user_id", "assignee", "assignee_name", "executed_at"]
+                )
                 if not item_id or (not has_basic_update and not comment_text):
                     errors.append("缺少 id 或更新欄位")
                     continue
@@ -919,6 +976,7 @@ async def batch_update_app_test_run_item_results(
                     source=source,
                     changed_by_id=None,
                     changed_by_name=principal.audit_actor,
+                    assignee_resolution=resolved_assignees[update_index],
                 )
                 success += 1
             except Exception as e:  # noqa: BLE001

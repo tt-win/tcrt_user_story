@@ -26,6 +26,7 @@ from app.services.assistant.capability_context import (
     build_capability_facts,
     tools_for_turn,
 )
+from app.services.assistant.locale_context import append_reply_language_context
 from app.services.assistant.team_context import effective_team_id
 from app.services.assistant.assistant_llm_service import (
     AssistantLLMContextLengthError,
@@ -197,6 +198,7 @@ async def _run_llm_loop(
     llm_service: AssistantLLMService,
     registry: ToolRegistry,
     config,
+    ui_locale: Optional[str] = None,
     suppress_terminal_text: bool = False,
 ) -> None:
     """從 turn 目前歷史開始跑 LLM 迴圈，直到純文字回覆／pending 建立／取消／錯誤／上限。
@@ -228,6 +230,9 @@ async def _run_llm_loop(
         allowed_tool_names=tools_by_name.keys(),
     )
     system_prompt = append_capability_context(system_prompt, capability_facts)
+    # 回覆語言跟隨前端 UI 語系：模板本身是繁體中文且只說「跟隨使用者訊息語言」，不附加此區塊
+    # 時模型會不分語系一律回繁體中文。同樣 MUST 在 assemble 之後 append（快取不可污染）。
+    system_prompt = append_reply_language_context(system_prompt, ui_locale)
     # 本 turn 若隨訊息上傳附件，LLM 必須被明確告知有哪些 file_ref 可用，否則工具 schema
     # 裡的 file_ref 參數對模型而言無從得知合法值（見 spec assistant-conversations「聊天
     # 附檔暫存」）。固定在迴圈外查一次即可：附件只在本 turn 建立時寫入，迴圈期間不會再變。
@@ -595,13 +600,14 @@ async def run_agent_turn(
     llm_service: AssistantLLMService,
     registry: ToolRegistry,
     config,
+    ui_locale: Optional[str] = None,
 ) -> None:
     """detached runner 入口：全新使用者訊息 turn（呼叫端已完成 TurnStart Tx，此函式不再重複建立 turn）。"""
     try:
         await _run_llm_loop(
             conversation=conversation, turn=turn, user_id=user_id, role=role, jwt=jwt,
             conversation_service=conversation_service, executor=executor, llm_service=llm_service,
-            registry=registry, config=config,
+            registry=registry, config=config, ui_locale=ui_locale,
         )
     except Exception as exc:  # noqa: BLE001
         logger.error(
@@ -634,6 +640,7 @@ async def run_confirm_turn(
     registry: ToolRegistry,
     config,
     execution_payload: Optional[dict] = None,
+    ui_locale: Optional[str] = None,
 ) -> None:
     """detached runner 入口：confirm continuation turn（呼叫端已完成 Confirm Tx A / `claim_pending_for_confirm`）。
 
@@ -798,7 +805,7 @@ async def run_confirm_turn(
         await _run_llm_loop(
             conversation=conversation, turn=turn, user_id=user_id, role=role, jwt=jwt,
             conversation_service=conversation_service, executor=executor, llm_service=llm_service,
-            registry=registry, config=config, suppress_terminal_text=True,
+            registry=registry, config=config, ui_locale=ui_locale, suppress_terminal_text=True,
         )
     except Exception as exc:  # noqa: BLE001
         logger.error(

@@ -21,6 +21,7 @@ class AssigneeSelector {
             maxResults: 10,
             debounceMs: 300,
             allowCustomValue: false,  // 是否允許輸入自訂值（非聯絡人）
+            includeLocalUsers: false,
             showAvatar: true,
             onSelect: null,
             onClear: null,
@@ -285,11 +286,14 @@ class AssigneeSelector {
             if (this._justSelected) return;
             const val = (this.displayInput.value || '').trim();
             if (!val) {
-                // 如果輸入為空，恢復原來的值
-                this.restoreOriginalValue();
+                if (this.originalValue) {
+                    this.clearSelection();
+                    this.originalValue = '';
+                }
+                this.close();
             } else if (!this.selectedContact) {
                 // 如果有輸入但沒有選擇聯絡人
-                if (this.options.allowCustomValue) {
+                if (this.options.allowCustomValue && val !== this.originalValue) {
                     // 允許自訂值：提交目前值
                     this.setValue(val);
                     if (this.options.onSelect) {
@@ -331,6 +335,7 @@ class AssigneeSelector {
 
         // 保留 click 以支援鍵盤操作或其他互動（冗餘安全）
         this.dropdown.addEventListener('click', (e) => {
+            if (this._justSelected) return;
             const item = e.target.closest('.assignee-selector-item');
             if (item && item.dataset.contactId) {
                 this.selectContact(item.dataset.contactId);
@@ -353,16 +358,17 @@ class AssigneeSelector {
         
         // 建立快取 key（依 team、query 與 limit）
         const normQuery = (query || '').trim().toLowerCase();
-        const cacheKey = `team:${this.options.teamId}|q:${normQuery}|limit:${this.options.maxResults}`;
+        const cacheKey = `team:${this.options.teamId}|q:${normQuery}|limit:${this.options.maxResults}|local:${this.options.includeLocalUsers ? 1 : 0}`;
+        const canReuseCachedResult = !this.options.includeLocalUsers;
         
         // 1) 元件級快取
-        if (this.cache.has(cacheKey)) {
+        if (canReuseCachedResult && this.cache.has(cacheKey)) {
             this.contacts = this.cache.get(cacheKey);
             this.filterContacts(query);
             return;
         }
         // 2) 全域記憶體快取
-        const globalHit = window.AssigneeSelectorCache.get(cacheKey);
+        const globalHit = canReuseCachedResult && window.AssigneeSelectorCache.get(cacheKey);
         if (globalHit) {
             this.contacts = globalHit;
             this.cache.set(cacheKey, globalHit);
@@ -370,18 +376,20 @@ class AssigneeSelector {
             return;
         }
         // 3) TRCache（持久化，TTL 1 小時）
-        try {
-            if (window.TRCache && typeof window.TRCache.get === 'function') {
-                const persisted = await window.TRCache.get(this._persistNs, cacheKey);
-                if (persisted && persisted.value && persisted.expiresAt && Date.now() < persisted.expiresAt) {
-                    this.contacts = persisted.value;
-                    this.cache.set(cacheKey, this.contacts);
-                    window.AssigneeSelectorCache.set(cacheKey, this.contacts);
-                    this.filterContacts(query);
-                    return;
+        if (canReuseCachedResult) {
+            try {
+                if (window.TRCache && typeof window.TRCache.get === 'function') {
+                    const persisted = await window.TRCache.get(this._persistNs, cacheKey);
+                    if (persisted && persisted.value && persisted.expiresAt && Date.now() < persisted.expiresAt) {
+                        this.contacts = persisted.value;
+                        this.cache.set(cacheKey, this.contacts);
+                        window.AssigneeSelectorCache.set(cacheKey, this.contacts);
+                        this.filterContacts(query);
+                        return;
+                    }
                 }
-            }
-        } catch (_) {}
+            } catch (_) {}
+        }
         
         // 4) in-flight 去重：同一 key 的請求共用
         const inflight = window.AssigneeSelectorCache.getInflight(cacheKey);
@@ -390,7 +398,7 @@ class AssigneeSelector {
             try {
                 const contacts = await inflight;
                 this.contacts = contacts || [];
-                this.cache.set(cacheKey, this.contacts);
+                if (canReuseCachedResult) this.cache.set(cacheKey, this.contacts);
                 this.filterContacts(query);
                 return;
             } finally {
@@ -404,27 +412,62 @@ class AssigneeSelector {
             ? `/api/teams/${this.options.teamId}/contacts/search/suggestions?q=${encodeURIComponent(normQuery)}&limit=${this.options.maxResults}`
             : `/api/teams/${this.options.teamId}/contacts?limit=${this.options.maxResults}`;
         const p = (async () => {
-            const response = await window.AuthClient.fetch(url);
-            const result = await response.json();
-            if (result.success) {
-                return normQuery ? (result.data.suggestions || []) : (result.data.contacts || []);
+            const fetchContacts = async () => {
+                const response = await window.AuthClient.fetch(url);
+                const result = await response.json();
+                if (result.success) {
+                    return normQuery ? (result.data.suggestions || []) : (result.data.contacts || []);
+                }
+                const errorMessage = window.i18n?.t('testRun.loadContactsFailed') || '載入聯絡人失敗';
+                throw new Error(result.message || errorMessage);
+            };
+            if (!this.options.includeLocalUsers) return fetchContacts();
+
+            const params = new URLSearchParams({ limit: String(this.options.maxResults) });
+            if (normQuery) params.set('search', normQuery);
+            const fetchLocalUsers = async () => {
+                const localResponse = await window.AuthClient.fetch(
+                    `/api/teams/${this.options.teamId}/test-run-assignees/?${params.toString()}`
+                );
+                if (!localResponse.ok) return [];
+                const localUsers = await localResponse.json();
+                if (!Array.isArray(localUsers)) return [];
+                return localUsers.map((user) => ({
+                    id: `local:${user.id}`,
+                    name: user.display_name,
+                    display_name: user.display_name,
+                    local_user_id: user.id,
+                    lark_linked: Boolean(user.lark_linked),
+                }));
+            };
+            const [contactsResult, localUsersResult] = await Promise.allSettled([
+                fetchContacts(),
+                fetchLocalUsers(),
+            ]);
+            const contacts = contactsResult.status === 'fulfilled' ? contactsResult.value : [];
+            const localUsers = localUsersResult.status === 'fulfilled' ? localUsersResult.value : [];
+            if (!contacts.length && !localUsers.length && contactsResult.status === 'rejected') {
+                throw contactsResult.reason;
             }
-            const errorMessage = window.i18n?.t('testRun.loadContactsFailed') || '載入聯絡人失敗';
-            throw new Error(result.message || errorMessage);
+            return [...localUsers, ...contacts];
         })();
         window.AssigneeSelectorCache.setInflight(cacheKey, p);
         try {
             const contacts = await p;
             this.contacts = contacts;
             // 記憶體快取
-            this.cache.set(cacheKey, contacts);
-            window.AssigneeSelectorCache.set(cacheKey, contacts);
+            if (canReuseCachedResult) {
+                this.cache.set(cacheKey, contacts);
+                window.AssigneeSelectorCache.set(cacheKey, contacts);
+            }
             // 持久化快取（TTL 1 小時）
-            try {
-                if (window.TRCache && typeof window.TRCache.put === 'function') {
-                    await window.TRCache.put(this._persistNs, cacheKey, contacts, { ttl: this._persistTTLms });
-                }
-            } catch (_) {}
+            if (canReuseCachedResult) {
+                try {
+                    if (window.TRCache && typeof window.TRCache.put === 'function') {
+                        await window.TRCache.put(this._persistNs, cacheKey, contacts, { ttl: this._persistTTLms });
+                    }
+                } catch (_) {}
+            }
             this.filterContacts(query);
         } catch (error) {
             console.error('AssigneeSelector: 載入聯絡人失敗', error);
@@ -511,8 +554,8 @@ class AssigneeSelector {
         } else {
             const lowerQuery = query.toLowerCase();
             this.filteredContacts = this.contacts.filter(contact => 
-                contact.name.toLowerCase().includes(lowerQuery) ||
-                contact.email.toLowerCase().includes(lowerQuery)
+                String(contact.name || '').toLowerCase().includes(lowerQuery) ||
+                String(contact.email || '').toLowerCase().includes(lowerQuery)
             ).slice(0, this.options.maxResults);
         }
         
@@ -559,7 +602,7 @@ class AssigneeSelector {
                 const defaultAvatar = document.createElement('div');
                 defaultAvatar.className = 'assignee-selector-avatar bg-secondary d-flex align-items-center justify-content-center text-white';
                 defaultAvatar.style.fontSize = '0.75rem';
-                defaultAvatar.textContent = contact.name.charAt(0).toUpperCase();
+                defaultAvatar.textContent = String(contact.name || '?').charAt(0).toUpperCase();
                 item.appendChild(defaultAvatar);
             }
             
@@ -572,6 +615,12 @@ class AssigneeSelector {
             name.textContent = contact.name;
             
             info.appendChild(name);
+            if (contact.local_user_id) {
+                const localBadge = document.createElement('span');
+                localBadge.className = 'badge bg-primary';
+                localBadge.textContent = window.i18n?.t('testRun.localUser', {}, 'TCRT') || 'TCRT';
+                info.appendChild(localBadge);
+            }
             // 依需求：選單僅顯示頭像與名稱，不顯示 email
             
             item.appendChild(info);

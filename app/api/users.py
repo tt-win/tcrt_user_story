@@ -18,10 +18,10 @@ from app.auth.models import UserRole, UserCreate
 from app.auth.password_service import PasswordService
 from app.auth.permission_service import clear_permission_cache
 from app.services.user_service import UserService
-from app.models.database_models import User, LarkUser
+from app.models.database_models import LarkUser, TestRunItem, User
 from app.db_access.main import MainAccessBoundary, get_main_access_boundary
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func
+from sqlalchemy import select, and_, or_, func, update
 
 from app.utils.logging import log_lark_display_decision
 from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
@@ -834,6 +834,26 @@ async def delete_user(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="管理員只能刪除 USER 和 VIEWER 角色",
                 )
+
+            identity_conditions = [TestRunItem.assignee_user_id == user.id]
+            lark_user_id = (user.lark_user_id or "").strip()
+            if lark_user_id:
+                identity_conditions.append(func.trim(TestRunItem.assignee_id) == lark_user_id)
+            normalized_email = (user.email or "").strip().lower()
+            if normalized_email:
+                identity_conditions.append(
+                    func.lower(func.trim(TestRunItem.assignee_email)) == normalized_email
+                )
+            await session.execute(
+                update(TestRunItem)
+                .where(or_(*identity_conditions))
+                .values(
+                    assignee_user_id=None,
+                    assignee_id=None,
+                    assignee_email=None,
+                    assignee_json=None,
+                )
+            )
 
             await session.delete(user)
             await session.flush()

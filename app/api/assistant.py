@@ -42,6 +42,7 @@ from app.services.assistant import attachment_storage, ids
 from app.services.assistant.assistant_llm_service import get_assistant_llm_service
 from app.services.assistant.conversation_service import ConversationService
 from app.services.assistant.errors import AdmissionDeniedError, AssistantError, ConfirmationStaleError
+from app.services.assistant.locale_context import normalize_ui_locale
 from app.services.assistant.param_validation import validate_arguments
 from app.services.assistant.runner_supervisor import RunnerSupervisor, get_runner_supervisor
 from app.services.assistant.team_context import effective_team_id
@@ -310,6 +311,7 @@ async def post_message_endpoint(
     text: str = Form(""),
     client_message_id: str = Form(...),
     context_team_id: Optional[int] = Form(None),
+    ui_locale: Optional[str] = Form(None),
     after_seq: int = Query(-1),
     attachments: list[UploadFile] = File(default=[]),
     current_user: User = Depends(get_current_user),
@@ -344,6 +346,11 @@ async def post_message_endpoint(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={"code": "CONTEXT_TEAM_INVALID", "message": "context team is not accessible"},
             )
+
+    # 回覆語言跟隨前端 UI 語系（spec assistant-agent-loop「回覆語言跟隨介面語系」）。無法映射到
+    # 支援語系時一律視為未提供：這是呈現層提示，不影響權限與執行結果，MUST NOT 因此拒絕整個請求。
+    reply_locale = normalize_ui_locale(ui_locale)
+    conv_svc.set_reply_locale(reply_locale)
 
     files_data = []
     for file in attachments:
@@ -403,7 +410,7 @@ async def post_message_endpoint(
         lambda: agent_svc.run_agent_turn(
             conversation=conversation, turn=result.turn, user_id=current_user.id, role=current_user.role, jwt=jwt,
             conversation_service=conv_svc, executor=executor, llm_service=get_assistant_llm_service(),
-            registry=executor.registry, config=config,
+            registry=executor.registry, config=config, ui_locale=reply_locale,
         ),
     )
     return _stream_response(conv_svc, turn_id=result.turn.id, turn_key=result.turn.turn_key, after_seq=after_seq)
@@ -447,6 +454,7 @@ async def confirm_action_endpoint(
     conversation_id: int,
     action_id: int,
     after_seq: int = Query(-1),
+    ui_locale: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
     credentials: HTTPAuthorizationCredentials = Security(security),
     config: AssistantConfig = Depends(_get_config),
@@ -456,6 +464,10 @@ async def confirm_action_endpoint(
 ):
     _require_enabled(config)
     jwt = credentials.credentials
+    # 回覆語言取「confirm 當下的 UI 語系」，與必須取 turn 快照的有效 team 不同：語言只影響本次
+    # continuation 產生的文字，使用者換語系後理應以新語系收到總結（spec assistant-agent-loop）。
+    reply_locale = normalize_ui_locale(ui_locale)
+    conv_svc.set_reply_locale(reply_locale)
     conversation = await conv_svc.get_conversation_owned(user_id=current_user.id, conversation_id=conversation_id)
     action = await conv_svc.get_pending_action_owned(user_id=current_user.id, conversation_id=conversation_id, action_id=action_id)
 
@@ -654,6 +666,7 @@ async def confirm_action_endpoint(
             user_id=current_user.id, role=current_user.role, jwt=jwt,
             conversation_service=conv_svc, executor=executor, llm_service=get_assistant_llm_service(),
             registry=executor.registry, config=config, execution_payload=execution_payload,
+            ui_locale=reply_locale,
         ),
     )
     return _stream_response(conv_svc, turn_id=continuation.id, turn_key=continuation.turn_key, after_seq=after_seq)

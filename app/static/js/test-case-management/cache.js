@@ -529,9 +529,96 @@ function mapFieldToAttr(field) {
     }
 }
 
+function hasTestCaseListRowActions() {
+    return hasTestCasePermission('testCaseActionCopy')
+        || hasTestCasePermission('testCaseActionDelete');
+}
+
+function renderTestCaseListQuickEditButton(recordId, field) {
+    return `
+        <button type="button" class="btn btn-outline-primary btn-sm position-absolute hover-edit-btn"
+                data-tcm-action="quick-edit" data-record-id="${recordId}" data-field="${field}"
+                data-i18n-title="tooltips.quickEdit">
+            <i class="fas fa-edit"></i>
+        </button>`;
+}
+
+function renderTestCaseListFieldContent(testCase, field) {
+    const recordId = escapeHtml(testCase.record_id ?? '');
+    const quickEditButton = renderTestCaseListQuickEditButton(recordId, field);
+
+    if (field === 'test_case_number') {
+        const testCaseNumber = escapeHtml(testCase.test_case_number || testCase.record_id || '');
+        return `
+            <button type="button" class="btn btn-link btn-sm p-0 text-start test-case-open-trigger test-case-number-open"
+                    data-tcm-action="open-test-case" data-record-id="${recordId}"
+                    data-i18n-title="tooltips.viewEdit">
+                <code class="test-case-number-value">${testCaseNumber}</code>
+            </button>
+            ${quickEditButton}`;
+    }
+
+    if (field === 'title') {
+        const title = escapeHtml(testCase.title || '');
+        const description = testCase.description
+            ? escapeHtml(`${String(testCase.description).substring(0, 60)}...`)
+            : '';
+        return `
+            <button type="button" class="btn btn-link btn-sm p-0 text-start test-case-open-trigger test-case-title-open"
+                    data-tcm-action="open-test-case" data-record-id="${recordId}"
+                    data-i18n-title="tooltips.viewEdit">
+                <span class="test-case-title-value fw-medium text-truncate" title="${title}">${title}</span>
+                <span class="test-case-description-preview small text-muted text-truncate">${description}</span>
+            </button>
+            ${quickEditButton}`;
+    }
+
+    return '';
+}
+
+function getTestCaseListInlineRecordId(recordId) {
+    return escapeHtml(JSON.stringify(String(recordId ?? '')));
+}
+
+function restoreTestCaseListFieldCell(cell, testCase, field) {
+    if (!cell || !testCase) return;
+
+    cell.innerHTML = renderTestCaseListFieldContent(testCase, field);
+    if (window.i18n && typeof window.i18n.retranslate === 'function') {
+        window.i18n.retranslate(cell);
+    }
+}
+
+function renderTestCaseListRowActions(testCase) {
+    if (!hasTestCaseListRowActions()) return '';
+
+    const inlineRecordId = getTestCaseListInlineRecordId(testCase.record_id);
+    const copyTitle = (window.i18n && typeof window.i18n.isReady === 'function' && window.i18n.isReady())
+        ? escapeHtml(window.i18n.t('common.copy'))
+        : '複製';
+
+    return `
+        <td class="align-middle text-center test-case-actions-cell">
+            <div class="test-case-actions d-flex justify-content-center gap-2">
+                ${hasTestCasePermission('testCaseActionCopy') ? `
+                <button type="button" class="btn btn-secondary btn-sm"
+                        onclick="copyTestCase(${inlineRecordId})" title="${copyTitle}">
+                    <i class="fas fa-copy"></i>
+                </button>` : ''}
+                ${hasTestCasePermission('testCaseActionDelete') ? `
+                <button type="button" class="btn btn-danger btn-sm"
+                        onclick="deleteTestCase(${inlineRecordId})" data-i18n-title="tooltips.delete">
+                    <i class="fas fa-trash"></i>
+                </button>` : ''}
+            </div>
+        </td>`;
+}
+
 function renderTestCaseRow(testCase) {
     const caseNumber = String(testCase.test_case_number || testCase.record_id || '');
-    const safeCaseNumber = caseNumber.replace(/"/g, '&quot;');
+    const safeCaseNumber = escapeHtml(caseNumber);
+    const safeRecordId = escapeHtml(testCase.record_id ?? '');
+    const inlineRecordId = getTestCaseListInlineRecordId(testCase.record_id);
     const highlightedCases = window.__tcHelperCreatedNumbers instanceof Set
         ? window.__tcHelperCreatedNumbers
         : null;
@@ -543,37 +630,18 @@ function renderTestCaseRow(testCase) {
         <tr${rowClass} data-test-case-number="${safeCaseNumber}">
             <td class="align-middle text-center">
                 <input type="checkbox" class="form-check-input test-case-checkbox"
-                       value="${testCase.record_id}" ${selectedTestCases.has(testCase.record_id) ? 'checked' : ''}>
+                       value="${safeRecordId}" ${selectedTestCases.has(testCase.record_id) ? 'checked' : ''}>
             </td>
-            <td class="align-middle position-relative hover-editable" data-field="test_case_number" data-record-id="${testCase.record_id}">
-                <div style="padding-right: 45px;">
-                    <code style="color: rgb(194, 54, 120); font-weight: 500;">${testCase.test_case_number || testCase.record_id}</code>
-                </div>
-                <button type="button" class="btn btn-outline-primary btn-sm position-absolute hover-edit-btn"
-                        style="top: 50%; right: 5px; transform: translateY(-50%); z-index: 10;"
-                        onclick="quickEdit('${testCase.record_id}', 'test_case_number')" data-i18n-title="tooltips.quickEdit">
-                    <i class="fas fa-edit"></i>
-                </button>
+            <td class="align-middle position-relative hover-editable" data-field="test_case_number" data-record-id="${safeRecordId}">
+                ${renderTestCaseListFieldContent(testCase, 'test_case_number')}
             </td>
-            <td class="align-middle position-relative hover-editable" data-field="title" data-record-id="${testCase.record_id}">
-                <div class="d-flex align-items-center" style="padding-right: 45px;">
-                    <div style="flex-grow: 1; min-width: 0;">
-                        <div class="fw-medium text-truncate" title="${testCase.title}">${testCase.title}</div>
-                        <div class="small text-muted text-truncate">
-                            ${testCase.description ? testCase.description.substring(0, 60) + '...' : ''}
-                        </div>
-                    </div>
-                </div>
-                <button type="button" class="btn btn-outline-primary btn-sm position-absolute hover-edit-btn"
-                        style="top: 50%; right: 5px; transform: translateY(-50%); z-index: 10;"
-                        onclick="quickEdit('${testCase.record_id}', 'title')" data-i18n-title="tooltips.quickEdit">
-                    <i class="fas fa-edit"></i>
-                </button>
+            <td class="align-middle position-relative hover-editable" data-field="title" data-record-id="${safeRecordId}">
+                ${renderTestCaseListFieldContent(testCase, 'title')}
             </td>
-            <td class="align-middle text-center position-relative" data-field="tcg" data-record-id="${testCase.record_id}" style="max-width: 180px;">
+            <td class="align-middle text-center position-relative" data-field="tcg" data-record-id="${safeRecordId}" style="max-width: 180px;">
                 <div class="tcg-edit-area ${hasTestCasePermission('tcgEditContainer') ? 'tcg-editable' : 'tcg-readonly'}"
                      ${hasTestCasePermission('tcgEditContainer') ?
-                       `onclick="editTCG('${testCase.record_id}')" data-i18n-title="tooltips.clickEditTcg" style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; align-items: center; min-height: 24px; padding: 2px; cursor: pointer;"` :
+                       `onclick="editTCG(${inlineRecordId})" data-i18n-title="tooltips.clickEditTcg" style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; align-items: center; min-height: 24px; padding: 2px; cursor: pointer;"` :
                        'style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; align-items: center; min-height: 24px; padding: 2px; cursor: default;"'}>
                     ${getTCGTags(testCase)}
                 </div>
@@ -591,24 +659,7 @@ function renderTestCaseRow(testCase) {
                     ${formatDate(testCase.updated_at, 'date')}
                 </div>
             </td>
-            <td class="align-middle text-center" style="width: 100px;">
-                <div class="test-case-actions d-flex justify-content-center gap-2">
-                    <button type="button" class="btn btn-secondary btn-sm"
-                            onclick="viewTestCase('${testCase.record_id}')" data-i18n-title="tooltips.viewEdit">
-                        <i class="fas fa-eye"></i>
-                    </button>
-                    ${hasTestCasePermission('testCaseActionCopy') ? `
-                    <button type="button" class="btn btn-secondary btn-sm"
-                            onclick="copyTestCase('${testCase.record_id}')" title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.copy') : '複製'}">
-                        <i class="fas fa-copy"></i>
-                    </button>` : ''}
-                    ${hasTestCasePermission('testCaseActionDelete') ? `
-                    <button type="button" class="btn btn-danger btn-sm"
-                            onclick="deleteTestCase('${testCase.record_id}')" data-i18n-title="tooltips.delete">
-                        <i class="fas fa-trash"></i>
-                    </button>` : ''}
-                </div>
-            </td>
+            ${renderTestCaseListRowActions(testCase)}
         </tr>`;
 }
 
@@ -618,6 +669,7 @@ function renderSectionBlockHTML(sectionGroup, rowsHtml, visible = true) {
     const rowClass = sectionGroup.sectionLevel <= 1 ? 'section-card-row root-divider' : 'section-card-row';
     const headerStyle = sectionGroup.sectionLevel > 1 ? 'background: linear-gradient(90deg, #f9fbff, #eef2f7);' : 'background: #f7f9fc;';
     const testCaseCount = sectionGroup.testCases.length;
+    const showRowActions = hasTestCaseListRowActions();
     // 使用字符串化的 ID 查檢（Set 區分類型）
     const isCollapsed = sectionCollapsedState && sectionCollapsedState.has(String(sectionGroup.sectionId));
     const displayStyle = visible ? '' : 'display: none;';
@@ -685,7 +737,7 @@ function renderSectionBlockHTML(sectionGroup, rowsHtml, visible = true) {
                                         <span data-i18n="common.updateDate">更新日期</span>
                                         <span class="sort-indicator ms-1"></span>
                                     </th>
-                                    <th width="100" class="text-center" data-i18n="common.actions">操作</th>
+                                    ${showRowActions ? '<th class="text-center test-case-actions-header" data-i18n="common.actions">操作</th>' : ''}
                                 </tr>
                             </thead>
                             <tbody>

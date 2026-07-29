@@ -67,6 +67,7 @@ from app.services.test_run_set_status import (
     recalculate_set_status_sync,
     resolve_status_for_response,
 )
+from app.services.test_run_assignee import apply_resolved_assignee, resolve_assignee
 
 from .test_run_configs import (
     attach_config_to_set,
@@ -1436,6 +1437,10 @@ async def create_test_run_set_from_cases(
                         team_id=team_id,
                         config_id=config.id,
                         test_case_number=tc.test_case_number
+                    )
+                    apply_resolved_assignee(
+                        item,
+                        resolve_assignee(sync_db, team_id=team_id, payload={}, for_create=True),
                     )
                     sync_db.add(item)
 

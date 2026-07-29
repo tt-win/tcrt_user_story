@@ -11,7 +11,7 @@ from .test_cases import router as test_cases_router
 from .test_runs import router as test_runs_router
 from .test_run_sets import router as test_run_sets_router
 from .attachments import router as attachments_router
-from .test_run_items import router as test_run_items_router
+from .test_run_items import assignee_router as test_run_assignee_router, router as test_run_items_router
 from .contacts import router as contacts_router
 from .team_sync import router as team_sync_router
 from .organization_sync import router as organization_sync_router
@@ -51,6 +51,7 @@ from .automation_result import router as automation_result_router
 from .pins import router as pins_router
 from .assistant import router as assistant_router
 from .admin_assistant import router as admin_assistant_router
+from .dashboard import router as dashboard_router
 
 # 創建主 API 路由器
 api_router = APIRouter()
@@ -66,6 +67,7 @@ api_router.include_router(test_runs_router)
 api_router.include_router(test_run_sets_router)
 api_router.include_router(attachments_router)
 api_router.include_router(test_run_items_router)
+api_router.include_router(test_run_assignee_router)
 api_router.include_router(contacts_router)
 api_router.include_router(team_sync_router)
 api_router.include_router(organization_sync_router)
@@ -103,5 +105,6 @@ api_router.include_router(automation_webhooks_public_router)  # Automation Hub W
 api_router.include_router(automation_result_router)  # Automation Hub Result provider 連結（dashboard / report URL）
 api_router.include_router(pins_router)  # 使用者釘選 (Pin) 路由
 api_router.include_router(assistant_router)  # 全域 AI 助手路由
+api_router.include_router(dashboard_router)
 
 # 可以在此添加其他 API 路由

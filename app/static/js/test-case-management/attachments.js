@@ -204,8 +204,6 @@ async function uploadFilesToServer(files) {
             </div>
         `;
     }
-    // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
-    adjustTestCasesScrollHeight();
 }
 
 function renderAttachmentsList() {
@@ -369,8 +367,6 @@ att => (att.stored_name !== filename && att.name !== filename)
             showError(`${attachmentDeleteFailedMessage}: ${error.message}`);
         }
     }
-    // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
-    adjustTestCasesScrollHeight();
 }
 
 // 重置 modal 內所有滾動位置的輔助函數
@@ -590,8 +586,6 @@ function updateNavigationButtons() {
             nextBtn.classList.remove('disabled');
         }
     }
-    // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
-    adjustTestCasesScrollHeight();
 }
 
 // 顯示上一隻測試案例
@@ -602,8 +596,6 @@ function showPrevTestCase() {
         const prevTestCase = navigationList[navigationIndex - 1];
         showTestCaseModal(prevTestCase);
     }
-    // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
-    adjustTestCasesScrollHeight();
 }
 
 // 只讓 Test Case 列表區域可滾動：依據可視高度調整列表容器高度
@@ -825,8 +817,6 @@ function showNextTestCase() {
         const nextTestCase = navigationList[navigationIndex + 1];
         showTestCaseModal(nextTestCase);
     }
-    // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
-    adjustTestCasesScrollHeight();
 }
 
 // 更新頁面標題翻譯

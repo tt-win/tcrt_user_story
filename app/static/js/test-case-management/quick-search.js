@@ -148,54 +148,37 @@ function quickEdit(recordId, field) {
     if (!cell) return;
 
     // 獲取當前值
-    const currentValue = testCase[field] || '';
+    const currentValue = String(testCase[field] ?? '');
 
     // 建立輸入框
     const input = document.createElement('input');
     input.type = 'text';
     input.value = currentValue;
     input.className = 'form-control quick-edit-input';
-    input.style.width = '100%';
-    input.style.height = 'auto';
-    input.style.minHeight = '1.5rem';
-    input.style.lineHeight = '1.5';
-    input.style.fontSize = '0.875rem';
-    input.style.padding = '0.25rem 0.5rem';
-    input.style.border = '1px solid #007bff';
-    input.style.borderRadius = '4px';
-    input.style.margin = '0';
-
-    // 儲存原始內容
-    const originalContent = cell.innerHTML;
 
     // 替換內容
-    cell.innerHTML = '';
-    cell.appendChild(input);
+    cell.replaceChildren(input);
     input.focus();
     input.select();
 
+    let editCompleted = false;
+    const restoreCell = () => restoreTestCaseListFieldCell(cell, testCase, field);
+
     // 處理儲存
-    const saveEdit = async () => {
+    const saveEdit = () => {
+        if (editCompleted) return;
+
         const newValue = input.value.trim();
 
         if (newValue === currentValue) {
-            // 值沒有變更，恢復原始內容
-            cell.innerHTML = originalContent;
+            editCompleted = true;
+            restoreCell();
             return;
         }
 
-        // 立即更新本地資料和 UI
+        editCompleted = true;
         testCase[field] = newValue;
-        
-        // 優化：直接更新 DOM 而不重繪整個表格
-        const valueElement = document.createElement(field === 'test_case_number' ? 'code' : 'div');
-        valueElement.className = 'hover-editable';
-        valueElement.append(document.createTextNode(`${newValue} `));
-        const editIcon = document.createElement('i');
-        editIcon.className = 'fas fa-pencil-alt hover-edit-btn';
-        valueElement.appendChild(editIcon);
-        valueElement.addEventListener('click', () => quickEdit(recordId, field));
-        cell.replaceChildren(valueElement);
+        restoreCell();
 
         // 在背景處理儲存
         try {
@@ -225,6 +208,7 @@ function quickEdit(recordId, field) {
                 const fieldName = field === 'test_case_number' ? 'Test Case Number' :
                     (window.i18n ? window.i18n.t('common.title') : '標題');
                 const updateSuccessMessage = window.i18n ? window.i18n.t('messages.fieldUpdated') : '更新成功';
+                restoreCell();
                 showSuccess(`${fieldName} ${updateSuccessMessage}`);
             }).catch(error => {
                 console.error('快速編輯失敗:', error);
@@ -233,7 +217,7 @@ function quickEdit(recordId, field) {
 
                 // 如果儲存失敗，恢復原值並恢復 DOM
                 testCase[field] = currentValue;
-                cell.innerHTML = originalContent;
+                restoreCell();
             });
 
         } catch (error) {
@@ -243,13 +227,15 @@ function quickEdit(recordId, field) {
 
             // 恢復原值並恢復 DOM
             testCase[field] = currentValue;
-            cell.innerHTML = originalContent;
+            restoreCell();
         }
     };
 
     // 處理取消
     const cancelEdit = () => {
-        cell.innerHTML = originalContent;
+        if (editCompleted) return;
+        editCompleted = true;
+        restoreCell();
     };
 
     // 綁定事件

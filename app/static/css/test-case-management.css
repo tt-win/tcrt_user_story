@@ -106,15 +106,76 @@ body {
    3. 快速編輯 (Quick Edit)
    ------------------------------------------------------------ */
 .hover-editable {
-    cursor: pointer;
     transition: background-color 0.2s;
 }
 
-.hover-editable:hover {
-    background-color: rgba(0, 123, 255, 0.1);
+.hover-editable:hover,
+.hover-editable:focus-within {
+    background-color: rgba(var(--tr-primary-rgb), 0.1);
+}
+
+.test-case-open-trigger {
+    display: block;
+    width: calc(100% - 45px);
+    min-width: 0;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    overflow: hidden;
+    text-decoration: none;
+    transform: none;
+}
+
+.section-card-body .test-case-open-trigger {
+    padding: 0 !important;
+}
+
+.test-case-open-trigger:hover,
+.test-case-open-trigger:focus,
+.test-case-open-trigger:active {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    color: inherit;
+    text-decoration: none;
+    transform: none;
+}
+
+.test-case-open-trigger:focus-visible {
+    outline: 2px solid var(--tr-primary);
+    outline-offset: 2px;
+}
+
+.test-case-number-open {
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.test-case-number-value {
+    color: var(--tr-primary);
+    font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace) !important;
+    font-weight: 500;
+}
+
+.test-case-title-open {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.test-case-title-value,
+.test-case-description-preview {
+    display: block;
+    max-width: 100%;
 }
 
 .hover-edit-btn {
+    position: absolute;
+    top: 50%;
+    right: 5px;
+    z-index: 10;
+    transform: translateY(-50%);
     opacity: 0;
     transition: opacity 0.3s ease;
     pointer-events: none;
@@ -123,7 +184,14 @@ body {
     padding: 2px 4px;
 }
 
-.hover-editable:hover .hover-edit-btn {
+.hover-edit-btn:hover,
+.hover-edit-btn:focus,
+.hover-edit-btn:active {
+    transform: translateY(-50%);
+}
+
+.hover-editable:hover .hover-edit-btn,
+.hover-editable:focus-within .hover-edit-btn {
     opacity: 1 !important;
     pointer-events: auto;
 }
@@ -133,6 +201,7 @@ body {
 }
 
 .quick-edit-input {
+    width: 100%;
     border: 1px solid var(--tr-primary) !important;
     border-radius: 4px !important;
     padding: 0.25rem 0.5rem !important;
@@ -142,6 +211,35 @@ body {
     min-height: 1.5rem !important;
     margin: 0 !important;
     box-sizing: border-box !important;
+}
+
+.test-case-actions-cell,
+.test-case-actions-header {
+    width: 5rem;
+    white-space: nowrap;
+}
+
+.test-case-actions {
+    flex-wrap: nowrap;
+}
+
+@media (hover: none) {
+    .hover-edit-btn {
+        opacity: 1 !important;
+        pointer-events: auto;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .test-case-actions-cell,
+    .test-case-actions-header {
+        width: 1%;
+        padding-inline: 0.125rem !important;
+    }
+
+    .section-card-body .test-case-actions {
+        gap: 0.125rem !important;
+    }
 }
 
 /* ------------------------------------------------------------
