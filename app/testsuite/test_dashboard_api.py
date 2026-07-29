@@ -905,3 +905,49 @@ def test_system_dashboard_uses_safe_allowlisted_projection(dashboard_db):
     assert "private-provider-type" not in serialized
     assert "private.example" not in serialized
     assert "encrypted-secret" not in serialized
+
+
+def test_system_dashboard_normalizes_scheduler_persistence_statuses(dashboard_db):
+    completed_at = datetime(2026, 7, 29, 2, 5, 39)
+    interrupted_at = datetime(2026, 7, 29, 3, 0, 40)
+    with dashboard_db["bundle"]["sync_session_factory"]() as session:
+        completed = (
+            session.query(ScheduledService)
+            .filter(ScheduledService.service_key == "safe-service")
+            .one()
+        )
+        completed.last_run_status = "completed"
+        completed.last_run_finished_at = completed_at
+        session.add(
+            ScheduledService(
+                service_key="interrupted-service",
+                display_name="Do not leak interrupted display text",
+                enabled=True,
+                is_running=False,
+                last_run_status="interrupted",
+                last_error="do-not-leak-interrupted-error",
+                last_run_finished_at=interrupted_at,
+            )
+        )
+        session.commit()
+
+    dashboard_db["user"] = dashboard_db["super_admin"]
+    with TestClient(app) as client:
+        response = client.get("/api/dashboard")
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    services = {
+        item["service_key"]: item
+        for item in payload["sections"]["scheduled_services"]["items"]
+    }
+    assert services["safe-service"]["outcome"] == "success"
+    assert services["safe-service"]["last_run_at"] == completed_at.isoformat()
+    assert services["interrupted-service"]["outcome"] == "error"
+    assert payload["sections"]["attention"] == {
+        "state": "ready",
+        "count": 1,
+        "latest_at": interrupted_at.isoformat(),
+    }
+    assert "do-not-leak-interrupted-error" not in response.text
+    assert "Do not leak interrupted display text" not in response.text

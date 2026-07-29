@@ -53,6 +53,7 @@ _TERMINAL_OUTCOME_RESULTS = {
 }
 _KNOWN_RESULTS = _TERMINAL_OUTCOME_RESULTS | {"Pending"}
 _SYSTEM_OUTCOME_CODES = {"success", "failed", "error", "running", "skipped", "unknown"}
+_SYSTEM_OUTCOME_ALIASES = {"completed": "success", "interrupted": "error"}
 _AUDIT_ACTION_CODES = frozenset(action.value for action in ActionType)
 _AUDIT_RESOURCE_CODES = frozenset(resource.value for resource in ResourceType)
 _AUDIT_RESUME_RESOURCE_CODES = frozenset(
@@ -1019,6 +1020,7 @@ def _safe_identifier(value: object) -> str:
 
 def _safe_system_outcome(value: object) -> str:
     normalized = (_trim_to_none(value) or "unknown").lower()
+    normalized = _SYSTEM_OUTCOME_ALIASES.get(normalized, normalized)
     return normalized if normalized in _SYSTEM_OUTCOME_CODES else "unknown"
 
 
