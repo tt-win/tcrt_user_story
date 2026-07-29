@@ -37,6 +37,9 @@ class FakeQdrant:
     async def get_collection_dimensions(self, collection: str) -> int | None:
         return self.existing_dimensions.get(collection)
 
+    async def ensure_usm_payload_indexes(self, collection: str) -> None:
+        self.collections.add(collection)
+
 
 def make_services(tmp_path: Path, batch_size: int = 3) -> tuple[KnowledgeWriteService, FakeQdrant]:
     fake_q = FakeQdrant()
@@ -83,6 +86,28 @@ def make_tc(n: int) -> dict:
     }
 
 
+def make_usm_node(map_id: int, node_id: str) -> dict:
+    return {
+        "map_id": map_id,
+        "node_id": node_id,
+        "title": f"Node in map {map_id}",
+        "description": "Description",
+        "node_type": "user_story",
+        "map_name": f"Map {map_id}",
+        "team_id": map_id,
+        "team_name": f"Team {map_id}",
+        "parent_id": "",
+        "level": 1,
+        "children_ids": [],
+        "related_ids": [],
+        "as_a": "user",
+        "i_want": "a stable identity",
+        "so_that": "nodes do not collide",
+        "jira_tickets": [],
+        "updated_at": "2026-07-29T00:00:00Z",
+    }
+
+
 @pytest.mark.asyncio
 async def test_backfill_batches(tmp_path: Path) -> None:
     """Backfill should batch by backfill_batch_size."""
@@ -96,6 +121,49 @@ async def test_backfill_batches(tmp_path: Path) -> None:
     assert len(fake_q.upserted[0][1]) == 3
     assert len(fake_q.upserted[1][1]) == 3
     assert len(fake_q.upserted[2][1]) == 1
+
+
+@pytest.mark.asyncio
+async def test_usm_backfill_uses_map_scoped_identity(tmp_path: Path) -> None:
+    svc, fake_q = make_services(tmp_path, batch_size=10)
+    nodes = [make_usm_node(1, "shared"), make_usm_node(2, "shared")]
+
+    progress = await svc.backfill_usm_nodes(async_iter(nodes))
+
+    assert progress.processed_count == 2
+    points = [point for _, batch in fake_q.upserted for point in batch]
+    assert len({str(point.id) for point in points}) == 2
+    assert {point.payload["entity_key"] for point in points} == {
+        "1:shared",
+        "2:shared",
+    }
+
+
+@pytest.mark.asyncio
+async def test_usm_backfill_discards_legacy_node_only_checkpoint(
+    tmp_path: Path,
+) -> None:
+    svc, fake_q = make_services(tmp_path, batch_size=10)
+    (tmp_path / "progress.json").write_text(
+        json.dumps(
+            {
+                "usm_nodes": {
+                    "processed_count": 1,
+                    "total_count": 2,
+                    "last_processed_id": "shared",
+                    "status": "in_progress",
+                    "started_at": "2026-07-23T00:00:00+00:00",
+                    "updated_at": "2026-07-23T00:01:00+00:00",
+                }
+            }
+        )
+    )
+    nodes = [make_usm_node(1, "shared"), make_usm_node(2, "shared")]
+
+    progress = await svc.backfill_usm_nodes(async_iter(nodes))
+
+    assert progress.processed_count == 2
+    assert sum(len(points) for _, points in fake_q.upserted) == 2
 
 
 @pytest.mark.asyncio
@@ -248,6 +316,21 @@ async def test_backfill_skips_empty_text(tmp_path: Path) -> None:
     assert progress.processed_count == 2
     total_points = sum(len(points) for _, points in fake_q.upserted)
     assert total_points == 2
+
+
+@pytest.mark.asyncio
+async def test_backfill_skips_entity_without_identity(tmp_path: Path) -> None:
+    svc, fake_q = make_services(tmp_path, batch_size=2)
+    tcs = [
+        {"title": "Missing number"},
+        {"test_case_number": "TCG-001", "title": "Valid"},
+    ]
+
+    progress = await svc.backfill_test_cases(async_iter(tcs))
+
+    assert progress.processed_count == 1
+    points = [point for _, batch in fake_q.upserted for point in batch]
+    assert [point.payload["test_case_number"] for point in points] == ["TCG-001"]
 
 
 @pytest.mark.asyncio

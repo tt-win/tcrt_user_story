@@ -24,6 +24,7 @@ from app.services.knowledge import (
 )
 from app.services.knowledge.data_sources import (
     fetch_test_cases,
+    fetch_team_names,
     fetch_usm_nodes,
 )
 
@@ -62,8 +63,13 @@ async def run_backfill(entity: str) -> int:
     if entity in ("usm_nodes", "all"):
         print(f"Backfilling usm_nodes (batch_size={batch_size})...")
         boundary = get_usm_access_boundary()
+        team_names = await fetch_team_names(get_main_access_boundary())
         progress = await write_svc.backfill_usm_nodes(
-            fetch_usm_nodes(boundary, batch_size=batch_size)
+            fetch_usm_nodes(
+                boundary,
+                batch_size=batch_size,
+                team_names=team_names,
+            )
         )
         print(
             f"  Done: {progress.processed_count} processed, status={progress.status}"

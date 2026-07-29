@@ -95,3 +95,46 @@ The system MUST use the correct access boundary for each entity type.
 #### Scenario: USM read
 - WHEN reading USM nodes
 - THEN `UsmAccessBoundary` is used (NOT `MainAccessBoundary`)
+
+### Requirement: Remote MySQL USM rebuild source
+The guarded USM rebuild workflow MUST read `tcrt_usm.user_story_map_nodes`, its parent map,
+and `tcrt_main.teams` from the explicitly configured remote MySQL server.
+
+#### Scenario: Read-only consistent source snapshot
+- WHEN a rebuild starts
+- THEN MySQL uses a read-only consistent transaction
+- AND the workflow executes no INSERT, UPDATE, DELETE, DDL, or schema migration
+- AND credentials are supplied via an environment variable or hidden interactive prompt
+- AND credentials are never printed or persisted by the workflow
+
+#### Scenario: Composite identity source validation
+- WHEN source rows are loaded
+- THEN `(map_id, node_id)` is unique for every row
+- AND missing map/team relationships or empty required identity fields abort the rebuild
+
+### Requirement: Guarded dual-target replacement
+The workflow MUST prepare and validate both Qdrant targets before replacing either canonical collection.
+
+#### Scenario: Confirmation required
+- WHEN the rebuild command is run without explicit confirmation
+- THEN it may inspect redacted targets and source counts
+- BUT it performs no Qdrant mutation
+
+#### Scenario: Backup and shadow validation
+- WHEN execution is explicitly confirmed
+- THEN each existing `usm_nodes` is cloned to a timestamped backup
+- AND each rebuilt dataset is first written to a timestamped shadow collection
+- AND exact source/backup/shadow counts and the `usm_node_v2` contract are verified
+
+#### Scenario: Coordinated cutover
+- WHEN both shadow collections pass all checks
+- THEN local and remote expose physical collections literally named `usm_nodes`
+- AND neither canonical name remains an alias
+- AND each physical collection is an exact vector/payload copy of its validated shadow
+- AND backup collections remain available
+
+#### Scenario: Failed preparation or cutover
+- WHEN any target fails preparation, validation, or cutover
+- THEN no unvalidated shadow becomes canonical
+- AND any incomplete physical canonical collection is removed
+- AND any already-switched target restores logical availability through its verified backup

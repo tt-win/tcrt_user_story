@@ -858,7 +858,10 @@ async def create_map(
         n.id for n in create_result["response"].get("nodes", []) if n.id
     ]
     if created_node_ids:
-        await enqueue_usm_nodes_bulk(created_node_ids)
+        await enqueue_usm_nodes_bulk(
+            created_node_ids,
+            map_id=create_result["map_id"],
+        )
 
     return UserStoryMapResponse(**create_result["response"])
 
@@ -888,6 +891,7 @@ async def update_map(
             map_db.description = map_data.description
 
         previous_positions = None
+        previous_node_ids: list[str] = []
         if map_data.nodes is not None:
             # Capture prior coords for layout-apply audit (full snapshot fits TEXT; ~22KB for 346 nodes)
             previous_positions = [
@@ -898,6 +902,11 @@ async def update_map(
                 }
                 for n in (map_db.nodes or [])
                 if n.get("id")
+            ]
+            previous_node_ids = [
+                str(node.get("id"))
+                for node in (map_db.nodes or [])
+                if isinstance(node, dict) and node.get("id")
             ]
             normalized_nodes = []
 
@@ -954,6 +963,7 @@ async def update_map(
             "team_id": map_db.team_id,
             "map_name": map_db.name,
             "processed_nodes": processed_nodes,
+            "previous_node_ids": previous_node_ids,
             "previous_positions": previous_positions,
             "layout_apply": bool(map_data.layout_apply),
             "response": {
@@ -1026,18 +1036,22 @@ async def update_map(
     except Exception as exc:
         logger.warning("寫入 USM 更新審計記錄失敗: %s", exc, exc_info=True)
 
-    # Knowledge graph sync: enqueue all affected USM node IDs.
-    # `update_map` does delete-all + reinsert on the NodeDB table, so we
-    # re-sync all node_ids from the resulting `processed_nodes`. Each
-    # node gets an upsert; ids that disappeared between old/new states
-    # are detected by the write service's UUID-based point id (the
-    # Qdrant point id is derived from node_id, so a missing node will
-    # simply have no upsert — no orphan in Qdrant).
+    # Knowledge graph sync: delete removed map-scoped nodes, then upsert
+    # every remaining node using the composite {map_id}:{node_id} identity.
     affected_node_ids = [
         n.get("id") for n in update_result.get("processed_nodes", []) if n.get("id")
     ]
+    removed_node_ids = sorted(
+        set(update_result.get("previous_node_ids") or []) - set(affected_node_ids)
+    )
+    if removed_node_ids:
+        await enqueue_usm_nodes_bulk(
+            removed_node_ids,
+            map_id=map_id,
+            operation="delete",
+        )
     if affected_node_ids:
-        await enqueue_usm_nodes_bulk(affected_node_ids)
+        await enqueue_usm_nodes_bulk(affected_node_ids, map_id=map_id)
 
     return UserStoryMapResponse(**update_result["response"])
 
@@ -1107,7 +1121,11 @@ async def delete_map(
     # Knowledge graph sync: enqueue delete for every node that was on the map.
     deleted_node_ids = delete_result.get("node_ids") or []
     if deleted_node_ids:
-        await enqueue_usm_nodes_bulk(deleted_node_ids, operation="delete")
+        await enqueue_usm_nodes_bulk(
+            deleted_node_ids,
+            map_id=map_id,
+            operation="delete",
+        )
 
     return {"message": "User Story Map deleted successfully"}
 

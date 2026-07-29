@@ -136,6 +136,28 @@ async def test_hybrid_search_returns_results(
     assert results[0].score == 0.9
 
 
+def test_usm_hit_uses_composite_identity_and_keeps_legacy_node_id(
+    search_service: HybridSearchService,
+) -> None:
+    result = search_service._hit_to_result(
+        "usm_nodes",
+        {
+            "id": "point-id",
+            "score": 0.9,
+            "payload": {
+                "entity_key": "29:shared-node",
+                "node_id": "shared-node",
+                "map_id": 29,
+                "title": "Story",
+            },
+        },
+    )
+
+    assert result.entity_id == "29:shared-node"
+    assert result.metadata["node_id"] == "shared-node"
+    assert result.metadata["entity_key"] == "29:shared-node"
+
+
 @pytest.mark.asyncio
 async def test_hybrid_search_dedup(
     search_service: HybridSearchService, fake_qdrant: FakeQdrantSearch
@@ -374,7 +396,7 @@ async def test_graph_expansion_timeout_fallback(
 
 
 @pytest.mark.asyncio
-async def test_fetch_related_supports_key_and_node_id(
+async def test_fetch_related_supports_composite_usm_identity(
     search_service: HybridSearchService, fake_neo4j: FakeNeo4j
 ) -> None:
     queries_run: list[str] = []
@@ -387,10 +409,38 @@ async def test_fetch_related_supports_key_and_node_id(
 
     fake_neo4j.execute_read = mock_execute_read  # type: ignore[assignment]
 
-    related = await search_service._fetch_related("usm_node", "usm_parent_1", depth=1)
+    related = await search_service._fetch_related("usm_node", "29:usm_parent_1", depth=1)
     assert len(related) == 1
     assert related[0].entity_type == "usm_node"
     assert related[0].entity_id == "usm_child_1"
     assert related[0].relationship == "PARENT_OF"
-    assert any("u.node_id = $id OR u.id = $id" in q for q in queries_run)
+    assert any("u.entity_key = $id" in query for query in queries_run)
+    assert any("u.entity_key IS NULL AND u.node_id = $id" in query for query in queries_run)
 
+
+@pytest.mark.asyncio
+async def test_graph_expansion_uses_composite_entity_key_for_neo4j(
+    search_service: HybridSearchService,
+    fake_neo4j: FakeNeo4j,
+) -> None:
+    parameters_seen: list[dict] = []
+
+    async def mock_execute_read(
+        cypher: str,
+        parameters: dict | None = None,
+    ) -> list[dict]:
+        parameters_seen.append(parameters or {})
+        return []
+
+    fake_neo4j.execute_read = mock_execute_read  # type: ignore[assignment]
+    result = KnowledgeSearchResult(
+        entity_type="usm_node",
+        entity_id="29:shared-node",
+        title="Story",
+        score=0.9,
+        metadata={"node_id": "shared-node"},
+    )
+
+    await search_service._expand_with_graph([result], depth=1)
+
+    assert parameters_seen == [{"id": "29:shared-node"}]

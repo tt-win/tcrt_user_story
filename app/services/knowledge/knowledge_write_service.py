@@ -20,6 +20,12 @@ from qdrant_client.http import models as qmodels
 from app.config import KnowledgeGraphConfig
 from app.services.knowledge.embedding_service import EmbeddingService
 from app.services.knowledge.qdrant_client import QdrantKnowledgeClient
+from app.services.knowledge.usm_payload import (
+    build_usm_embedding_text,
+    build_usm_payload,
+    usm_entity_key,
+    usm_point_id,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -128,8 +134,8 @@ class KnowledgeWriteService:
         return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"tcrt-test-case:{test_case_number}"))
 
     @staticmethod
-    def _usm_point_id(node_id: str) -> str:
-        return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"tcrt-usm-node:{node_id}"))
+    def _usm_point_id(map_id: int, node_id: str) -> str:
+        return usm_point_id(map_id, node_id)
 
     # ----- Embedding text builders -----
 
@@ -145,20 +151,7 @@ class KnowledgeWriteService:
 
     @staticmethod
     def _usm_embedding_text(node: dict[str, Any]) -> str:
-        bdd_parts = []
-        if node.get("as_a"):
-            bdd_parts.append(f"As a {node['as_a']}")
-        if node.get("i_want"):
-            bdd_parts.append(f"I want {node['i_want']}")
-        if node.get("so_that"):
-            bdd_parts.append(f"so that {node['so_that']}")
-        bdd = ", ".join(bdd_parts)
-        parts = [
-            node.get("title", ""),
-            node.get("description", ""),
-            bdd,
-        ]
-        return "\n".join(p for p in parts if p)
+        return build_usm_embedding_text(node)
 
     # ----- Single entity write -----
 
@@ -201,32 +194,70 @@ class KnowledgeWriteService:
     async def write_usm_node(self, node: dict[str, Any]) -> None:
         if not await self._ensure_collections():
             return
-        text = self._usm_embedding_text(node)
-        node_id = node.get("node_id", "")
-        if not text.strip() and node_id:
+        node_id = str(node.get("node_id") or "").strip()
+        try:
+            map_id = int(node.get("map_id"))
+        except (TypeError, ValueError):
+            map_id = 0
+        required_fields = {
+            "title",
+            "description",
+            "team_id",
+            "team_name",
+            "map_name",
+            "node_type",
+            "parent_id",
+            "level",
+            "children_ids",
+            "related_ids",
+            "as_a",
+            "i_want",
+            "so_that",
+            "jira_tickets",
+            "updated_at",
+        }
+        if map_id and node_id and not required_fields.issubset(node):
             try:
+                from app.db_access.main import MainAccessBoundary
                 from app.db_access.usm import UsmAccessBoundary
-                from app.services.knowledge.data_sources import fetch_usm_node_by_id
+                from app.services.knowledge.data_sources import (
+                    fetch_team_name_by_id,
+                    fetch_usm_node_by_id,
+                )
+
                 boundary = UsmAccessBoundary()
-                fetched = await fetch_usm_node_by_id(boundary, node_id)
+                fetched = await fetch_usm_node_by_id(boundary, map_id, node_id)
                 if fetched:
                     node = fetched
-                    text = self._usm_embedding_text(node)
+                    team_id = int(node.get("team_id") or 0)
+                    node["team_name"] = await fetch_team_name_by_id(
+                        MainAccessBoundary(),
+                        team_id,
+                    )
             except Exception as exc:  # noqa: BLE001
-                LOGGER.warning("Failed to fetch USM node %s from DB for KG write: %s", node_id, exc)
+                LOGGER.warning(
+                    "Failed to fetch USM node %s:%s from DB for KG write: %s",
+                    map_id,
+                    node_id,
+                    exc,
+                )
 
+        node_id = str(node.get("node_id") or "").strip()
+        try:
+            map_id = int(node.get("map_id"))
+        except (TypeError, ValueError):
+            map_id = 0
+        if not map_id or not node_id:
+            LOGGER.warning("USM node missing map_id or node_id, skipping")
+            return
+        text = self._usm_embedding_text(node)
         if not text.strip():
-            LOGGER.warning("USM node %s has no embeddable text, skipping", node.get("node_id"))
+            LOGGER.warning("USM node %s has no embeddable text, skipping", usm_entity_key(map_id, node_id))
             return
         embedding = await self._embedding.embed_one(text)
-        if not node_id:
-            node_id = node.get("node_id", "")
-        if not node_id:
-            LOGGER.warning("USM node missing node_id, skipping")
-            return
         payload = self._build_usm_payload(node)
         point = qmodels.PointStruct(
-            id=self._usm_point_id(node_id),
+            id=self._usm_point_id(map_id, node_id),
             vector=embedding,
             payload=payload,
         )
@@ -250,7 +281,9 @@ class KnowledgeWriteService:
             if entity_type == "test_cases":
                 await self.delete_test_case(entity_id)
             elif entity_type == "usm_nodes":
-                await self.delete_usm_node(entity_id)
+                identity = self._resolve_usm_identity(entity_id, payload)
+                if identity is not None:
+                    await self.delete_usm_node(*identity)
             else:
                 LOGGER.warning("Unknown entity_type for delete: %s", entity_type)
             return
@@ -258,7 +291,12 @@ class KnowledgeWriteService:
             data = payload or {"test_case_number": entity_id}
             await self.write_test_case(data)
         elif entity_type == "usm_nodes":
-            data = payload or {"node_id": entity_id}
+            data = dict(payload or {})
+            identity = self._resolve_usm_identity(entity_id, data)
+            if identity is None:
+                return
+            data.setdefault("map_id", identity[0])
+            data.setdefault("node_id", identity[1])
             await self.write_usm_node(data)
         else:
             LOGGER.warning("Unknown entity_type for write: %s", entity_type)
@@ -289,24 +327,44 @@ class KnowledgeWriteService:
         )
         LOGGER.info("Deleted test case point: %s", test_case_number)
 
-    async def delete_usm_node(self, node_id: str) -> None:
-        """Delete a USM node point from Qdrant by node_id."""
-        if not node_id:
-            LOGGER.warning("delete_usm_node called with empty node_id, skipping")
+    async def delete_usm_node(self, map_id: int, node_id: str) -> None:
+        """Delete one map-scoped USM node point from Qdrant."""
+        if map_id <= 0 or not node_id:
+            LOGGER.warning("delete_usm_node called with invalid identity, skipping")
             return
+        entity_key = usm_entity_key(map_id, node_id)
         collection = self._config.qdrant.collection_usm_nodes
         await self._qdrant.delete_by_filter(
             collection=collection,
             query_filter=qmodels.Filter(
                 must=[
                     qmodels.FieldCondition(
-                        key="node_id",
-                        match=qmodels.MatchValue(value=node_id),
+                        key="entity_key",
+                        match=qmodels.MatchValue(value=entity_key),
                     )
                 ]
             ),
         )
-        LOGGER.info("Deleted USM node point: %s", node_id)
+        LOGGER.info("Deleted USM node point: %s", entity_key)
+
+    @staticmethod
+    def _resolve_usm_identity(
+        entity_id: str,
+        payload: Any,
+    ) -> tuple[int, str] | None:
+        data = payload if isinstance(payload, dict) else {}
+        raw_map_id = data.get("map_id")
+        node_id = str(data.get("node_id") or "").strip()
+        if (not raw_map_id or not node_id) and ":" in entity_id:
+            raw_map_id, node_id = entity_id.split(":", 1)
+        try:
+            map_id = int(raw_map_id)
+        except (TypeError, ValueError):
+            map_id = 0
+        if map_id <= 0 or not node_id:
+            LOGGER.warning("Invalid USM composite entity id: %s", entity_id)
+            return None
+        return map_id, node_id
 
     # ----- Payload builders -----
 
@@ -339,27 +397,7 @@ class KnowledgeWriteService:
 
     @staticmethod
     def _build_usm_payload(node: dict[str, Any]) -> dict[str, Any]:
-        payload: dict[str, Any] = {
-            "node_id": node.get("node_id", ""),
-            "title": node.get("title", ""),
-        }
-        for key in [
-            "description",
-            "node_type",
-            "map_id",
-            "map_name",
-            "team_id",
-            "team_name",
-            "as_a",
-            "i_want",
-            "so_that",
-        ]:
-            if key in node:
-                payload[key] = node[key]
-        if node.get("jira_tickets"):
-            payload["jira_tickets"] = node["jira_tickets"]
-        payload["last_synced_at"] = datetime.now(timezone.utc).isoformat()
-        return payload
+        return build_usm_payload(node)
 
     # ----- Collection setup -----
 
@@ -392,6 +430,9 @@ class KnowledgeWriteService:
                 vector_size=dimensions,
                 distance=qmodels.Distance.COSINE,
             )
+        await self._qdrant.ensure_usm_payload_indexes(
+            self._config.qdrant.collection_usm_nodes
+        )
         return True
 
     # ----- Backfill -----
@@ -406,7 +447,10 @@ class KnowledgeWriteService:
             collection=self._config.qdrant.collection_test_cases,
             fetch_all=fetch_all,
             text_builder=self._test_case_embedding_text,
-            point_id_builder=self._test_case_point_id,
+            entity_key_builder=lambda entity: str(entity.get("test_case_number") or ""),
+            point_id_builder=lambda entity: self._test_case_point_id(
+                str(entity.get("test_case_number") or "")
+            ),
             payload_builder=self._build_test_case_payload,
         )
 
@@ -419,7 +463,14 @@ class KnowledgeWriteService:
             collection=self._config.qdrant.collection_usm_nodes,
             fetch_all=fetch_all,
             text_builder=self._usm_embedding_text,
-            point_id_builder=self._usm_point_id,
+            entity_key_builder=lambda entity: usm_entity_key(
+                entity.get("map_id"),
+                entity.get("node_id"),
+            ),
+            point_id_builder=lambda entity: self._usm_point_id(
+                int(entity.get("map_id")),
+                str(entity.get("node_id") or ""),
+            ),
             payload_builder=self._build_usm_payload,
         )
 
@@ -430,6 +481,7 @@ class KnowledgeWriteService:
         collection: str,
         fetch_all: AsyncIterator[dict[str, Any]],
         text_builder,
+        entity_key_builder,
         point_id_builder,
         payload_builder,
     ) -> BackfillProgress:
@@ -470,6 +522,18 @@ class KnowledgeWriteService:
                 processed_count = existing.processed_count
                 last_processed_id = existing.last_processed_id
                 started_at = existing.started_at
+                if (
+                    entity_type == "usm_nodes"
+                    and last_processed_id
+                    and ":" not in last_processed_id
+                ):
+                    LOGGER.warning(
+                        "Discarding legacy node-id-only USM checkpoint: %s",
+                        last_processed_id,
+                    )
+                    processed_count = 0
+                    last_processed_id = None
+                    started_at = datetime.now(timezone.utc).isoformat()
             else:
                 processed_count = 0
                 last_processed_id = None
@@ -501,7 +565,7 @@ class KnowledgeWriteService:
             resumed = last_processed_id is not None
             try:
                 async for entity in fetch_all:
-                    entity_id = str(entity.get("test_case_number") or entity.get("node_id") or "")
+                    entity_id = entity_key_builder(entity)
                     if resumed:
                         if entity_id == last_processed_id:
                             resumed = False
@@ -510,26 +574,32 @@ class KnowledgeWriteService:
                     batch.append(entity)
                     if len(batch) >= batch_size:
                         count, total = await self._process_batch(
-                            batch, collection, text_builder, point_id_builder, payload_builder
+                            batch,
+                            collection,
+                            text_builder,
+                            entity_key_builder,
+                            point_id_builder,
+                            payload_builder,
                         )
                         progress.processed_count += count
                         progress.total_count = total
-                        progress.last_processed_id = batch[-1].get(
-                            "test_case_number"
-                        ) or batch[-1].get("node_id")
+                        progress.last_processed_id = entity_key_builder(batch[-1])
                         progress.updated_at = datetime.now(timezone.utc).isoformat()
                         self._save_progress(progress)
                         batch = []
 
                 if batch:
                     count, total = await self._process_batch(
-                        batch, collection, text_builder, point_id_builder, payload_builder
+                        batch,
+                        collection,
+                        text_builder,
+                        entity_key_builder,
+                        point_id_builder,
+                        payload_builder,
                     )
                     progress.processed_count += count
                     progress.total_count = total
-                    progress.last_processed_id = batch[-1].get(
-                        "test_case_number"
-                    ) or batch[-1].get("node_id")
+                    progress.last_processed_id = entity_key_builder(batch[-1])
                     progress.updated_at = datetime.now(timezone.utc).isoformat()
                     self._save_progress(progress)
 
@@ -576,6 +646,7 @@ class KnowledgeWriteService:
         batch: list[dict[str, Any]],
         collection: str,
         text_builder,
+        entity_key_builder,
         point_id_builder,
         payload_builder,
     ) -> tuple[int, int]:
@@ -591,13 +662,12 @@ class KnowledgeWriteService:
         points: list[qmodels.PointStruct] = []
         for (orig_idx, _), embedding in zip(non_empty, embeddings):
             entity = batch[orig_idx]
-            entity_id = entity.get("test_case_number") or entity.get("node_id")
-            if not entity_id:
+            if not entity_key_builder(entity):
                 continue
             payload = payload_builder(entity)
             points.append(
                 qmodels.PointStruct(
-                    id=point_id_builder(str(entity_id)),
+                    id=point_id_builder(entity),
                     vector=embedding,
                     payload=payload,
                 )

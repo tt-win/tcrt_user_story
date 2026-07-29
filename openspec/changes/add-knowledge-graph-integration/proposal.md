@@ -36,6 +36,13 @@ Qdrant server（`http://10.81.1.49:6333`）仍在運行，`jira_references` coll
   `KnowledgeGraphConfig`，整合到 `Settings`。
 - 新增 Qdrant collections：`test_cases`、`usm_nodes`（與既有
   `jira_references` 對齊 1024 維 / Cosine）。
+- 將 `usm_nodes` payload 收斂為 `usm_node_v2` canonical schema，融合既有
+  TCRT writer 與舊版遠端 ETL 欄位，並以 `(map_id, node_id)` 作為跨 map
+  唯一識別，避免相同 `node_id` 互相覆蓋。
+- 新增受保護的 USM rebuild workflow：以遠端 MySQL 的 `tcrt_usm` 與
+  `tcrt_main.teams` 為唯讀來源，先建立 Qdrant backup/shadow collection、驗證後
+  再將本機與遠端具體化為真正名為 `usm_nodes` 的 physical collection；資料庫密碼
+  只允許由環境變數或互動式 prompt 提供。
 - 新增 `app/api/knowledge.py`（可選）：知識圖譜查詢 REST API。
 - 新增 Python 依賴：`neo4j>=5.20`、`qdrant-client>=1.9`。
 - 測試：`app/testsuite/test_knowledge_*.py`。
@@ -71,12 +78,17 @@ Qdrant server（`http://10.81.1.49:6333`）仍在運行，`jira_references` coll
 ## Impact
 
 - **後端**：新增 `app/services/knowledge/` 模組（6 個檔案）；擴充 `app/config.py`。
-- **資料庫**：不修改 TCRT 主庫 / audit / USM 的 schema。Neo4j 為外部 read-only 服務。
+- **資料庫**：不修改 TCRT 主庫 / audit / USM 的 schema。USM rebuild 對遠端 MySQL
+  使用 read-only consistent snapshot；Neo4j 為外部 read-only 服務。
 - **API**：可選的 `/api/knowledge/*` endpoint，不影響現有 API；遵循既有 JWT auth + team scope。
 - **前端**：本次不新增前端頁面，僅為後端服務層。
 - **部署**：Neo4j 5.x 由 `qa_knowledge_graph` 專案負責部署與管理。Qdrant 已在 `10.81.1.49:6333` 運行。
   新增 `NEO4J_*`（read-only）、`QDRANT_*`、`EMBEDDING_*` 環境變數。
   知識圖譜功能為 opt-in，未設定 `QDRANT_URL` 時不啟動寫入服務；未設定 `NEO4J_URI` 時圖查詢停用。
+- **資料重建**：`usm_nodes` 以 `10.81.0.13:3306` 的 MySQL 為來源，目標為本機
+  `127.0.0.1:6333` 與遠端 `10.81.1.49:6333`。切換前保留可回滾的 backup
+  collection；任何來源筆數、payload contract 或 embedding 驗證失敗都不得留下未驗證
+  的 physical `usm_nodes`。
 - **依賴**：新增 `neo4j>=5.20`、`qdrant-client>=1.9` 到 `pyproject.toml` `[project.optional-dependencies] knowledge`。
 - **i18n**：本次無使用者可見文案變更。
 - **外部專案**：需同步開發 `qa_knowledge_graph`（`~/code/qa_knowledge_graph`）負責 Neo4j 寫入與 schema 管理。

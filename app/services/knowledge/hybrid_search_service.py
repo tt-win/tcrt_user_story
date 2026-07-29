@@ -301,7 +301,11 @@ class HybridSearchService:
             title = payload.get("title", "") or ""
         elif kind == "usm_node":
             entity_type = "usm_node"
-            entity_id = str(payload.get("node_id") or hit.get("id", ""))
+            entity_id = str(
+                payload.get("entity_key")
+                or payload.get("node_id")
+                or hit.get("id", "")
+            )
             title = payload.get("title", "") or ""
         else:
             entity_type = "unknown"
@@ -345,6 +349,8 @@ class HybridSearchService:
             "section_name",
             "map_id",
             "map_name",
+            "entity_key",
+            "node_id",
             "node_type",
             "jira_ticket",
             "component_team",
@@ -361,7 +367,11 @@ class HybridSearchService:
     ) -> None:
         """For top results, query Neo4j for related entities and attach to metadata."""
         for result in results[: min(5, len(results))]:  # only top 5
-            related = await self._fetch_related(result.entity_type, result.entity_id, depth)
+            related = await self._fetch_related(
+                result.entity_type,
+                result.entity_id,
+                depth,
+            )
             result.related_entities = related
             if related:
                 result.source = "both"
@@ -389,8 +399,10 @@ class HybridSearchService:
         elif entity_type == "usm_node":
             cypher = """
             MATCH (u:USMNode)
-            WHERE u.node_id = $id OR u.id = $id
-            OPTIONAL MATCH (u)-[r:PARENT_OF|REFERENCES|MAPS_TO|RELATED_TO|HAS_NODE]-(other)
+            WHERE u.entity_key = $id
+               OR u.id = $id
+               OR (u.entity_key IS NULL AND u.node_id = $id)
+            OPTIONAL MATCH (u)-[r:PARENT_OF|REFERENCES|MAPS_TO|RELATED_TO|HAS_NODE|OWNS]-(other)
             RETURN type(r) as rel, other
             LIMIT 20
             """
@@ -426,7 +438,7 @@ class HybridSearchService:
             return "jira_ticket"
         if "test_case_number" in node or "test_case_id" in node:
             return "test_case"
-        if "node_id" in node:
+        if "entity_key" in node or "node_id" in node:
             return "usm_node"
         if "feature_id" in node:
             return "feature"
@@ -434,7 +446,15 @@ class HybridSearchService:
 
     @staticmethod
     def _node_to_entity_id(node: Any) -> str:
-        for key in ("ticket_key", "key", "test_case_number", "id", "node_id", "feature_id"):
+        for key in (
+            "ticket_key",
+            "key",
+            "test_case_number",
+            "entity_key",
+            "id",
+            "node_id",
+            "feature_id",
+        ):
             if key in node:
                 return str(node[key])
         return ""
