@@ -314,25 +314,10 @@ class USMParser:
                     node.related_ids.remove(related_id)
     
     def _calculate_positions(self):
-        """計算節點位置（基本佈局）"""
-        ROOT_START_X = 250.0
-        ROOT_START_Y = 250.0
-        CHILD_HORIZONTAL_OFFSET = 150.0
-        SIBLING_VERTICAL_SPACING = 100.0
-        
-        # 簡單的佈局算法：根據層級和順序
-        level_counters = {}
-        
+        """Leave coordinates at 0 — canvas layout authority decides display positions."""
         for node in self.nodes:
-            level = node.level
-            
-            if level not in level_counters:
-                level_counters[level] = 0
-            
-            node.position_x = ROOT_START_X + level * CHILD_HORIZONTAL_OFFSET
-            node.position_y = ROOT_START_Y + level_counters[level] * SIBLING_VERTICAL_SPACING
-            
-            level_counters[level] += 1
+            node.position_x = 0.0
+            node.position_y = 0.0
 
 
 class USMExporter:

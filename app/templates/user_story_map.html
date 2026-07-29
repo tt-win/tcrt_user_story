@@ -127,6 +127,18 @@
             </button>
         </div>
         <div id="highlightInfo" class="alert alert-warning d-none"></div>
+        <div id="layoutNotice" class="alert alert-info alert-dismissible fade d-none" role="alert">
+            <span id="layoutNoticeText"></span>
+            <button
+                type="button"
+                class="btn btn-secondary btn-sm ms-2 d-none"
+                id="layoutNoticeActionBtn"
+            >
+                <i class="fas fa-project-diagram me-1"></i>
+                <span data-i18n="usm.applyLayoutBtn">套用此排版</span>
+            </button>
+            <button type="button" class="btn-close" id="layoutNoticeCloseBtn" data-i18n-aria-label="common.close" aria-label="Close"></button>
+        </div>
 
         <!-- View Mode Tabs -->
         <ul class="nav nav-tabs mb-3" role="tablist">
@@ -224,6 +236,15 @@
                     title="自動排版"
                 >
                     <i class="fas fa-project-diagram"></i>
+                </button>
+                <button
+                    type="button"
+                    class="btn btn-secondary btn-sm usm-map-btn"
+                    id="applyLayoutBtn"
+                    data-i18n-title="usm.applyLayoutBtn"
+                    title="套用此排版"
+                >
+                    <i class="fas fa-save"></i>
                 </button>
                 <button
                     type="button"
@@ -979,6 +1000,7 @@
     <!-- Setup library globals and initialize app -->
     <script src="/static/js/user-story-map-inline.js"></script>
 
+    <script src="{{ asset_url('js/usm-layout.js') }}"></script>
     <script src="{{ asset_url('js/user_story_map.js') }}"></script>
     <script src="/static/js/usm-text-editor.js"></script>
     

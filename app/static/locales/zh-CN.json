@@ -2789,7 +2789,13 @@
     "deleteMapWarning": "此操作将删除地图及其所有节点，且无法恢复。",
     "mapCreated": "地图已创建",
     "applyText": "应用文字到地图",
-    "loading": "加载中..."
+    "loading": "加载中...",
+    "layoutAutoRelayoutNotice": "此地图的已保存坐标不正确，目前以自动排版显示（尚未写入）",
+    "layoutOverlapHint": "检测到 {count} 个节点位置重叠，可套用自动排版整理",
+    "applyLayoutBtn": "套用此排版",
+    "applyLayoutConfirm": "将以目前排版覆写已保存坐标，旧坐标会保留在审计记录。要继续吗？",
+    "applyLayoutDone": "排版已保存",
+    "layoutNotSavedYet": "其他变更已保存；目前排版尚未写入，请按「套用此排版」"
   },
   "setup": {
     "title": "系统初始化",

@@ -406,7 +406,7 @@
     "systemLogs": "System Logs",
     "teamStatistics": "Team Statistics"
   },
-    "audit": {
+  "audit": {
     "viewLogs": "Audit Logs",
     "pageTitle": "Audit Log Review",
     "pageSubtitle": "Review and trace system activities",
@@ -2789,7 +2789,13 @@
     "deleteMapWarning": "This will delete the map and all its nodes. This action cannot be undone.",
     "mapCreated": "Map created successfully",
     "applyText": "Apply text to map",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "layoutAutoRelayoutNotice": "Saved coordinates for this map look incorrect; showing auto layout (not saved yet)",
+    "layoutOverlapHint": "Detected {count} overlapping nodes — you can apply auto layout to tidy up",
+    "applyLayoutBtn": "Apply this layout",
+    "applyLayoutConfirm": "This will overwrite saved coordinates with the current layout. Old coordinates will be kept in the audit log. Continue?",
+    "applyLayoutDone": "Layout saved",
+    "layoutNotSavedYet": "Other changes were saved; the current layout is not written yet — click Apply this layout"
   },
   "setup": {
     "title": "System Setup",
@@ -2925,7 +2931,7 @@
         "summary": "Summary (All Sheets)",
         "perSheet": "Per Sheet Stats (Stacked)",
         "openHtml": "Open HTML Report",
-    "close": "Close",
+        "close": "Close",
         "noData": "No data"
       },
       "messages": {

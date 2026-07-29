@@ -2789,7 +2789,13 @@
     "stayHere": "留在本頁",
     "goToManage": "前往查看",
     "applyText": "套用文字到地圖",
-    "loading": "載入中..."
+    "loading": "載入中...",
+    "layoutAutoRelayoutNotice": "此地圖的已儲存座標不正確，目前以自動排版顯示（尚未寫入）",
+    "layoutOverlapHint": "偵測到 {count} 個節點位置重疊，可套用自動排版整理",
+    "applyLayoutBtn": "套用此排版",
+    "applyLayoutConfirm": "將以目前排版覆寫已儲存座標，舊座標會保留在稽核記錄。要繼續嗎？",
+    "applyLayoutDone": "排版已儲存",
+    "layoutNotSavedYet": "其他變更已儲存；目前排版尚未寫入，請按「套用此排版」"
   },
   "setup": {
     "title": "系統初始化",

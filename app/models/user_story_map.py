@@ -83,6 +83,8 @@ class UserStoryMapUpdate(BaseModel):
     description: Optional[str] = None
     nodes: Optional[List[UserStoryMapNode]] = None
     edges: Optional[List[UserStoryMapEdge]] = None
+    # Optional flag: client is applying a new layout; audit retains previous coordinates
+    layout_apply: Optional[bool] = False
 
 
 class UserStoryMapResponse(BaseModel):

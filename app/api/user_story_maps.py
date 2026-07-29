@@ -886,7 +886,19 @@ async def update_map(
             map_db.name = map_data.name
         if map_data.description is not None:
             map_db.description = map_data.description
+
+        previous_positions = None
         if map_data.nodes is not None:
+            # Capture prior coords for layout-apply audit (full snapshot fits TEXT; ~22KB for 346 nodes)
+            previous_positions = [
+                {
+                    "node_id": n.get("id"),
+                    "position_x": n.get("position_x"),
+                    "position_y": n.get("position_y"),
+                }
+                for n in (map_db.nodes or [])
+                if n.get("id")
+            ]
             normalized_nodes = []
 
             await usm_db.execute(
@@ -942,6 +954,8 @@ async def update_map(
             "team_id": map_db.team_id,
             "map_name": map_db.name,
             "processed_nodes": processed_nodes,
+            "previous_positions": previous_positions,
+            "layout_apply": bool(map_data.layout_apply),
             "response": {
                 "id": map_db.id,
                 "team_id": map_db.team_id,
@@ -973,6 +987,26 @@ async def update_map(
         changes.append(f"edges ({len(map_data.edges)} total)")
 
     try:
+        audit_details = {
+            "map_id": map_id,
+            "map_name": update_result["map_name"],
+            "changed_fields": changes,
+            "source": "layout_apply" if update_result.get("layout_apply") else "map_update",
+        }
+        # layout_apply: retain overwritten coordinates (TEXT holds full 346-node snapshot ~22KB)
+        if update_result.get("layout_apply") and update_result.get("previous_positions") is not None:
+            prev = update_result["previous_positions"]
+            audit_details["previous_positions"] = prev
+            audit_details["previous_position_count"] = len(prev)
+            if prev:
+                xs = [p.get("position_x") or 0 for p in prev]
+                ys = [p.get("position_y") or 0 for p in prev]
+                audit_details["previous_bbox"] = {
+                    "min_x": min(xs),
+                    "max_x": max(xs),
+                    "min_y": min(ys),
+                    "max_y": max(ys),
+                }
         await audit_service.log_action(
             user_id=current_user.id,
             username=current_user.username,
@@ -981,13 +1015,12 @@ async def update_map(
             resource_type=ResourceType.USER_STORY_MAP,
             resource_id=str(map_id),
             team_id=update_result["team_id"],
-            details={
-                "map_id": map_id,
-                "map_name": update_result["map_name"],
-                "changed_fields": changes,
-                "source": "map_update",
-            },
-            action_brief=f"{current_user.username} updated User Story Map: {update_result['map_name']} ({', '.join(changes)})",
+            details=audit_details,
+            action_brief=(
+                f"{current_user.username} applied layout to User Story Map: {update_result['map_name']}"
+                if update_result.get("layout_apply")
+                else f"{current_user.username} updated User Story Map: {update_result['map_name']} ({', '.join(changes)})"
+            ),
             severity=AuditSeverity.INFO,
         )
     except Exception as exc:
