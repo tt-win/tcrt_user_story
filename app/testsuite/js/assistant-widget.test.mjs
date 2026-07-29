@@ -60,6 +60,7 @@ const {
   escapeHtml,
   nextSizeMode,
   assistantWidgetDisabledForView,
+  assistantUiLocaleFrom,
 } = context;
 
 // ---------------------------------------------------------------------- //
@@ -78,6 +79,26 @@ test('assistantWidgetDisabledForView：彈出視窗不注入 widget，一般頁�
   // 近似但不成立的值不得誤判
   assert.equal(assistantWidgetDisabledForView({ assistantWidget: 'on' }, '?minimal=0'), false);
   assert.equal(assistantWidgetDisabledForView({}, '?xminimal=1'), false);
+});
+
+// ---------------------------------------------------------------------- //
+// 回覆語言跟隨介面語系
+// ---------------------------------------------------------------------- //
+
+test('assistantUiLocaleFrom：依 i18n → localStorage → <html lang> 取語系', () => {
+  const i18n = { getCurrentLanguage: () => 'en-US' };
+  const storage = { getItem: () => 'zh-CN' };
+
+  // i18n 已載入時為權威來源（使用者剛切語言，localStorage 可能尚未同步）
+  assert.equal(assistantUiLocaleFrom(i18n, storage, 'zh-TW'), 'en-US');
+  // i18n 尚未初始化 → localStorage 的持久化選擇
+  assert.equal(assistantUiLocaleFrom(null, storage, 'zh-TW'), 'zh-CN');
+  assert.equal(assistantUiLocaleFrom({}, storage, 'zh-TW'), 'zh-CN');
+  // 兩者皆無 → <html lang>
+  assert.equal(assistantUiLocaleFrom(null, { getItem: () => null }, 'zh-TW'), 'zh-TW');
+  // 完全取不到 → null（後端退回 prompt 預設規則，不送空字串）
+  assert.equal(assistantUiLocaleFrom(null, null, null), null);
+  assert.equal(assistantUiLocaleFrom({ getCurrentLanguage: () => '' }, { getItem: () => '  ' }, ''), null);
 });
 
 // ---------------------------------------------------------------------- //

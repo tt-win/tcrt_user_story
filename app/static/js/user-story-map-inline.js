@@ -72,7 +72,8 @@ desc: |
             // 延遲至 pane 可見後再排版 + fitView，避免尺寸計算為 0
             setTimeout(() => {
               try {
-                window.userStoryMapFlow?.autoLayout?.();
+                // Silent: readonly users must not see a permission error on every tab switch
+                window.userStoryMapFlow?.autoLayout?.(true);
                 window.userStoryMapFlow?.fitView?.({ padding: 0.2 });
               } catch (e) {
                 console.warn('fitView on visual tab failed', e);

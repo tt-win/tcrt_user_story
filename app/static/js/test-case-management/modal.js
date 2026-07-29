@@ -132,11 +132,6 @@ function showTestCaseModal(testCase = null) {
         currentTestData = Array.isArray(testCase.test_data) ? testCase.test_data.map(td => ({...td})) : [];
         renderTestDataList();
 
-        // 初始化 Markdown 預覽內容
-        markdownFields.forEach(fieldId => {
-            updateMarkdownPreview(fieldId);
-        });
-
         // 檢視模式下預設為預覽模式，Viewer 強制為預覽模式
         if (hasTestCasePermission('splitModeBtn')) {
             setEditorMode('preview');
@@ -352,13 +347,11 @@ function viewTestCase(id) {
     const localCase = testCases.find(tc => tc.record_id === id);
     if (localCase) {
         showTestCaseModal(localCase);
-        adjustTestCasesScrollHeight();
         return;
     }
     // 若本地沒有，嘗試後端取回避免誤判為新增
     const currentTeam = AppUtils.getCurrentTeam ? AppUtils.getCurrentTeam() : null;
     if (!currentTeam || !currentTeam.id) {
-        adjustTestCasesScrollHeight();
         return;
     }
     (async () => {
@@ -372,8 +365,6 @@ function viewTestCase(id) {
             }
         } catch (e) {
             console.error('load test case failed', e);
-        } finally {
-            adjustTestCasesScrollHeight();
         }
     })();
 }
@@ -381,14 +372,12 @@ function viewTestCase(id) {
 // 表單變更監聽器
 function bindFormChangeListeners() {
     const form = document.getElementById('testCaseForm');
-    const saveBtn = document.getElementById('saveTestCaseBtn');
-    const saveAndAddNextBtn = document.getElementById('saveAndAddNextBtn');
+    if (!form || form.dataset.changeListenersBound === 'true') return;
+    form.dataset.changeListenersBound = 'true';
 
-    // 為所有表單欄位綁定變更事件
-    form.querySelectorAll('input, textarea, select').forEach(element => {
-        element.addEventListener('input', checkFormChanges);
-        element.addEventListener('change', checkFormChanges);
-    });
+    // Bind once on the stable form so dynamic fields bubble without listener buildup.
+    form.addEventListener('input', checkFormChanges);
+    form.addEventListener('change', checkFormChanges);
 }
 
 // 檢查表單是否有變更

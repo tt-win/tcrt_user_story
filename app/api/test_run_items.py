@@ -12,7 +12,7 @@ from typing import List, Optional, Any, Dict, Union
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, or_
+from sqlalchemy import String, and_, cast, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, contains_eager, joinedload
 
@@ -29,6 +29,8 @@ from app.models.database_models import (
 )
 from app.models.lark_types import Priority, TestResultStatus, coerce_test_result_status
 from app.auth.dependencies import get_current_user
+from app.auth.models import PermissionType
+from app.auth.permission_service import permission_service
 from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
 from app.services.attachment_storage import (
     build_attachment_metadata,
@@ -38,10 +40,69 @@ from app.services.attachment_storage import (
     resolve_attachment_metadata_path,
 )
 from app.services.test_run_scope_service import TestRunScopeService
+from app.services.test_run_assignee import (
+    ASSIGNEE_INPUT_FIELDS,
+    AssigneeValidationError,
+    ResolvedAssignee,
+    apply_resolved_assignee,
+    has_assignee_input,
+    resolve_assignee,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/teams/{team_id}/test-run-configs/{config_id}/items", tags=["test-run-items"])
+assignee_router = APIRouter(prefix="/teams/{team_id}/test-run-assignees", tags=["test-run-assignees"])
+
+
+async def _require_test_run_write_permission(current_user: User, team_id: int) -> None:
+    """Guard assignee mutation paths without changing unrelated result-update permissions."""
+
+    permission = await permission_service.check_team_permission(
+        current_user.id,
+        team_id,
+        PermissionType.WRITE,
+        current_user.role,
+    )
+    if not permission.has_permission:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="需要 Test Run 寫入權限")
+
+
+@assignee_router.get("/", response_model=List[Dict[str, Any]])
+async def list_test_run_assignee_candidates(
+    team_id: int,
+    search: Optional[str] = Query(None, max_length=100),
+    limit: int = Query(30, ge=1, le=50),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
+    current_user: User = Depends(get_current_user),
+):
+    """Return a minimal, write-authorized local-user selector projection."""
+
+    await _require_test_run_write_permission(current_user, team_id)
+
+    normalized_search = (search or "").strip()
+
+    def _list(sync_db: Session) -> List[Dict[str, Any]]:
+        if not sync_db.query(TeamDB.id).filter(TeamDB.id == team_id).first():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到團隊")
+        query = sync_db.query(User).filter(
+            User.is_active.is_(True),
+            cast(User.role, String).in_(("user", "admin", "super_admin")),
+        )
+        if normalized_search:
+            pattern = f"%{normalized_search}%"
+            query = query.filter(or_(User.full_name.ilike(pattern), User.username.ilike(pattern)))
+        candidates = query.order_by(User.full_name.asc(), User.username.asc(), User.id.asc()).limit(limit).all()
+        return [
+            {
+                "id": candidate.id,
+                "display_name": candidate.full_name or candidate.username,
+                "lark_linked": bool((candidate.lark_user_id or "").strip()),
+            }
+            for candidate in candidates
+        ]
+
+    return await main_boundary.run_sync_read(_list)
 
 
 async def log_test_run_item_action(
@@ -245,7 +306,9 @@ class TestRunItemCreate(BaseModel):
     expected_result: Optional[str] = None
 
     # Assignee
+    assignee_user_id: Optional[int] = None
     assignee: Optional[AssigneeModel] = None
+    assignee_name: Optional[str] = None
 
     # Initial result (optional)
     test_result: Optional[TestResultStatus] = None
@@ -268,6 +331,7 @@ class TestRunItemUpdate(BaseModel):
     precondition: Optional[str] = None
     steps: Optional[str] = None
     expected_result: Optional[str] = None
+    assignee_user_id: Optional[int] = None
     assignee: Optional[AssigneeModel] = None
     assignee_name: Optional[str] = None
     test_result: Optional[TestResultStatus] = None
@@ -292,6 +356,7 @@ class TestRunItemResponse(BaseModel):
     expected_result: Optional[str]
     test_case_section: Optional[Dict[str, Any]] = None
     test_case_set_id: Optional[int] = None
+    assignee_user_id: Optional[int]
     assignee_id: Optional[str]
     assignee_name: Optional[str]
     assignee_en_name: Optional[str]
@@ -574,6 +639,7 @@ def _db_to_response(
         expected_result=expected_result,
         test_case_section=test_case_section,
         test_case_set_id=test_case_set_id,
+        assignee_user_id=item.assignee_user_id,
         assignee_id=item.assignee_id,
         assignee_name=item.assignee_name,
         assignee_en_name=item.assignee_en_name,
@@ -824,8 +890,27 @@ async def batch_create_items(
     main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user),
 ):
+    if any(has_assignee_input(item.model_dump(exclude_unset=True)) for item in payload.items):
+        await _require_test_run_write_permission(current_user, team_id)
+
     def _create(sync_db: Session) -> Dict[str, Any]:
         config_db = _verify_team_and_config(team_id, config_id, sync_db)
+        resolved_assignees: List[ResolvedAssignee] = []
+        for index, requested_item in enumerate(payload.items):
+            try:
+                resolved_assignees.append(
+                    resolve_assignee(
+                        sync_db,
+                        team_id=team_id,
+                        payload=requested_item.model_dump(exclude_unset=True),
+                        for_create=True,
+                    )
+                )
+            except AssigneeValidationError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"items[{index}] assignee: {exc}",
+                ) from exc
         config_scope_ids = TestRunScopeService.get_config_scope_ids(
             sync_db,
             config_db,
@@ -886,11 +971,6 @@ async def batch_create_items(
                     team_id=team_id,
                     config_id=config_id,
                     test_case_number=item.test_case_number,
-                    assignee_id=item.assignee.id if item.assignee else None,
-                    assignee_name=item.assignee.name if item.assignee else None,
-                    assignee_en_name=item.assignee.en_name if item.assignee else None,
-                    assignee_email=item.assignee.email if item.assignee else None,
-                    assignee_json=_to_json(item.assignee.model_dump()) if item.assignee else None,
                     test_result=item.test_result,
                     executed_at=item.executed_at,
                     execution_duration=item.execution_duration,
@@ -901,6 +981,7 @@ async def batch_create_items(
                     parent_record_json=_to_json(_normalize_linked_records(item.parent_record)),
                     raw_fields_json=_to_json(item.raw_fields) if item.raw_fields else None,
                 )
+                apply_resolved_assignee(db_item, resolved_assignees[idx])
                 sync_db.add(db_item)
                 created += 1
                 # 記錄建立的項目
@@ -971,6 +1052,8 @@ async def update_item(
     current_user: User = Depends(get_current_user),
 ):
     data = payload.model_dump(exclude_unset=True)
+    if has_assignee_input(data):
+        await _require_test_run_write_permission(current_user, team_id)
 
     def _update(sync_db: Session) -> TestRunItemResponse:
         _verify_team_and_config(team_id, config_id, sync_db)
@@ -985,6 +1068,18 @@ async def update_item(
         )
         if not item:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
+
+        try:
+            resolved_assignee = (
+                resolve_assignee(sync_db, team_id=team_id, payload=data)
+                if has_assignee_input(data)
+                else ResolvedAssignee(preserve=True)
+            )
+        except AssigneeValidationError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
 
         # 移除快照類欄位（僅保留兼容性輸入）
         for legacy_field in ["title", "priority", "precondition", "steps", "expected_result"]:
@@ -1007,35 +1102,7 @@ async def update_item(
         if "executed_at" in data:
             item.executed_at = data["executed_at"]
 
-        # Assignee (object form)
-        if "assignee" in data:
-            assignee = data["assignee"]
-            if assignee is None:
-                item.assignee_id = item.assignee_name = item.assignee_en_name = item.assignee_email = (
-                    item.assignee_json
-                ) = None
-            else:
-                item.assignee_id = assignee.get("id")
-                item.assignee_name = assignee.get("name")
-                item.assignee_en_name = assignee.get("en_name")
-                item.assignee_email = assignee.get("email")
-                item.assignee_json = _to_json(assignee)
-
-        # Assignee (simple name form)
-        if "assignee_name" in data:
-            name = (data.get("assignee_name") or "").strip()
-            if name:
-                item.assignee_name = name
-                item.assignee_id = None
-                item.assignee_en_name = None
-                item.assignee_email = None
-                item.assignee_json = None
-            else:
-                item.assignee_id = None
-                item.assignee_name = None
-                item.assignee_en_name = None
-                item.assignee_email = None
-                item.assignee_json = None
+        apply_resolved_assignee(item, resolved_assignee)
 
         # Attachments
         if "attachments" in data:
@@ -1130,10 +1197,11 @@ def apply_batch_item_update_sync(
     source: str,
     changed_by_id: Optional[str],
     changed_by_name: Optional[str],
+    assignee_resolution: Optional[ResolvedAssignee] = None,
 ) -> None:
     """套用單筆批次結果更新（JWT 與 app-token batch 路徑共用，避免邏輯漂移）。
 
-    支援欄位：test_result、executed_at、assignee_name、comment；
+    支援欄位：test_result、executed_at、assignee_user_id／assignee／assignee_name、comment；
     寫入與單筆更新相同的 result history（含 comment 歷程）。
     """
     comment_raw = upd.get("comment") if "comment" in upd else None
@@ -1166,21 +1234,13 @@ def apply_batch_item_update_sync(
         else:
             item.executed_at = datetime.utcnow()
 
-    # 更新執行者
-    if "assignee_name" in upd:
-        assignee_name = upd.get("assignee_name")
-        if assignee_name:
-            item.assignee_name = assignee_name
-            item.assignee_id = None
-            item.assignee_en_name = None
-            item.assignee_email = None
-            item.assignee_json = None
-        else:
-            item.assignee_id = None
-            item.assignee_name = None
-            item.assignee_en_name = None
-            item.assignee_email = None
-            item.assignee_json = None
+    if assignee_resolution is None and has_assignee_input(upd):
+        try:
+            assignee_resolution = resolve_assignee(sync_db, team_id=item.team_id, payload=upd)
+        except AssigneeValidationError as exc:
+            raise ValueError(str(exc)) from exc
+    if assignee_resolution is not None:
+        apply_resolved_assignee(item, assignee_resolution)
 
     # 記錄歷程（僅在有變更時會落盤）
     _add_result_history(
@@ -1223,19 +1283,38 @@ async def batch_update_results(
     current_user: User = Depends(get_current_user),
 ):
     source = payload.change_source or "batch"
+    if any(has_assignee_input(update_payload) for update_payload in payload.updates):
+        await _require_test_run_write_permission(current_user, team_id)
 
     def _batch(sync_db: Session) -> Dict[str, Any]:
         _verify_team_and_config(team_id, config_id, sync_db)
+        resolved_assignees: List[Optional[ResolvedAssignee]] = []
+        for index, update_payload in enumerate(payload.updates):
+            if not has_assignee_input(update_payload):
+                resolved_assignees.append(None)
+                continue
+            try:
+                resolved_assignees.append(
+                    resolve_assignee(sync_db, team_id=team_id, payload=update_payload)
+                )
+            except AssigneeValidationError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"updates[{index}] assignee: {exc}",
+                ) from exc
         success = 0
         errors: List[str] = []
         success_items = []  # 記錄成功更新的項目，用於 audit log
 
-        for upd in payload.updates:
+        for update_index, upd in enumerate(payload.updates):
             try:
                 item_id = upd.get("id")
                 comment_raw = upd.get("comment") if "comment" in upd else None
                 comment_text = comment_raw.strip() if isinstance(comment_raw, str) else None
-                has_basic_update = any(key in upd for key in ["test_result", "assignee_name", "executed_at"])
+                has_basic_update = any(
+                    key in upd
+                    for key in ["test_result", "assignee_user_id", "assignee", "assignee_name", "executed_at"]
+                )
                 has_comment_update = bool(comment_text)
                 # 檢查是否至少有一個要更新的欄位
                 if not item_id or (not has_basic_update and not has_comment_update):
@@ -1262,6 +1341,7 @@ async def batch_update_results(
                     source=source,
                     changed_by_id=str(current_user.id) if current_user else None,
                     changed_by_name=(current_user.full_name or current_user.username) if current_user else None,
+                    assignee_resolution=resolved_assignees[update_index],
                 )
                 success += 1
                 # 記錄成功更新的項目
@@ -1326,10 +1406,14 @@ async def batch_update_by_filter(
 ):
     """Batch-update items matching a closed server-side filter (assistant-oriented)."""
     patch = payload.patch
-    if patch.assignee_name is None and patch.test_result is None:
+    patch_fields = patch.model_fields_set
+    has_assignment_patch = bool(ASSIGNEE_INPUT_FIELDS.intersection(patch_fields))
+    if has_assignment_patch:
+        await _require_test_run_write_permission(current_user, team_id)
+    if not has_assignment_patch and ("test_result" not in patch_fields or patch.test_result is None):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="patch requires assignee_name and/or test_result",
+            detail="patch requires an assignee field and/or test_result",
         )
     if patch.test_result is not None:
         try:
@@ -1345,6 +1429,21 @@ async def batch_update_by_filter(
 
     def _batch(sync_db: Session) -> Dict[str, Any]:
         _verify_team_and_config(team_id, config_id, sync_db)
+        try:
+            resolved_assignee = (
+                resolve_assignee(
+                    sync_db,
+                    team_id=team_id,
+                    payload=patch.model_dump(exclude_unset=True),
+                )
+                if has_assignment_patch
+                else None
+            )
+        except AssigneeValidationError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"patch assignee: {exc}",
+            ) from exc
         matches = resolve_filter_batch_matches_sync(
             sync_db, team_id=team_id, config_id=config_id, filt=payload.filter
         )
@@ -1364,8 +1463,8 @@ async def batch_update_by_filter(
         success_items: List[Dict[str, Any]] = []
         matched_ids = [m.id for m in matches]
         upd: Dict[str, Any] = {}
-        if patch.assignee_name is not None:
-            upd["assignee_name"] = patch.assignee_name
+        for field in ASSIGNEE_INPUT_FIELDS.intersection(patch_fields):
+            upd[field] = getattr(patch, field)
         if patch.test_result is not None:
             upd["test_result"] = patch.test_result
 
@@ -1380,6 +1479,7 @@ async def batch_update_by_filter(
                     changed_by_name=(current_user.full_name or current_user.username)
                     if current_user
                     else None,
+                    assignee_resolution=resolved_assignee,
                 )
                 success += 1
                 success_items.append(

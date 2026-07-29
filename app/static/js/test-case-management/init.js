@@ -333,7 +333,39 @@ function fillViewportIfNeeded(reason = '') {
 }
 
 
+function handleTestCaseListRowAction(event) {
+    const actionTarget = event.target && typeof event.target.closest === 'function'
+        ? event.target.closest('[data-tcm-action]')
+        : null;
+    if (!actionTarget) return;
+
+    const { tcmAction, recordId, field } = actionTarget.dataset;
+    if (!recordId) return;
+
+    if (tcmAction === 'quick-edit') {
+        event.preventDefault();
+        event.stopPropagation();
+        quickEdit(recordId, field);
+        return;
+    }
+
+    if (tcmAction === 'open-test-case') {
+        event.preventDefault();
+        viewTestCase(recordId);
+    }
+}
+
+function bindTestCaseListRowActions() {
+    const testCasesStack = document.getElementById('testCasesStack');
+    if (!testCasesStack || testCasesStack.dataset.tcmListRowActionsBound === 'true') return;
+
+    testCasesStack.dataset.tcmListRowActionsBound = 'true';
+    testCasesStack.addEventListener('click', handleTestCaseListRowAction);
+}
+
 function bindEvents() {
+    bindTestCaseListRowActions();
+
     // 新增按鈕
     document.getElementById('addTestCaseBtn').addEventListener('click', () => showTestCaseModal());
     // 監聽大量新增欄位變更以更新預覽
@@ -384,8 +416,14 @@ function bindEvents() {
     if (clearSelectionBtnTC) clearSelectionBtnTC.addEventListener('click', deselectAll);
 
     // 上一隻/下一隻測試案例按鈕
-    document.getElementById('prevTestCaseBtn').addEventListener('click', showPrevTestCase);
-    document.getElementById('nextTestCaseBtn').addEventListener('click', showNextTestCase);
+    document.getElementById('prevTestCaseBtn').addEventListener('click', (event) => {
+        AppUtils.releasePointerFocus(event);
+        showPrevTestCase();
+    });
+    document.getElementById('nextTestCaseBtn').addEventListener('click', (event) => {
+        AppUtils.releasePointerFocus(event);
+        showNextTestCase();
+    });
 
     // 參考測試案例按鈕 - 使用內聯 onclick，不需要特別繫定
     // 因為 HTML 中已經有 onclick="openReferenceTestCasePopup()"

@@ -23,7 +23,7 @@
     </style>
     {% block head %}{% endblock %}
 </head>
-<body class="i18n-loading"{% if hide_assistant_widget %} data-assistant-widget="off"{% endif %}>
+<body class="i18n-loading{% if body_class %} {{ body_class }}{% endif %}"{% if hide_assistant_widget %} data-assistant-widget="off"{% endif %}>
     <!-- App Header (fixed) -->
     <header class="app-header border-bottom bg-white">
         <div class="container-fluid d-flex justify-content-between align-items-center h-100 px-3">

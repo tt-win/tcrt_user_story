@@ -33,6 +33,7 @@ from app.models.lark_types import TestResultStatus
 from app.models.test_run_config import TestRunStatus
 from app.services.lark_notify_service import get_lark_notify_service
 from app.services.test_run_scope_service import TestRunScopeService
+from app.services.test_run_assignee import apply_resolved_assignee, resolve_clone_assignee
 from app.services.test_run_set_status import (
     apply_config_status_transition_sync,
     recalculate_set_status_sync,
@@ -888,12 +889,6 @@ async def restart_test_run(
                 team_id=team_id,
                 config_id=new_config.id,
                 test_case_number=item.test_case_number,
-                # 保留指派者資料（若有）
-                assignee_id=item.assignee_id,
-                assignee_name=item.assignee_name,
-                assignee_en_name=item.assignee_en_name,
-                assignee_email=item.assignee_email,
-                assignee_json=item.assignee_json,
                 # 重置結果與時間
                 test_result=None,
                 executed_at=None,
@@ -908,6 +903,10 @@ async def restart_test_run(
                 raw_fields_json=item.raw_fields_json,
                 created_at=now,
                 updated_at=now,
+            )
+            apply_resolved_assignee(
+                new_item,
+                resolve_clone_assignee(sync_db, team_id=team_id, source=item),
             )
             sync_db.add(new_item)
             created += 1

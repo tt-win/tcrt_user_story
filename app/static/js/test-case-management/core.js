@@ -91,7 +91,8 @@ function applyMarkdownFormat(textarea, format) {
  * @param {HTMLTextAreaElement} textarea - 目標 textarea 元素
  */
 function setupMarkdownHotkeys(textarea) {
-    if (!textarea) return;
+    if (!textarea || textarea._markdownHotkeysBound) return;
+    textarea._markdownHotkeysBound = true;
 
     textarea.addEventListener('keydown', (e) => {
         const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;

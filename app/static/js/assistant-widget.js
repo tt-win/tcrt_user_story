@@ -371,6 +371,21 @@ function assistantWidgetDisabledForView(bodyDataset, search) {
     .some((pair) => /^(minimal|editor)=(1|true)$/.test(pair));
 }
 
+/**
+ * 送往後端的 UI 語系：助手回覆語言必須跟隨介面語言，而 system prompt 是跨使用者共用的快取
+ * 內容（伺服器端無從得知本次請求的語系），因此每次送訊息／確認都要帶上目前語系。
+ * 優先序：i18n 現行語系 → localStorage `language`（i18n 的持久化鍵）→ `<html lang>`；
+ * 都取不到回傳 null（後端即退回 prompt 預設規則）。映射到支援語系由伺服器負責，此處不轉換。
+ */
+function assistantUiLocaleFrom(i18nApi, storage, documentLang) {
+  const fromI18n = i18nApi && typeof i18nApi.getCurrentLanguage === 'function'
+    ? i18nApi.getCurrentLanguage()
+    : null;
+  const candidates = [fromI18n, storage ? storage.getItem('language') : null, documentLang];
+  const found = candidates.find((value) => typeof value === 'string' && value.trim());
+  return found ? found.trim() : null;
+}
+
 /* ======================================================================
  * IIFE 模組本體
  * ==================================================================== */
@@ -444,6 +459,14 @@ const AssistantWidget = (() => {
     return window.AppUtils && typeof window.AppUtils.getCurrentTeamId === 'function'
       ? window.AppUtils.getCurrentTeamId()
       : null;
+  }
+
+  function getUiLocale() {
+    let documentLang = null;
+    try { documentLang = document.documentElement.lang; } catch (_) { documentLang = null; }
+    let storage = null;
+    try { storage = localStorage; } catch (_) { storage = null; }
+    return assistantUiLocaleFrom(window.i18n, storage, documentLang);
   }
 
   /* ---------------- Availability ---------------- */
@@ -1243,7 +1266,10 @@ const AssistantWidget = (() => {
   async function handleConfirmAction(actionId, card) {
     const conversationId = currentConversation.id;
     setConfirmSubmitting(card, true);
-    const result = await streamToNewBubble(`/api/assistant/conversations/${conversationId}/actions/${actionId}/confirm`, { method: 'POST' });
+    // continuation 的總結文字同樣要跟隨目前介面語言（目標 team 仍取 turn 快照，不由前端提供）。
+    const uiLocale = getUiLocale();
+    const localeQuery = uiLocale ? `?ui_locale=${encodeURIComponent(uiLocale)}` : '';
+    const result = await streamToNewBubble(`/api/assistant/conversations/${conversationId}/actions/${actionId}/confirm${localeQuery}`, { method: 'POST' });
     if (
       !currentConversation
       || currentConversation.id !== conversationId
@@ -1607,6 +1633,9 @@ const AssistantWidget = (() => {
     const contextTeamIdRaw = getCurrentTeamId();
     const contextTeamId = contextTeamIdRaw ? parseInt(contextTeamIdRaw, 10) : null;
     if (contextTeamId) form.append('context_team_id', String(contextTeamId));
+    // 助手回覆語言跟隨介面語言：伺服器端的 system prompt 是共用快取，語系必須逐回合帶上。
+    const uiLocale = getUiLocale();
+    if (uiLocale) form.append('ui_locale', uiLocale);
     selectedFiles.forEach((f) => form.append('attachments', f, f.name));
     clearAttachments();
 

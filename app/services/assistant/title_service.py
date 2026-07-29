@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from app.services.assistant.assistant_llm_service import get_assistant_llm_service
+from app.services.assistant.locale_context import append_title_language_line
 
 _TITLE_PROMPT_PATH = Path(__file__).resolve().parents[3] / "prompts" / "assistant" / "title.md"
 
@@ -32,12 +33,18 @@ def _clean_title(raw_content: str, *, max_chars: int) -> Optional[str]:
     return cleaned
 
 
-async def generate_title(*, user_text: str, assistant_text: str, max_chars: int) -> Optional[str]:
-    """回傳 LLM 生成的短標題;未設定/呼叫失敗/清洗後為空一律回傳 None。"""
+async def generate_title(
+    *, user_text: str, assistant_text: str, max_chars: int, ui_locale: Optional[str] = None
+) -> Optional[str]:
+    """回傳 LLM 生成的短標題;未設定/呼叫失敗/清洗後為空一律回傳 None。
+
+    `ui_locale` 為該對話首個 turn 的前端 UI 語系;為 None（未帶或 orphan recovery 等無 request 情境）
+    時不附加語言指示,由 prompt 內的預設規則（跟隨使用者訊息語言）處理。
+    """
     llm_service = get_assistant_llm_service()
     try:
         result = await llm_service.call(
-            system_prompt=_load_title_prompt(),
+            system_prompt=append_title_language_line(_load_title_prompt(), ui_locale),
             messages=[{"role": "user", "content": f"使用者：{user_text}\n助手：{assistant_text}"}],
             tools=[],
         )

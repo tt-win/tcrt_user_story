@@ -22,11 +22,31 @@ const teamId = parseInt(pathParts[teamIdIndex]);
 const mapIdFromUrl = pathParts[teamIdIndex + 1] ? parseInt(pathParts[teamIdIndex + 1]) : null;
 
 // Layout constants to keep newly added nodes from overlapping
-const ROOT_START_X = 100;
-const ROOT_START_Y = 100;
-const CHILD_HORIZONTAL_OFFSET = 180;
+// Aligned with UsmLayout grid (node 200×110 + ranksep 75 / nodesep 40)
+const ROOT_START_X = (window.UsmLayout && window.UsmLayout.ROOT_START_X) || 250;
+const ROOT_START_Y = (window.UsmLayout && window.UsmLayout.ROOT_START_Y) || 250;
+const CHILD_HORIZONTAL_OFFSET = (window.UsmLayout && window.UsmLayout.GRID_X) || 275;
 const ROOT_VERTICAL_SPACING = 160;
-const SIBLING_VERTICAL_SPACING = 140;
+const SIBLING_VERTICAL_SPACING = (window.UsmLayout && window.UsmLayout.GRID_Y) || 150;
+const NODE_WIDTH = (window.UsmLayout && window.UsmLayout.NODE_WIDTH) || 200;
+const NODE_HEIGHT = (window.UsmLayout && window.UsmLayout.NODE_HEIGHT) || 110;
+const USM_ZOOM_LIMITS = (window.UsmLayout && typeof window.UsmLayout.getZoomLimits === 'function')
+    ? window.UsmLayout.getZoomLimits()
+    : { minZoom: 96 / 110, maxZoom: 2 };
+const USM_MIN_ZOOM = USM_ZOOM_LIMITS.minZoom;
+const USM_MAX_ZOOM = USM_ZOOM_LIMITS.maxZoom;
+
+/** fitView that never violates the design-baseline min on-screen node size */
+const usmFitView = (instance, options = {}) => {
+    if (!instance || typeof instance.fitView !== 'function') return;
+    instance.fitView({
+        padding: 0.15,
+        duration: 300,
+        ...options,
+        minZoom: USM_MIN_ZOOM,
+        maxZoom: USM_MAX_ZOOM,
+    });
+};
 const RELATION_EDGE_PATH_OPTIONS = { offset: 120, borderRadius: 18 }; // 確保關聯邊在節點外形成明顯轉折
 
 const fullUsmAccess = {
@@ -75,6 +95,7 @@ const updateUsmUiVisibility = () => {
     setElementVisibility('addSiblingBtn', hasUsmAccess('nodeAdd'));
     setElementVisibility('setRelationsBtn', hasUsmAccess('nodeUpdate'));
     setElementVisibility('autoLayoutBtn', hasUsmAccess('nodeUpdate'));
+    setElementVisibility('applyLayoutBtn', hasUsmAccess('mapUpdate'));
     setElementVisibility('confirmAddNodeBtn', hasUsmAccess('nodeAdd'));
 };
 
@@ -825,6 +846,12 @@ const UserStoryMapFlow = () => {
     const nodesRef = useRef([]);
     const edgesRef = useRef([]);
     const loadMapRequestIdRef = useRef(0);
+    // Single-frame write: 'db' = canvas coords may be saved; 'recomputed' = save uses shadow copy
+    const layoutFrameRef = useRef('db');
+    const originalPositionsRef = useRef(new Map());
+    const dragStartPositionsRef = useRef(new Map());
+    const silentSaveDeniedWarnedRef = useRef(false);
+    const pendingFocusAfterReflowRef = useRef(null);
 
     useEffect(() => {
         nodesRef.current = nodes;
@@ -855,7 +882,7 @@ const UserStoryMapFlow = () => {
             instance.zoomBy?.(zoomDelta, { duration: 150 });
         } catch (_) {
             const currentZoom = instance.getZoom?.() ?? 1;
-            const nextZoom = Math.min(2, Math.max(0.05, currentZoom + zoomDelta));
+            const nextZoom = Math.min(USM_MAX_ZOOM, Math.max(USM_MIN_ZOOM, currentZoom + zoomDelta));
             instance.zoomTo?.(nextZoom, { duration: 150 });
         }
     }, []);
@@ -870,7 +897,7 @@ const UserStoryMapFlow = () => {
         return () => wrapper.removeEventListener('wheel', handleWheel);
     }, [handleWheel]);
 
-    // Tree layout using dagre
+    // Tree layout using dagre — outputs React Flow top-left positions
     const applyTreeLayout = useCallback((nodes, edges) => {
         if (!window.dagre) {
             console.error('Dagre library not loaded');
@@ -882,20 +909,28 @@ const UserStoryMapFlow = () => {
         g.setDefaultEdgeLabel(() => ({}));
 
         nodes.forEach(node => {
-            g.setNode(node.id, { width: 200, height: 110 });
+            g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
         });
 
+        // Only parent edges participate in rank calculation
         edges.forEach(edge => {
+            const isParent = edge.edge_type === 'parent'
+                || (edge.type === 'smoothstep' && !(edge.id || '').startsWith('relation-'));
+            if (!isParent && edge.edge_type === 'related') return;
+            if ((edge.id || '').startsWith('relation-') || edge.edge_type === 'related') return;
             g.setEdge(edge.source, edge.target);
         });
 
         dagre.layout(g);
+        const toTopLeft = window.UsmLayout?.centerToTopLeft
+            || ((x, y) => ({ x: x - NODE_WIDTH / 2, y: y - NODE_HEIGHT / 2 }));
 
         return nodes.map(node => {
             const position = g.node(node.id);
+            const topLeft = toTopLeft(position.x, position.y);
             return {
                 ...node,
-                position: { x: position.x, y: position.y },
+                position: topLeft,
                 targetPosition: 'left',
                 sourcePosition: 'right',
             };
@@ -920,7 +955,7 @@ const UserStoryMapFlow = () => {
         });
     }, []);
 
-    // 重新應用佈局的函數
+    // 重新應用佈局：可見節點餵 dagre；隱藏節點由 deriveHiddenPositions 推導
     const applyLayoutWithCollapsedNodes = useCallback((currentNodes, currentEdges, collapsedSet) => {
         if (!window.dagre) {
             console.error('Dagre library not loaded');
@@ -931,47 +966,75 @@ const UserStoryMapFlow = () => {
         g.setGraph({ rankdir: 'LR', ranksep: 75, nodesep: 40 });
         g.setDefaultEdgeLabel(() => ({}));
 
-        // 只為未收合的節點設置圖形
-        const visibleNodes = currentNodes.filter(node => {
-            // 檢查節點是否被收合 - 通過檢查其父節點是否被收合
+        const parentOf = window.UsmLayout
+            ? window.UsmLayout.buildParentMap(currentNodes)
+            : (() => {
+                const m = new Map();
+                currentNodes.forEach((n) => m.set(n.id, n.data?.parentId || null));
+                return m;
+            })();
+
+        const visibleNodes = currentNodes.filter((node) => {
+            if (window.UsmLayout) {
+                return !window.UsmLayout.isHiddenByCollapse(node.id, parentOf, collapsedSet);
+            }
+            const visited = new Set();
             let parentId = node.data.parentId;
             while (parentId) {
-                if (collapsedSet.has(parentId)) {
-                    return false; // 如果父節點收合，則隱藏當前節點
-                }
-                const parent = currentNodes.find(n => n.id === parentId);
-                parentId = parent?.data.parentId || null;
+                if (visited.has(parentId)) return true;
+                visited.add(parentId);
+                if (collapsedSet.has(parentId)) return false;
+                parentId = parentOf.get(parentId);
             }
             return true;
         });
+        const visibleIds = new Set(visibleNodes.map((n) => n.id));
 
         visibleNodes.forEach(node => {
-            g.setNode(node.id, { width: 200, height: 110 });
+            g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
         });
 
-        // 只為可見節點之間的邊設置圖形關係
         currentEdges.forEach(edge => {
-            const sourceNodeVisible = visibleNodes.some(n => n.id === edge.source);
-            const targetNodeVisible = visibleNodes.some(n => n.id === edge.target);
-            if (sourceNodeVisible && targetNodeVisible) {
+            if ((edge.id || '').startsWith('relation-') || edge.edge_type === 'related') return;
+            if (visibleIds.has(edge.source) && visibleIds.has(edge.target)) {
                 g.setEdge(edge.source, edge.target);
             }
         });
 
         dagre.layout(g);
+        const toTopLeft = window.UsmLayout?.centerToTopLeft
+            || ((x, y) => ({ x: x - NODE_WIDTH / 2, y: y - NODE_HEIGHT / 2 }));
 
-        // 更新可見節點位置，保持隱藏節點的原始位置
-        return currentNodes.map(node => {
-            if (visibleNodes.includes(node)) {
-                const position = g.node(node.id);
+        const layoutedVisible = visibleNodes.map((node) => {
+            const position = g.node(node.id);
+            const topLeft = toTopLeft(position.x, position.y);
+            return {
+                ...node,
+                position: topLeft,
+                targetPosition: 'left',
+                sourcePosition: 'right',
+            };
+        });
+        const layoutedById = new Map(layoutedVisible.map((n) => [n.id, n]));
+
+        const hiddenPositions = window.UsmLayout
+            ? window.UsmLayout.deriveHiddenPositions(layoutedVisible, currentNodes, collapsedSet)
+            : new Map();
+
+        return currentNodes.map((node) => {
+            if (layoutedById.has(node.id)) {
+                return layoutedById.get(node.id);
+            }
+            const derived = hiddenPositions.get(node.id);
+            if (derived) {
                 return {
                     ...node,
-                    position: { x: position.x, y: position.y },
+                    position: { x: derived.x, y: derived.y },
                     targetPosition: 'left',
                     sourcePosition: 'right',
                 };
             }
-            return node; // 保持隱藏節點的原始位置
+            return node;
         });
     }, []);
 
@@ -1122,6 +1185,7 @@ const UserStoryMapFlow = () => {
                     },
                     sourceHandle: 'right',
                     targetHandle,
+                    edge_type: edge.edge_type || (isRelationEdge ? 'related' : 'parent'),
                 };
                 if (isRelationEdge) {
                     baseEdge.type = 'step';
@@ -1130,56 +1194,13 @@ const UserStoryMapFlow = () => {
                 return baseEdge;
             });
 
-            const computeLayout = (nodesArr, edgesArr) => {
-                if (window.dagre) {
-                    return applyTreeLayout(nodesArr, edgesArr);
-                }
-                // Fallback: simple level-based layout to avoid nodes collapsing at origin
-                const copy = nodesArr.map(n => ({ ...n }));
-                const levelMap = new Map();
-                copy.forEach(n => {
-                    const lvl = Number.isFinite(n.data.level) ? n.data.level : 0;
-                    if (!levelMap.has(lvl)) levelMap.set(lvl, []);
-                    levelMap.get(lvl).push(n);
-                });
-                const levelKeys = Array.from(levelMap.keys()).sort((a, b) => a - b);
-                const xGap = 260;
-                const yGap = 180;
-                levelKeys.forEach((lvl, li) => {
-                    const list = levelMap.get(lvl) || [];
-                    list.forEach((n, idx) => {
-                        n.position = { x: idx * xGap, y: li * yGap };
-                        n.targetPosition = 'left';
-                        n.sourcePosition = 'right';
-                    });
-                });
-                return copy;
-            };
-
-            // 若節點皆已有非預設座標，視為使用者已手動排版：載入時尊重既有座標，不重新自動排版
-            const hasSavedLayout = Array.isArray(map.nodes)
-                && map.nodes.length > 0
-                && map.nodes.every((n) => n.position_x != null && n.position_y != null)
-                && map.nodes.some((n) => Number(n.position_x) !== 0 || Number(n.position_y) !== 0);
-
-            const layoutedNodes = hasSavedLayout ? flowNodes : computeLayout(flowNodes, flowEdges);
-            const decoratedNodes = layoutedNodes.map(node => ({
-                ...node,
-                data: {
-                    ...node.data,
-                    collapsed: false,
-                    toggleCollapse: toggleNodeCollapse,
-                },
-            }));
-            
-            // Clean up orphaned edges (pointing to non-existent nodes)
-            const nodeIds = new Set(decoratedNodes.map(n => n.id));
-            let validEdges = (flowEdges || []).filter(edge => 
+            // Clean edges BEFORE layout (filter orphans + rebuild if empty as one unit)
+            const nodeIds = new Set(flowNodes.map(n => n.id));
+            let validEdges = (flowEdges || []).filter(edge =>
                 nodeIds.has(edge.source) && nodeIds.has(edge.target)
             );
-            // 若 API 回傳的 edges 全部無效，透過 parent/related 關係重建一次
             if (!validEdges.length) {
-                const rebuilt = buildEdgesFromNodes(decoratedNodes).filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
+                const rebuilt = buildEdgesFromNodes(flowNodes).filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
                 validEdges = rebuilt.map(edge => {
                     const isRelationEdge = edge.edge_type === 'related' || edge.id.startsWith('relation-');
                     const targetHandle = isRelationEdge ? 'right-target' : 'left';
@@ -1199,6 +1220,7 @@ const UserStoryMapFlow = () => {
                         },
                         sourceHandle: 'right',
                         targetHandle,
+                        edge_type: edge.edge_type || (isRelationEdge ? 'related' : 'parent'),
                     };
                     if (isRelationEdge) {
                         baseEdge.type = 'step';
@@ -1207,7 +1229,39 @@ const UserStoryMapFlow = () => {
                     return baseEdge;
                 });
             }
-            
+
+            // Shadow copy of DB positions + layout frame (after requestId gate)
+            const shadow = new Map();
+            (map.nodes || []).forEach((n) => {
+                shadow.set(n.id, {
+                    x: Number(n.position_x) || 0,
+                    y: Number(n.position_y) || 0,
+                });
+            });
+            originalPositionsRef.current = shadow;
+            silentSaveDeniedWarnedRef.current = false;
+
+            const health = window.UsmLayout
+                ? window.UsmLayout.assessLayoutHealth(map.nodes || [])
+                : { verdict: 'healthy', overlapNodeCount: 0, overlapRatio: 0, tbRatio: 0, reasons: [] };
+
+            // Health decides frame + notice; load reflow is separate (compact after default collapse)
+            let layoutFrame = 'db';
+            if (health.verdict === 'unhealthy') {
+                // Display coords will be replaced by collapse-aware reflow below
+                layoutFrame = 'recomputed';
+            }
+            layoutFrameRef.current = layoutFrame;
+
+            const decoratedNodes = flowNodes.map(node => ({
+                ...node,
+                data: {
+                    ...node.data,
+                    collapsed: false,
+                    toggleCollapse: toggleNodeCollapse,
+                },
+            }));
+
             nodesRef.current = decoratedNodes;
             setNodes(decoratedNodes);
             setSelectedNode((prevSelected) => {
@@ -1219,22 +1273,29 @@ const UserStoryMapFlow = () => {
             });
             setEdges(validEdges.map(edge => ({ ...edge, hidden: false })));
             setCurrentMapId(mapId);
-            // 預設收合含 user story 子節點的父節點
+            // 預設收合含 user story 子節點的父節點（Map 查表）
+            const nodeById = new Map(decoratedNodes.map((n) => [n.id, n]));
             const defaultCollapsed = new Set();
             decoratedNodes.forEach((node) => {
                 if (Array.isArray(node.data.childrenIds) && node.data.childrenIds.length > 0) {
                     const hasUserStoryChild = node.data.childrenIds.some((cid) => {
-                        const child = decoratedNodes.find((n) => n.id === cid);
+                        const child = nodeById.get(cid);
                         return child && child.data.nodeType === 'user_story';
                     });
                     if (hasUserStoryChild) defaultCollapsed.add(node.id);
                 }
             });
-            // reflowAnchor（如搬移後）：以指定節點為定錨重排；
-            // 否則新地圖（無手動座標）依可見節點重排並 fitView，已有座標者不重排、僅框景
+
+            // Enter USM: collapse user-story parents, then compact-layout the visible tree.
+            // Any load-time reflow that diverges from DB must use the shadow frame until promote.
+            const needsLoadReflow = health.verdict === 'unhealthy' || defaultCollapsed.size > 0;
+            if (needsLoadReflow && layoutFrame !== 'recomputed') {
+                // healthy/hint with default collapse: protect DB coords on Save
+                layoutFrameRef.current = 'recomputed';
+            }
             reflowDirectiveRef.current = reflowAnchor
                 ? { anchorId: reflowAnchor, fit: false }
-                : (hasSavedLayout ? null : { anchorId: null, fit: true });
+                : (needsLoadReflow ? { anchorId: null, fit: true } : null);
             setCollapsedNodeIds(() => defaultCollapsed);
             setHighlightedNodeIds([]);
             setHighlightedPath(null);
@@ -1244,12 +1305,17 @@ const UserStoryMapFlow = () => {
                 highlightInfoEl.classList.add('d-none');
                 highlightInfoEl.innerHTML = '';
             }
-            // 視窗框景：新地圖由上方收合 effect 依可見節點重排並 fitView；
-            // 已有手動座標者於此框景一次（preserveViewport，如搬移後重載，則保留目前縮放/平移）
+
+            // Layout health notices (i18n lifecycle) — only for unhealthy/hint verdicts
+            if (typeof showLayoutHealthNotice === 'function') {
+                showLayoutHealthNotice(health);
+            }
+
+            // 視窗框景：無 load reflow 時在此 fitView；有 reflow 時由收合 effect 處理
             setTimeout(() => {
                 try {
-                    if (hasSavedLayout && !preserveViewport) {
-                        reactFlowInstance.current?.fitView({ padding: 0.05, duration: 300 });
+                    if (!needsLoadReflow && !preserveViewport) {
+                        usmFitView(reactFlowInstance.current, { padding: 0.05 });
                     }
                 } catch (e) {
                     console.warn('fitView failed', e);
@@ -1258,7 +1324,7 @@ const UserStoryMapFlow = () => {
         } catch (error) {
             console.error('Failed to load map:', error);
         }
-    }, [setNodes, setEdges, applyTreeLayout, teamName, toggleNodeCollapse, setSelectedNode, setCurrentMapId, setCollapsedNodeIds, setHighlightedNodeIds, setHighlightedPath]);
+    }, [setNodes, setEdges, teamName, toggleNodeCollapse, setSelectedNode, setCurrentMapId, setCollapsedNodeIds, setHighlightedNodeIds, setHighlightedPath]);
 
     // Update aggregated tickets without reloading the entire map
     const updateAggregatedTickets = useCallback(async (mapId) => {
@@ -1307,10 +1373,14 @@ const UserStoryMapFlow = () => {
         }
     }, [setNodes, setSelectedNode]);
 
-    // Save map
-    const saveMap = useCallback(async (silent = false) => {
+    // Save map — prefer nodesRef/edgesRef so callers that just updated layout are not racing React state
+    const saveMap = useCallback(async (silent = false, options = {}) => {
+        const { layoutApply = false, nodesOverride = null, edgesOverride = null } = options;
         if (!hasUsmAccess('mapUpdate')) {
             if (!silent) {
+                showMessage(tUsm('noPermissionSaveMap', '您沒有權限儲存此地圖'), 'error');
+            } else if (!silentSaveDeniedWarnedRef.current) {
+                silentSaveDeniedWarnedRef.current = true;
                 showMessage(tUsm('noPermissionSaveMap', '您沒有權限儲存此地圖'), 'error');
             }
             return;
@@ -1323,29 +1393,44 @@ const UserStoryMapFlow = () => {
 
         setUsmSaveStatus('saving');
         try {
+            const sourceNodes = nodesOverride || nodesRef.current || nodes;
+            const sourceEdges = edgesOverride || edgesRef.current || edges;
+            const useShadow = layoutFrameRef.current === 'recomputed' && !layoutApply;
             // Convert nodes back
-            const mapNodes = nodes.map(node => ({
-                id: node.id,
-                title: node.data.title,
-                description: node.data.description,
-                node_type: node.data.nodeType,
-                parent_id: node.data.parentId,
-                children_ids: node.data.childrenIds || [],
-                related_ids: serializeRelatedEntries(node.data.relatedIds),
-                comment: node.data.comment,
-                jira_tickets: node.data.jiraTickets || [],
-                team: teamName || node.data.team || '',
-                aggregated_tickets: node.data.aggregatedTickets || [],
-                position_x: node.position.x,
-                position_y: node.position.y,
-                level: node.data.level || 0,
-                as_a: node.data.as_a,
-                i_want: node.data.i_want,
-                so_that: node.data.so_that,
-            }));
+            const mapNodes = sourceNodes.map(node => {
+                let px = node.position.x;
+                let py = node.position.y;
+                if (useShadow) {
+                    const shadow = originalPositionsRef.current.get(node.id);
+                    if (shadow) {
+                        px = shadow.x;
+                        py = shadow.y;
+                    }
+                    // New nodes (no shadow) keep canvas coords
+                }
+                return {
+                    id: node.id,
+                    title: node.data.title,
+                    description: node.data.description,
+                    node_type: node.data.nodeType,
+                    parent_id: node.data.parentId,
+                    children_ids: node.data.childrenIds || [],
+                    related_ids: serializeRelatedEntries(node.data.relatedIds),
+                    comment: node.data.comment,
+                    jira_tickets: node.data.jiraTickets || [],
+                    team: teamName || node.data.team || '',
+                    aggregated_tickets: node.data.aggregatedTickets || [],
+                    position_x: px,
+                    position_y: py,
+                    level: node.data.level || 0,
+                    as_a: node.data.as_a,
+                    i_want: node.data.i_want,
+                    so_that: node.data.so_that,
+                };
+            });
 
             // Convert edges back
-            const mapEdges = edges.map(edge => {
+            const mapEdges = sourceEdges.map(edge => {
                 const isRelationEdge = edge.id.startsWith('relation-') || edge.animated && edge.style?.strokeDasharray === '5,5';
                 return {
                     id: edge.id,
@@ -1355,31 +1440,57 @@ const UserStoryMapFlow = () => {
                 };
             });
 
+            const body = {
+                nodes: mapNodes,
+                edges: mapEdges,
+            };
+            if (layoutApply) {
+                body.layout_apply = true;
+            }
+
             const response = await fetch(`/api/user-story-maps/${currentMapId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
                 },
-                body: JSON.stringify({
-                    nodes: mapNodes,
-                    edges: mapEdges,
-                }),
+                body: JSON.stringify(body),
             });
 
             if (response.ok) {
+                if (layoutApply || layoutFrameRef.current === 'db') {
+                    // Promote / refresh shadow from the positions we just wrote
+                    const nextShadow = new Map();
+                    mapNodes.forEach((n) => {
+                        nextShadow.set(n.id, { x: n.position_x, y: n.position_y });
+                    });
+                    originalPositionsRef.current = nextShadow;
+                    layoutFrameRef.current = 'db';
+                }
+                if (layoutApply) {
+                    hideLayoutNotice();
+                } else if (useShadow && !silent) {
+                    // Explicit Save while still on recomputed frame — layout coords were not written
+                    showUsmMessage(
+                        'layoutNotSavedYet',
+                        '其他變更已儲存；目前排版尚未寫入，請按「套用此排版」',
+                        'info'
+                    );
+                }
                 setUsmSaveStatus('saved');
                 if (!silent) {
                     showMessage(tUsm('mapSaved', '地圖已儲存'), 'success');
                 }
-            } else {
-                setUsmSaveStatus('error');
-                showMessage(tUsm('saveFailed', '儲存失敗'), 'error');
+                return true;
             }
+            setUsmSaveStatus('error');
+            showMessage(tUsm('saveFailed', '儲存失敗'), 'error');
+            return false;
         } catch (error) {
             console.error('Failed to save map:', error);
             setUsmSaveStatus('error');
             showMessage(tUsm('saveFailed', '儲存失敗'), 'error');
+            return false;
         }
     }, [currentMapId, nodes, edges, teamName]);
 
@@ -1408,7 +1519,7 @@ const UserStoryMapFlow = () => {
                 }
             });
         }
-        const NW = 200, NH = 110;
+        const NW = NODE_WIDTH, NH = NODE_HEIGHT;
         const cx = node.position.x + NW / 2;
         const cy = node.position.y + NH / 2;
         return all.find((t) =>
@@ -1428,6 +1539,14 @@ const UserStoryMapFlow = () => {
     };
 
     // 拖曳過程中：高亮目前可放置的父節點
+    const onNodeDragStart = useCallback((event, node) => {
+        if (!node) return;
+        dragStartPositionsRef.current.set(node.id, {
+            x: node.position.x,
+            y: node.position.y,
+        });
+    }, []);
+
     const onNodeDrag = useCallback((event, node) => {
         clearDropTargetHighlight();
         const target = findReparentTarget(node);
@@ -1448,12 +1567,51 @@ const UserStoryMapFlow = () => {
                 `將「${srcTitle}」及其子節點移動到「${tgtTitle}」下？`,
                 { source: srcTitle, target: tgtTitle });
             if (confirm(msg)) {
+                dragStartPositionsRef.current.delete(node?.id);
+                if (layoutFrameRef.current === 'recomputed' && hasUsmAccess('mapUpdate')) {
+                    const nextShadow = new Map();
+                    nodesRef.current.forEach((n) => {
+                        nextShadow.set(n.id, { x: n.position.x, y: n.position.y });
+                    });
+                    originalPositionsRef.current = nextShadow;
+                    layoutFrameRef.current = 'db';
+                }
                 performMoveNodeRef.current?.(node.id, target.id);
                 return;
             }
+            // User cancelled reparent — revert drag position
+            const start = dragStartPositionsRef.current.get(node.id);
+            if (start) {
+                setNodes((nds) => nds.map((n) => (
+                    n.id === node.id ? { ...n, position: { x: start.x, y: start.y } } : n
+                )));
+            }
+            dragStartPositionsRef.current.delete(node.id);
+            return;
         }
-        scheduleSave(400);
-    }, [findReparentTarget, scheduleSave]);
+
+        const start = node ? dragStartPositionsRef.current.get(node.id) : null;
+        const moved = !!(start && node && (
+            start.x !== node.position.x || start.y !== node.position.y
+        ));
+        dragStartPositionsRef.current.delete(node?.id);
+
+        if (moved && hasUsmAccess('mapUpdate')) {
+            // Promote layout frame on real drag
+            if (layoutFrameRef.current === 'recomputed') {
+                const nextShadow = new Map();
+                nodesRef.current.forEach((n) => {
+                    nextShadow.set(n.id, { x: n.position.x, y: n.position.y });
+                });
+                if (node) {
+                    nextShadow.set(node.id, { x: node.position.x, y: node.position.y });
+                }
+                originalPositionsRef.current = nextShadow;
+                layoutFrameRef.current = 'db';
+            }
+            scheduleSave(400);
+        }
+    }, [findReparentTarget, scheduleSave, setNodes]);
 
     // Inline rename (double-click a node title on the canvas)
     const renameNode = useCallback((nodeId, newTitle) => {
@@ -3286,7 +3444,7 @@ const UserStoryMapFlow = () => {
                         instance.zoomBy?.(zoomDelta, { duration: 150 });
                     } catch (_) {
                         const currentZoom = instance.getZoom?.() ?? 1;
-                        const nextZoom = Math.min(2, Math.max(0.05, currentZoom + zoomDelta));
+                        const nextZoom = Math.min(USM_MAX_ZOOM, Math.max(USM_MIN_ZOOM, currentZoom + zoomDelta));
                         instance.zoomTo?.(nextZoom, { duration: 150 });
                     }
                 }, []);
@@ -3425,14 +3583,19 @@ const UserStoryMapFlow = () => {
                             nodeTypes: nodeTypes,
                             defaultEdgeOptions: { type: 'smoothstep' },
                             fitView: true,
+                            fitViewOptions: {
+                                padding: 0.15,
+                                minZoom: USM_MIN_ZOOM,
+                                maxZoom: USM_MAX_ZOOM,
+                            },
                             nodesConnectable: false,
                             edgesUpdatable: false,
                             connectOnClick: false,
                             zoomOnScroll: false,
                             panOnScroll: true,
                             panOnScrollSpeed: 0.8,
-                            minZoom: 0.05,
-                            maxZoom: 2,
+                            minZoom: USM_MIN_ZOOM,
+                            maxZoom: USM_MAX_ZOOM,
                             onInit: (instance) => { flowInstanceRef.current = instance; },
                             style: { width: '100%', height: '100%' }
                         }
@@ -3581,37 +3744,92 @@ const UserStoryMapFlow = () => {
         
         // 如果有節點需要展開，先展開它們
         if (nodesToExpand.size > 0) {
+            reflowDirectiveRef.current = { anchorId: nodeId, fit: false };
+            pendingFocusAfterReflowRef.current = () => {
+                performFocus(nodeId, highlightNodeIds);
+            };
             setCollapsedNodeIds((prev) => {
                 const next = new Set(prev);
-                nodesToExpand.forEach((nodeId) => {
-                    next.delete(nodeId);
+                nodesToExpand.forEach((expandId) => {
+                    next.delete(expandId);
                 });
                 return next;
             });
-            
-            // 等待節點展開完成後再進行聚焦
-            setTimeout(() => {
-                performFocus(nodeId, highlightNodeIds);
-            }, 100);
         } else {
             // 如果沒有節點需要展開，直接聚焦
             performFocus(nodeId, highlightNodeIds);
         }
     }, [setNodes, setSelectedNode, updateNodeProperties, collapsedNodeIds, setCollapsedNodeIds]);
 
-    // Auto layout
-    const autoLayout = useCallback(() => {
-        if (!hasUsmAccess('nodeAdd')) {
-            showUsmMessage('noPermissionLayout', '您沒有權限調整地圖排版', 'error');
+    // Auto layout (collapse-aware). silent=true skips permission toast (tab switch).
+    const autoLayout = useCallback((silent = false) => {
+        if (!hasUsmAccess('nodeUpdate')) {
+            if (!silent) {
+                showUsmMessage('noPermissionLayout', '您沒有權限調整地圖排版', 'error');
+            }
             return;
         }
-        const layoutedNodes = applyTreeLayout(nodes, edges);
-        nodesRef.current = layoutedNodes;
-        setNodes(layoutedNodes);
-        setTimeout(() => {
-            reactFlowInstance.current?.fitView({ padding: 0.2 });
-        }, 0);
-    }, [nodes, edges, setNodes, applyTreeLayout]);
+        reflowDirectiveRef.current = { anchorId: null, fit: true };
+        // Trigger collapse effect reflow with current collapsed set (no scheduleSave)
+        setCollapsedNodeIds((prev) => new Set(prev));
+    }, [setCollapsedNodeIds]);
+
+    // Apply current layout to DB: expand all → reflow → promote → save with audit
+    const applyCurrentLayout = useCallback(async () => {
+        if (!hasUsmAccess('mapUpdate')) {
+            showUsmMessage('noPermissionSaveMap', '您沒有權限儲存此地圖', 'error');
+            return;
+        }
+        const confirmMsg = tUsm(
+            'applyLayoutConfirm',
+            '將以目前排版覆寫已儲存座標，舊座標會保留在稽核記錄。要繼續嗎？'
+        );
+        if (!confirm(confirmMsg)) return;
+
+        // Layout full expanded tree synchronously — do not race the collapse effect / React state
+        reflowDirectiveRef.current = null;
+        setCollapsedNodeIds(new Set());
+        const baseNodes = (nodesRef.current || []).map((n) => ({
+            ...n,
+            hidden: false,
+            data: { ...n.data, collapsed: false },
+        }));
+        const layouted = applyLayoutWithCollapsedNodes(
+            baseNodes,
+            edgesRef.current || [],
+            new Set()
+        ).map((n) => ({
+            ...n,
+            hidden: false,
+            data: { ...n.data, collapsed: false },
+        }));
+        nodesRef.current = layouted;
+        setNodes(layouted);
+
+        const nextShadow = new Map();
+        layouted.forEach((n) => {
+            nextShadow.set(n.id, { x: n.position.x, y: n.position.y });
+        });
+        originalPositionsRef.current = nextShadow;
+        layoutFrameRef.current = 'db';
+
+        const ok = await saveMap(true, {
+            layoutApply: true,
+            nodesOverride: layouted,
+            edgesOverride: edgesRef.current || [],
+        });
+        if (ok) {
+            showUsmMessage('applyLayoutDone', '排版已儲存', 'success');
+            hideLayoutNotice();
+            setTimeout(() => {
+                try {
+                    usmFitView(reactFlowInstance.current, { padding: 0.15 });
+                } catch (e) {
+                    console.warn('fitView after apply layout failed', e);
+                }
+            }, 60);
+        }
+    }, [setCollapsedNodeIds, applyLayoutWithCollapsedNodes, setNodes, saveMap]);
 
     // Collapse all parent nodes that have User Story children
     const collapseUserStoryNodes = useCallback(() => {
@@ -3653,10 +3871,12 @@ const UserStoryMapFlow = () => {
         const countDescendants = (rootId) => {
             const byId = new Map(nodesRef.current.map((n) => [n.id, n]));
             let total = 0;
+            const visited = new Set();
             const stack = [...(byId.get(rootId)?.data.childrenIds || [])];
             while (stack.length) {
                 const cid = stack.pop();
-                if (!byId.has(cid)) continue;
+                if (!byId.has(cid) || visited.has(cid)) continue;
+                visited.add(cid);
                 total += 1;
                 stack.push(...(byId.get(cid)?.data.childrenIds || []));
             }
@@ -3688,6 +3908,11 @@ const UserStoryMapFlow = () => {
                     });
                 remainingIds = new Set(updated.map((node) => node.id));
                 nodesRef.current = updated;
+                // Keep shadow in sync: drop deleted ids
+                const shadow = originalPositionsRef.current;
+                [...shadow.keys()].forEach((id) => {
+                    if (!remainingIds.has(id)) shadow.delete(id);
+                });
                 return updated;
             });
             setEdges((eds) => eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
@@ -3851,8 +4076,11 @@ const UserStoryMapFlow = () => {
         const hiddenStatus = new Map();
 
         const shouldHide = (nodeId) => {
+            const visited = new Set();
             let parentId = nodeMap.get(nodeId)?.data?.parentId || null;
             while (parentId) {
+                if (visited.has(parentId)) return false;
+                visited.add(parentId);
                 if (collapsedNodeIds.has(parentId)) {
                     return true;
                 }
@@ -3876,15 +4104,14 @@ const UserStoryMapFlow = () => {
             };
         });
 
-        // 收合/展開重排：僅在使用者操作（reflowDirectiveRef 有值）時重排。
-        // 載入時的預設收合、以及新增/刪除造成的 edges 變動，維持既有座標，
-        // 避免整張圖跳動或洗掉使用者的手動排版。
+        // 收合/展開重排：reflowDirectiveRef 有值時重排（含載入時預設收合後的緊湊排版）。
         const directive = reflowDirectiveRef.current;
         reflowDirectiveRef.current = null;
 
         let finalNodes = updatedNodes;
         if (directive) {
-            const reflowed = applyLayoutWithCollapsedNodes(updatedNodes, edges, collapsedNodeIds);
+            const edgesForLayout = edgesRef.current?.length ? edgesRef.current : edges;
+            const reflowed = applyLayoutWithCollapsedNodes(updatedNodes, edgesForLayout, collapsedNodeIds);
             // 以定錨節點（被點擊者；否則 root）對齊重排前的位置，讓畫面以該點為中心局部展開/收合
             const anchorId = directive.anchorId
                 || updatedNodes.find((n) => !n.data.parentId && !n.hidden)?.id
@@ -3895,7 +4122,9 @@ const UserStoryMapFlow = () => {
                 const dx = before.position.x - after.position.x;
                 const dy = before.position.y - after.position.y;
                 finalNodes = (dx || dy)
-                    ? reflowed.map((n) => (n.hidden ? n : { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } }))
+                    ? (window.UsmLayout
+                        ? window.UsmLayout.translateAll(reflowed, dx, dy)
+                        : reflowed.map((n) => ({ ...n, position: { x: n.position.x + dx, y: n.position.y + dy } })))
                     : reflowed;
             } else {
                 finalNodes = reflowed;
@@ -3904,21 +4133,33 @@ const UserStoryMapFlow = () => {
 
         nodesRef.current = finalNodes;
         setNodes(finalNodes);
-        setEdges((eds) =>
-            eds.map((edge) => {
-                const hidden = hiddenStatus.get(edge.source) || hiddenStatus.get(edge.target);
-                return hidden === edge.hidden ? edge : { ...edge, hidden };
-            })
-        );
+        setEdges((eds) => (
+            window.UsmLayout
+                ? window.UsmLayout.nextEdgeHiddenState(eds, hiddenStatus)
+                : eds.map((edge) => {
+                    const hidden = hiddenStatus.get(edge.source) || hiddenStatus.get(edge.target);
+                    return hidden === edge.hidden ? edge : { ...edge, hidden };
+                })
+        ));
 
         if (directive?.fit) {
             setTimeout(() => {
                 try {
-                    reactFlowInstance.current?.fitView({ padding: 0.15, duration: 300 });
+                    usmFitView(reactFlowInstance.current, { padding: 0.15 });
                 } catch (e) {
                     console.warn('fitView after collapse/expand failed', e);
                 }
+                // Run deferred focus after reflow (avoids setCenter on pre-reflow coords)
+                const pending = pendingFocusAfterReflowRef.current;
+                if (pending) {
+                    pendingFocusAfterReflowRef.current = null;
+                    pending();
+                }
             }, 60);
+        } else if (pendingFocusAfterReflowRef.current && !directive) {
+            const pending = pendingFocusAfterReflowRef.current;
+            pendingFocusAfterReflowRef.current = null;
+            pending();
         }
 
         if (selectedNode) {
@@ -4046,10 +4287,11 @@ const UserStoryMapFlow = () => {
             updateAggregatedTickets,
             updateNodeProperties,
             getCurrentMapId: () => currentMapId,
-            fitView: () => reactFlowInstance.current?.fitView(),
-            zoomIn: () => reactFlowInstance.current?.zoomIn(),
-            zoomOut: () => reactFlowInstance.current?.zoomOut(),
+            fitView: (opts) => usmFitView(reactFlowInstance.current, opts),
+            zoomIn: () => reactFlowInstance.current?.zoomIn?.({ maxZoom: USM_MAX_ZOOM }),
+            zoomOut: () => reactFlowInstance.current?.zoomOut?.({ minZoom: USM_MIN_ZOOM }),
             autoLayout,
+            applyCurrentLayout,
             highlightPath,
             clearHighlight,
             focusNode,
@@ -4082,7 +4324,7 @@ const UserStoryMapFlow = () => {
         window.cancelMoveMode = cancelMoveMode;
         window.moveMode = moveMode;
         window.moveSourceNodeId = moveSourceNodeId;
-    }, [saveMap, addNode, loadMap, loadMaps, updateAggregatedTickets, updateNodeProperties, autoLayout, highlightPath, clearHighlight, focusNode, selectedNode, addChildNode, addSiblingNode, setNodes, setEdges, teamName, showFullRelationGraph, currentMapId, teamId, mapIdFromUrl, collapseUserStoryNodes, expandAllNodes, startMoveNodeMode, cancelMoveMode, moveMode, moveSourceNodeId, setCurrentMapId]);
+    }, [saveMap, addNode, loadMap, loadMaps, updateAggregatedTickets, updateNodeProperties, autoLayout, applyCurrentLayout, highlightPath, clearHighlight, focusNode, selectedNode, addChildNode, addSiblingNode, setNodes, setEdges, teamName, showFullRelationGraph, currentMapId, teamId, mapIdFromUrl, collapseUserStoryNodes, expandAllNodes, startMoveNodeMode, cancelMoveMode, moveMode, moveSourceNodeId, setCurrentMapId]);
 
     // Expose new functions to window for button handlers
     useEffect(() => {
@@ -4113,11 +4355,17 @@ const UserStoryMapFlow = () => {
             onNodeClick: onNodeClick,
             onPaneClick: onPaneClick,
             onNodeDrag: onNodeDrag,
+            onNodeDragStart: onNodeDragStart,
             onNodeDragStop: onNodeDragStop,
             onInit: (instance) => { reactFlowInstance.current = instance; },
             nodeTypes: nodeTypes,
             fitView: true,
-            nodesDraggable: !moveMode,
+            fitViewOptions: {
+                padding: 0.15,
+                minZoom: USM_MIN_ZOOM,
+                maxZoom: USM_MAX_ZOOM,
+            },
+            nodesDraggable: !moveMode && hasUsmAccess('mapUpdate'),
             nodesConnectable: false,
             edgesUpdatable: false,
             connectOnClick: false,
@@ -4126,8 +4374,9 @@ const UserStoryMapFlow = () => {
             zoomOnScroll: false,
             panOnScroll: true,
             panOnScrollSpeed: 0.8,
-            minZoom: 0.05,
-            maxZoom: 2,
+            nodeDragThreshold: 3,
+            minZoom: USM_MIN_ZOOM,
+            maxZoom: USM_MAX_ZOOM,
         },
         React.createElement(Background, { variant: BackgroundVariant.Dots }),
         React.createElement(MiniMap, { nodeColor: getNodeColor })
@@ -4157,6 +4406,60 @@ function showMessage(message, type = 'info') {
     `;
     document.getElementById('flash-messages').appendChild(alert);
     setTimeout(() => alert.remove(), 3000);
+}
+
+function hideLayoutNotice() {
+    const el = document.getElementById('layoutNotice');
+    if (!el) return;
+    el.classList.add('d-none');
+    el.classList.remove('show');
+    const actionBtn = document.getElementById('layoutNoticeActionBtn');
+    if (actionBtn) actionBtn.classList.add('d-none');
+}
+
+function showLayoutHealthNotice(health) {
+    const el = document.getElementById('layoutNotice');
+    const textEl = document.getElementById('layoutNoticeText');
+    const actionBtn = document.getElementById('layoutNoticeActionBtn');
+    if (!el || !textEl) return;
+
+    if (!health || health.verdict === 'healthy') {
+        hideLayoutNotice();
+        return;
+    }
+
+    textEl.removeAttribute('data-i18n');
+    textEl.removeAttribute('data-i18n-params');
+
+    if (health.verdict === 'unhealthy') {
+        textEl.setAttribute('data-i18n', 'usm.layoutAutoRelayoutNotice');
+        textEl.textContent = tUsm(
+            'layoutAutoRelayoutNotice',
+            '此地圖的已儲存座標不正確，目前以自動排版顯示（尚未寫入）'
+        );
+        if (actionBtn) {
+            actionBtn.classList.toggle('d-none', !hasUsmAccess('mapUpdate'));
+        }
+        el.className = 'alert alert-info alert-dismissible fade show';
+    } else if (health.verdict === 'hint') {
+        const params = { count: health.overlapNodeCount || 0 };
+        textEl.setAttribute('data-i18n', 'usm.layoutOverlapHint');
+        textEl.setAttribute('data-i18n-params', JSON.stringify(params));
+        textEl.textContent = tUsm(
+            'layoutOverlapHint',
+            `偵測到 ${params.count} 個節點位置重疊，可套用自動排版整理`,
+            params
+        );
+        if (actionBtn) {
+            actionBtn.classList.toggle('d-none', !hasUsmAccess('nodeUpdate'));
+        }
+        el.className = 'alert alert-warning alert-dismissible fade show';
+    }
+
+    el.classList.remove('d-none');
+    if (window.i18n && typeof window.i18n.retranslate === 'function') {
+        window.i18n.retranslate(el);
+    }
 }
 
 // Toolbar save-status pill — surfaces silent autosave outcomes (saving / saved / error)
@@ -4755,12 +5058,34 @@ document.addEventListener('DOMContentLoaded', async function() {
     document.getElementById('fitViewBtn')?.addEventListener('click', () => window.userStoryMapFlow?.fitView?.());
 
     document.getElementById('autoLayoutBtn')?.addEventListener('click', () => {
-        if (!hasUsmAccess('nodeAdd')) {
+        if (!hasUsmAccess('nodeUpdate')) {
             showUsmMessage('noPermissionLayout', '您沒有權限調整地圖排版', 'error');
             return;
         }
         window.userStoryMapFlow?.autoLayout();
         showUsmMessage('layoutApplied', '已套用樹狀排版', 'success');
+    });
+
+    document.getElementById('applyLayoutBtn')?.addEventListener('click', () => {
+        window.userStoryMapFlow?.applyCurrentLayout?.();
+    });
+
+    document.getElementById('layoutNoticeActionBtn')?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        // Unhealthy notice: write layout. Hint notice: first auto-layout display, then user can apply.
+        const notice = document.getElementById('layoutNotice');
+        const isHint = notice?.classList.contains('alert-warning');
+        if (isHint) {
+            window.userStoryMapFlow?.autoLayout?.();
+            showUsmMessage('layoutApplied', '已套用樹狀排版', 'success');
+        } else {
+            window.userStoryMapFlow?.applyCurrentLayout?.();
+        }
+    });
+
+    document.getElementById('layoutNoticeCloseBtn')?.addEventListener('click', () => {
+        hideLayoutNotice();
     });
 
     // Collapse User Story nodes button

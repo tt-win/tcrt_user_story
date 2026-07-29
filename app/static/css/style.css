@@ -255,7 +255,11 @@ a.btn:active {
     color: var(--tr-primary-dark);
 }
 
-.btn:focus,
+.btn:focus:not(:focus-visible) {
+    outline: none;
+    box-shadow: none;
+}
+
 .btn:focus-visible {
     outline: none;
     box-shadow: 0 0 0 0.2rem rgba(var(--tr-primary-rgb), 0.25);

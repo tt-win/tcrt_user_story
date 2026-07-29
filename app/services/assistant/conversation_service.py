@@ -234,6 +234,13 @@ class ConversationService:
     def __init__(self, main_boundary: MainAccessBoundary, config: AssistantConfig):
         self.main_boundary = main_boundary
         self.config = config
+        # 本 request／turn 的 UI 語系，供背景標題摘要沿用（本類別為 per-request 實例，detached
+        # runner 沿用同一物件，因此不會跨 turn 汙染）。orphan recovery 等無 request 情境維持 None。
+        self._reply_locale: Optional[str] = None
+
+    def set_reply_locale(self, ui_locale: Optional[str]) -> None:
+        """設定本 request／turn 的回覆語系（已由呼叫端 normalize；無法映射時傳 `None`）。"""
+        self._reply_locale = ui_locale
 
     # ------------------------------------------------------------------ #
     # Conversations
@@ -448,6 +455,7 @@ class ConversationService:
                 user_text=user_text,
                 assistant_text=assistant_text,
                 max_chars=self.config.title_max_chars,
+                ui_locale=self._reply_locale,
             )
         if final_title is None:
             final_title = _fallback_title_from_user_text(

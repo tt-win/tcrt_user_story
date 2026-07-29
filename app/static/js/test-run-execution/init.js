@@ -140,6 +140,7 @@ function initializePage() {
             const options = {
                 teamId: currentTeamId,
                 allowCustomValue: true,  // 批次修改允許自定義值
+                includeLocalUsers: true,
                 onSelect: () => {}
             };
             

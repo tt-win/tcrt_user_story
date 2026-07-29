@@ -61,6 +61,26 @@ const AppUtils = {
         return element.innerHTML;
     },
 
+    // Pointer-activated detail navigation should not retain a focus ring.
+    // Keyboard-generated clicks have detail === 0 and intentionally keep focus.
+    releasePointerFocus: function(event) {
+        if (!event || !Number.isFinite(event.detail) || event.detail <= 0) return;
+
+        const control = event.currentTarget;
+        if (!control || typeof control.blur !== 'function') return;
+
+        const release = () => {
+            if (document.activeElement === control) {
+                control.blur();
+            }
+        };
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(release);
+        } else {
+            setTimeout(release, 0);
+        }
+    },
+
     // 清除當前團隊
     clearCurrentTeam: function() {
         this.currentTeam = null;

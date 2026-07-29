@@ -58,9 +58,11 @@ async def _get_conversation(conversation_id: int):
 def test_maybe_generate_title_uses_llm_summary_of_first_exchange(title_db, monkeypatch):
     conv_svc = _svc()
 
-    async def _fake_generate_title(*, user_text, assistant_text, max_chars):
+    async def _fake_generate_title(*, user_text, assistant_text, max_chars, ui_locale=None):
         assert user_text == "幫我查一下登入模組的失敗案例"
         assert assistant_text == "已找到 3 筆登入模組的失敗案例。"
+        # 未經 API 設定回覆語系（orphan recovery 等情境）時必須維持 None，由 prompt 預設規則處理。
+        assert ui_locale is None
         return "查詢登入模組失敗案例"
 
     monkeypatch.setattr(
@@ -88,6 +90,37 @@ def test_maybe_generate_title_uses_llm_summary_of_first_exchange(title_db, monke
         assert reloaded.title == "查詢登入模組失敗案例"
 
     asyncio.run(_run())
+
+
+def test_maybe_generate_title_forwards_the_turn_ui_locale(title_db, monkeypatch):
+    """標題語言跟隨介面語系：API 以 `set_reply_locale` 設定的語系必須傳到 title prompt。"""
+    conv_svc = _svc()
+    conv_svc.set_reply_locale("en-US")
+    seen: dict[str, object] = {}
+
+    async def _fake_generate_title(*, user_text, assistant_text, max_chars, ui_locale=None):
+        seen["ui_locale"] = ui_locale
+        return "Find failing login cases"
+
+    monkeypatch.setattr(
+        conversation_service_module.title_service, "generate_title", _fake_generate_title
+    )
+
+    async def _run():
+        conv = await conv_svc.create_conversation(user_id=1, scope_type="global", team_id=None)
+        turn = (
+            await conv_svc.start_turn(
+                conversation=conv, client_message_id="m1", text="list failing cases", attachment_digests=[]
+            )
+        ).turn
+        await conv_svc.append_message(turn_id=turn.id, role="assistant", content="here they are")
+
+        await conv_svc.maybe_generate_title(conv.conversation_key)
+
+        assert (await _get_conversation(conv.id)).title == "Find failing login cases"
+
+    asyncio.run(_run())
+    assert seen["ui_locale"] == "en-US"
 
 
 def test_maybe_generate_title_falls_back_when_llm_unavailable(title_db, monkeypatch):
