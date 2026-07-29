@@ -336,6 +336,9 @@ def test_personal_dashboard_uses_fk_before_legacy_fallback_and_is_no_store(dashb
     quick_action_hrefs = {action["href"] for action in payload["quick_actions"]}
     assert "/automation-hub" in quick_action_hrefs
     assert "/user-story-map/{team_id}" in quick_action_hrefs
+    assert "dashboard.quickAction.appToken" not in {
+        action["key"] for action in payload["quick_actions"]
+    }
 
 
 def test_resume_keeps_latest_active_run_after_result_is_completed(dashboard_db):
@@ -550,6 +553,9 @@ def test_viewer_gets_assigned_read_only_without_resume(dashboard_db):
     payload = response.json()
     assert payload["sections"]["resume"]["items"] == []
     assert {item["action_mode"] for item in payload["sections"]["assigned"]["items"]} == {"view"}
+    assert "dashboard.quickAction.appToken" not in {
+        action["key"] for action in payload["quick_actions"]
+    }
 
 
 def test_queue_keeps_active_and_draft_runs_but_hides_inactive_team(dashboard_db):
@@ -598,7 +604,13 @@ def test_admin_role_receives_personal_dashboard(dashboard_db):
         response = client.get("/api/dashboard")
 
     assert response.status_code == 200, response.text
-    assert response.json()["dashboard_type"] == "personal"
+    payload = response.json()
+    assert payload["dashboard_type"] == "personal"
+    assert {
+        "key": "dashboard.quickAction.appToken",
+        "href": "#app-token",
+        "icon": "fa-key",
+    } in payload["quick_actions"]
 
 
 def test_legacy_fallback_requires_a_unique_local_identity(dashboard_db):
@@ -898,6 +910,11 @@ def test_system_dashboard_uses_safe_allowlisted_projection(dashboard_db):
         "ci_configured": True,
         "result_configured": False,
     }
+    assert {
+        "key": "dashboard.quickAction.appToken",
+        "href": "#app-token",
+        "icon": "fa-key",
+    } in payload["quick_actions"]
     serialized = response.text
     assert "secret-error-detail" not in serialized
     assert "secret-run-message" not in serialized

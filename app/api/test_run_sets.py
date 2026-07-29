@@ -68,13 +68,13 @@ from app.services.test_run_set_status import (
     resolve_status_for_response,
 )
 from app.services.test_run_assignee import apply_resolved_assignee, resolve_assignee
+from app.services.test_run_scope_service import TestRunScopeService
 
 from .test_run_configs import (
-    attach_config_to_set,
     build_config_summary,
     delete_test_run_config_cascade_sync,
-    detach_config_from_set,
     ensure_test_run_set,
+    relocate_configs_between_sets,
     verify_team_exists,
     _is_valid_tp_search_query,
     _filter_matching_tp_tickets,
@@ -498,10 +498,15 @@ async def create_test_run_set(
             sync_tp_tickets_to_db(new_set, payload.related_tp_tickets)
 
         configs = _validate_config_ids(sync_db, team_id, payload.initial_config_ids or [])
-        for config_db in configs:
-            attach_config_to_set(sync_db, team_id, config_db, new_set.id)
+        if configs:
+            relocate_configs_between_sets(
+                sync_db,
+                team_id,
+                [config.id for config in configs],
+                new_set.id,
+            )
 
-        new_status = recalculate_set_status_sync(sync_db, new_set)
+        new_status = new_set.status
         sync_db.flush()
         detail = _build_set_detail(_load_set_or_404(sync_db, team_id, new_set.id))
 
@@ -513,7 +518,7 @@ async def create_test_run_set(
             "status": new_status,
         }
 
-    detail, audit_context = await main_boundary.run_sync_write(_create)
+    detail, audit_context = await main_boundary.run_sync_serialized_write(_create)
 
     # 記錄審計日誌
     action_brief = f"{current_user.username} created Test Run Set: {audit_context['name']}"
@@ -1047,14 +1052,16 @@ async def add_members_to_set(
         test_run_set = ensure_test_run_set(sync_db, team_id, set_id)
 
         configs = _validate_config_ids(sync_db, team_id, payload.config_ids)
-        for config_db in configs:
-            attach_config_to_set(sync_db, team_id, config_db, test_run_set.id)
-
-        recalculate_set_status_sync(sync_db, test_run_set)
+        relocate_configs_between_sets(
+            sync_db,
+            team_id,
+            [config.id for config in configs],
+            test_run_set.id,
+        )
         sync_db.flush()
         return _build_set_detail(_load_set_or_404(sync_db, team_id, test_run_set.id))
 
-    return await main_boundary.run_sync_write(_add)
+    return await main_boundary.run_sync_serialized_write(_add)
 
 
 @router.post("/members/{config_id}/move", response_model=TestRunConfigSummary)
@@ -1078,33 +1085,19 @@ async def move_config_between_sets(
                 detail=f"找不到 Test Run Config ID {config_id}"
             )
 
-        previous_set_id = None
-        affected_set_ids = set()
-        if config_db.set_membership:
-            previous_set_id = config_db.set_membership.set_id
-            affected_set_ids.add(previous_set_id)
-
-        if payload.target_set_id is None:
-            detach_config_from_set(sync_db, config_id)
-            if previous_set_id is not None:
-                ensure_test_run_set(sync_db, team_id, previous_set_id)
-        else:
-            target_set = ensure_test_run_set(sync_db, team_id, payload.target_set_id)
-            attach_config_to_set(sync_db, team_id, config_db, target_set.id)
-            affected_set_ids.add(target_set.id)
-            if previous_set_id and previous_set_id != target_set.id:
-                ensure_test_run_set(sync_db, team_id, previous_set_id)
-
-        for affected_set_id in affected_set_ids:
-            set_db = ensure_test_run_set(sync_db, team_id, affected_set_id)
-            recalculate_set_status_sync(sync_db, set_db)
+        relocation = relocate_configs_between_sets(
+            sync_db,
+            team_id,
+            [config_id],
+            payload.target_set_id,
+        )
 
         sync_db.flush()
         sync_db.expire(config_db, ['set_membership'])
 
-        return build_config_summary(config_db), list(affected_set_ids)
+        return build_config_summary(config_db), relocation.affected_set_ids
 
-    summary, _affected_set_ids = await main_boundary.run_sync_write(_move)
+    summary, _affected_set_ids = await main_boundary.run_sync_serialized_write(_move)
     return summary
 
 
@@ -1336,6 +1329,7 @@ async def create_test_run_set_from_cases(
         from collections import defaultdict
 
         def _create(sync_db: Session):
+            TestRunScopeService.lock_scope_mutation(sync_db, team_id)
             verify_team_exists(team_id, sync_db)
 
             name = payload.get("name", "")
@@ -1428,9 +1422,6 @@ async def create_test_run_set_from_cases(
 
                 configs_created.append(config)
 
-                # 建立關聯 (Set Membership)
-                attach_config_to_set(sync_db, team_id, config, new_set.id)
-
                 # 加入 Test Case Items
                 for tc in cases:
                     item = TestRunItemDB(
@@ -1444,11 +1435,19 @@ async def create_test_run_set_from_cases(
                     )
                     sync_db.add(item)
 
+            if configs_created:
+                relocate_configs_between_sets(
+                    sync_db,
+                    team_id,
+                    [config.id for config in configs_created],
+                    new_set.id,
+                )
+
             # 更新 Set 的相關票號
             if all_tickets_found:
                 sync_tp_tickets_to_db(new_set, list(all_tickets_found))
 
-            new_status = recalculate_set_status_sync(sync_db, new_set)
+            new_status = new_set.status
             sync_db.flush()
             detail = _build_set_detail(_load_set_or_404(sync_db, team_id, new_set.id))
 
@@ -1461,7 +1460,7 @@ async def create_test_run_set_from_cases(
                 "status": new_status,
             }
 
-        detail, audit_context = await main_boundary.run_sync_write(_create)
+        detail, audit_context = await main_boundary.run_sync_serialized_write(_create)
 
         # 記錄審計日誌
         action_brief = f"{current_user.username} created Test Run Set from cases: {audit_context['name']}"

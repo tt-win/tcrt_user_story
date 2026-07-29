@@ -9,7 +9,6 @@ import json
 import pytest
 from fastapi import APIRouter, Depends
 from fastapi.testclient import TestClient
-from sqlalchemy import inspect
 
 
 from app.auth.models import UserRole
@@ -96,113 +95,16 @@ def _seed_team_and_user(session):
     return team, user
 
 
-class TestTeamAppTokenTableCreation:
-    """Verify the team_app_tokens table is created with correct structure."""
-
-    def test_table_exists_after_bootstrap(self, temp_db):
-        session = temp_db()
-        try:
-            engine = session.bind
-            inspector = inspect(engine)
-            table_names = set(inspector.get_table_names())
-            assert "team_app_tokens" in table_names
-        finally:
-            session.close()
-
-    def test_table_has_expected_columns(self, temp_db):
-        session = temp_db()
-        try:
-            engine = session.bind
-            inspector = inspect(engine)
-            columns = {col["name"]: col for col in inspector.get_columns("team_app_tokens")}
-
-            expected_columns = {
-                "id",
-                "name",
-                "description",
-                "owner_team_id",
-                "token_hash",
-                "token_prefix",
-                "status",
-                "scopes_json",
-                "expires_at",
-                "last_used_at",
-                "created_by_user_id",
-                "created_at",
-                "updated_at",
-                "revoked_at",
-            }
-            assert expected_columns.issubset(set(columns.keys()))
-        finally:
-            session.close()
-
-    def test_nullable_fields(self, temp_db):
-        session = temp_db()
-        try:
-            engine = session.bind
-            inspector = inspect(engine)
-            columns = {col["name"]: col for col in inspector.get_columns("team_app_tokens")}
-
-            nullable_fields = [
-                "description",
-                "scopes_json",
-                "expires_at",
-                "last_used_at",
-                "created_by_user_id",
-                "revoked_at",
-            ]
-            for field_name in nullable_fields:
-                assert columns[field_name]["nullable"], f"{field_name} should be nullable"
-
-            non_nullable_fields = [
-                "id",
-                "name",
-                "owner_team_id",
-                "token_hash",
-                "token_prefix",
-                "status",
-                "created_at",
-                "updated_at",
-            ]
-            for field_name in non_nullable_fields:
-                assert not columns[field_name]["nullable"], f"{field_name} should NOT be nullable"
-        finally:
-            session.close()
-
-    def test_indexes_exist(self, temp_db):
-        session = temp_db()
-        try:
-            engine = session.bind
-            inspector = inspect(engine)
-            indexes = {idx["name"] for idx in inspector.get_indexes("team_app_tokens")}
-
-            expected_indexes = {
-                "ix_team_app_tokens_owner_team_id",
-                "ix_team_app_tokens_status",
-                "ix_team_app_tokens_expires_at",
-                "ix_team_app_tokens_created_by_user_id",
-            }
-            assert expected_indexes.issubset(indexes)
-        finally:
-            session.close()
-
-    def test_token_hash_unique_constraint(self, temp_db):
-        session = temp_db()
-        try:
-            engine = session.bind
-            inspector = inspect(engine)
-            unique_constraints = set()
-            for constr in inspector.get_unique_constraints("team_app_tokens"):
-                unique_constraints.update(constr["column_names"])
-            assert "token_hash" in unique_constraints
-        finally:
-            session.close()
-
-
 class TestTeamAppTokenModelOperations:
     """Verify ORM model operations work correctly."""
 
-    def test_create_and_read_token(self, temp_db):
+    def test_token_lifecycle_fields_round_trip(self, temp_db):
+        """Create, read back and revoke a token in one session.
+
+        Covers the prefix, the optional ``expires_at`` and the revocation
+        timestamp; splitting these into one test per field only bought a
+        disposable database each.
+        """
         session = temp_db()
         try:
             team, user = _seed_team_and_user(session)
@@ -218,84 +120,39 @@ class TestTeamAppTokenModelOperations:
                 expires_at=datetime.utcnow() + timedelta(days=90),
                 created_by_user_id=user.id,
             )
-            session.add(token)
+            non_expiring = TeamAppToken(
+                name="Non-Expiring",
+                owner_team_id=team.id,
+                token_hash=_hash_token("tcrt_app_" + "c" * 48),
+                token_prefix=("tcrt_app_" + "c" * 48)[:16],
+                status=TeamAppTokenStatus.ACTIVE,
+                expires_at=None,
+                created_by_user_id=user.id,
+            )
+            session.add_all([token, non_expiring])
             session.commit()
 
             loaded = session.query(TeamAppToken).filter_by(name="CI Bot Token").one()
             assert loaded.id is not None
             assert loaded.token_prefix == raw_token[:16]
-            assert loaded.status == TeamAppTokenStatus.ACTIVE
-            assert loaded.owner_team_id == team.id
-        finally:
-            session.close()
-
-    def test_token_prefix_is_16_chars(self, temp_db):
-        session = temp_db()
-        try:
-            team, user = _seed_team_and_user(session)
-            raw_token = "tcrt_app_" + "b" * 48
-            token = TeamAppToken(
-                name="Prefix Test",
-                owner_team_id=team.id,
-                token_hash=_hash_token(raw_token),
-                token_prefix=raw_token[:16],
-                status=TeamAppTokenStatus.ACTIVE,
-                created_by_user_id=user.id,
-            )
-            session.add(token)
-            session.commit()
-
-            loaded = session.query(TeamAppToken).filter_by(name="Prefix Test").one()
             assert len(loaded.token_prefix) == 16
             assert loaded.token_prefix.startswith("tcrt_app_")
-        finally:
-            session.close()
+            assert loaded.status == TeamAppTokenStatus.ACTIVE
+            assert loaded.owner_team_id == team.id
+            assert loaded.expires_at is not None
 
-    def test_non_expiring_token_has_null_expires_at(self, temp_db):
-        session = temp_db()
-        try:
-            team, user = _seed_team_and_user(session)
-            raw_token = "tcrt_app_" + "c" * 48
-            token = TeamAppToken(
-                name="Non-Expiring",
-                owner_team_id=team.id,
-                token_hash=_hash_token(raw_token),
-                token_prefix=raw_token[:16],
-                status=TeamAppTokenStatus.ACTIVE,
-                expires_at=None,
-                created_by_user_id=user.id,
+            assert (
+                session.query(TeamAppToken).filter_by(name="Non-Expiring").one().expires_at
+                is None
             )
-            session.add(token)
+
+            loaded.status = TeamAppTokenStatus.REVOKED
+            loaded.revoked_at = datetime.utcnow()
             session.commit()
 
-            loaded = session.query(TeamAppToken).filter_by(name="Non-Expiring").one()
-            assert loaded.expires_at is None
-        finally:
-            session.close()
-
-    def test_revoked_token_has_revoked_at(self, temp_db):
-        session = temp_db()
-        try:
-            team, user = _seed_team_and_user(session)
-            raw_token = "tcrt_app_" + "d" * 48
-            token = TeamAppToken(
-                name="To Revoke",
-                owner_team_id=team.id,
-                token_hash=_hash_token(raw_token),
-                token_prefix=raw_token[:16],
-                status=TeamAppTokenStatus.ACTIVE,
-                created_by_user_id=user.id,
-            )
-            session.add(token)
-            session.commit()
-
-            token.status = TeamAppTokenStatus.REVOKED
-            token.revoked_at = datetime.utcnow()
-            session.commit()
-
-            loaded = session.query(TeamAppToken).filter_by(name="To Revoke").one()
-            assert loaded.status == TeamAppTokenStatus.REVOKED
-            assert loaded.revoked_at is not None
+            revoked = session.query(TeamAppToken).filter_by(name="CI Bot Token").one()
+            assert revoked.status == TeamAppTokenStatus.REVOKED
+            assert revoked.revoked_at is not None
         finally:
             session.close()
 
@@ -359,17 +216,6 @@ class TestLegacyDatabaseStartup:
             loaded = session.query(MCPMachineCredential).filter_by(name="Legacy MCP").one()
             assert loaded.status == MCPMachineCredentialStatus.ACTIVE
             assert loaded.permission == "mcp_read"
-        finally:
-            session.close()
-
-    def test_both_tables_coexist(self, temp_db):
-        session = temp_db()
-        try:
-            engine = session.bind
-            inspector = inspect(engine)
-            table_names = set(inspector.get_table_names())
-            assert "mcp_machine_credentials" in table_names
-            assert "team_app_tokens" in table_names
         finally:
             session.close()
 

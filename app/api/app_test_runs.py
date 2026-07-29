@@ -14,12 +14,13 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.test_run_configs import (
+    MembershipStateChangedError,
+    MembershipValidationError,
     StatusChangeRequest,
-    attach_config_to_set,
     build_config_summary,
     delete_test_run_config_cascade_sync,
-    detach_config_from_set,
     ensure_test_run_set,
+    relocate_configs_between_sets,
     verify_team_exists,
 )
 from app.api.test_run_items import (
@@ -30,7 +31,6 @@ from app.api.test_run_items import (
     _verify_team_and_config,
     apply_batch_item_update_sync,
 )
-from app.api.test_run_sets import _validate_config_ids
 from app.audit import ActionType
 from app.auth.app_token_dependencies import (
     AppTokenErrorCodes,
@@ -54,7 +54,15 @@ from app.models.database_models import (
     TestRunSet as TestRunSetDB,
 )
 from app.models.test_run_config import TestRunConfigCreate, TestRunConfigUpdate, TestRunStatus
-from app.models.test_run_set import TestRunSetCreate, TestRunSetStatus, TestRunSetUpdate
+from app.models.test_run_set import (
+    MembershipAttachRequest,
+    MembershipBatchRequest,
+    MembershipMutationSummary,
+    MembershipSingleMoveRequest,
+    TestRunSetCreate,
+    TestRunSetStatus,
+    TestRunSetUpdate,
+)
 from app.services.attachment_storage import build_attachment_metadata, get_attachments_root_dir
 from app.services.test_run_scope_service import TestRunScopeService
 from app.services.test_run_assignee import (
@@ -116,8 +124,11 @@ def _serialize_config(config: TestRunConfigDB, cleanup_summary: Optional[dict] =
     }
 
 
-def _serialize_set(trs: TestRunSetDB) -> Dict[str, Any]:
-    return {
+def _serialize_set(
+    trs: TestRunSetDB,
+    membership_summary: Optional[MembershipMutationSummary] = None,
+) -> Dict[str, Any]:
+    payload = {
         "id": trs.id,
         "team_id": trs.team_id,
         "name": trs.name,
@@ -129,6 +140,21 @@ def _serialize_set(trs: TestRunSetDB) -> Dict[str, Any]:
         "created_at": trs.created_at.isoformat() if trs.created_at else None,
         "updated_at": trs.updated_at.isoformat() if trs.updated_at else None,
     }
+    if membership_summary is not None:
+        payload["membership_summary"] = membership_summary.model_dump()
+    return payload
+
+
+def _membership_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, MembershipStateChangedError):
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": AppTokenErrorCodes.STATE_CHANGED, "message": str(exc)},
+        )
+    return HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={"code": AppTokenErrorCodes.VALIDATION_ERROR, "message": str(exc)},
+    )
 
 
 async def _check_scope(principal: AppTokenPrincipal, scope: str, request: Request, team_id: int):
@@ -207,12 +233,22 @@ async def create_app_test_run_config(
         sync_db.flush()
         sync_db.refresh(config)
 
-        if body.set_id:
-            attach_config_to_set(sync_db, team_id, config, body.set_id)
+        if body.set_id is not None:
+            relocate_configs_between_sets(
+                sync_db,
+                team_id,
+                [config.id],
+                body.set_id,
+                expected_memberships={config.id: None},
+                attach_only=True,
+            )
 
         return config
 
-    config = await boundary.run_sync_write(_create)
+    try:
+        config = await boundary.run_sync_serialized_write(_create)
+    except (MembershipStateChangedError, MembershipValidationError) as exc:
+        raise _membership_error(exc) from exc
     await log_app_token_audit(
         request, principal, allowed=True, reason="test_run_config_create",
         action_type=ActionType.CREATE, team_id=team_id,
@@ -408,22 +444,41 @@ async def create_app_test_run_set(
         sync_db.add(trs)
         sync_db.flush()
 
-        if body.initial_config_ids:
-            configs = _validate_config_ids(sync_db, team_id, body.initial_config_ids)
-            for config_db in configs:
-                attach_config_to_set(sync_db, team_id, config_db, trs.id)
+        initial_config_ids = body.initial_config_ids or []
+        if initial_config_ids:
+            summary = relocate_configs_between_sets(
+                sync_db,
+                team_id,
+                initial_config_ids,
+                trs.id,
+                expected_memberships={config_id: None for config_id in initial_config_ids},
+                attach_only=True,
+            )
+        else:
+            summary = MembershipMutationSummary(
+                processed_count=0,
+                moved_count=0,
+                unchanged_count=0,
+                target_set_id=trs.id,
+                config_ids=[],
+                affected_set_ids=[],
+                movements=[],
+            )
 
         sync_db.flush()
         sync_db.refresh(trs)
-        return trs
+        return trs, summary
 
-    trs = await boundary.run_sync_write(_create)
+    try:
+        trs, membership_summary = await boundary.run_sync_serialized_write(_create)
+    except (MembershipStateChangedError, MembershipValidationError) as exc:
+        raise _membership_error(exc) from exc
     await log_app_token_audit(
         request, principal, allowed=True, reason="test_run_set_create",
         action_type=ActionType.CREATE, team_id=team_id,
         extra_details={"set_id": trs.id, "name": trs.name},
     )
-    return _serialize_set(trs)
+    return _serialize_set(trs, membership_summary)
 
 
 @router.put("/teams/{team_id}/test-run-sets/{set_id}")
@@ -547,7 +602,7 @@ async def delete_app_test_run_set(
 async def add_app_test_run_set_members(
     team_id: int,
     set_id: int,
-    body: Dict[str, Any],
+    body: MembershipAttachRequest,
     request: Request,
     db=Depends(get_db),
     principal: AppTokenPrincipal = Depends(get_current_app_token_principal),
@@ -556,34 +611,98 @@ async def add_app_test_run_set_members(
     await require_app_team_access(team_id, request, principal)
     await _check_scope(principal, SCOPE_TEST_RUN_WRITE, request, team_id)
 
-    config_ids = body.get("config_ids") or []
     boundary = create_main_access_boundary_for_session(db)
 
     def _add(sync_db: Session):
         verify_team_exists(team_id, sync_db)
-        ensure_test_run_set(sync_db, team_id, set_id)
-        configs = _validate_config_ids(sync_db, team_id, config_ids)
-        for config_db in configs:
-            attach_config_to_set(sync_db, team_id, config_db, set_id)
-        trs = ensure_test_run_set(sync_db, team_id, set_id)
-        recalculate_set_status_sync(sync_db, trs)
+        trs = sync_db.query(TestRunSetDB).filter(
+            TestRunSetDB.id == set_id, TestRunSetDB.team_id == team_id
+        ).first()
+        if trs is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "code": AppTokenErrorCodes.RESOURCE_NOT_FOUND,
+                    "message": "Test run set not found",
+                },
+            )
+        expected = {item.config_id: item.set_id for item in body.expected_memberships}
+        summary = relocate_configs_between_sets(
+            sync_db,
+            team_id,
+            body.config_ids,
+            set_id,
+            expected_memberships=expected,
+            attach_only=True,
+        )
         sync_db.flush()
-        return trs
+        return trs, summary
 
-    trs = await boundary.run_sync_write(_add)
+    try:
+        trs, membership_summary = await boundary.run_sync_serialized_write(_add)
+    except (MembershipStateChangedError, MembershipValidationError) as exc:
+        raise _membership_error(exc) from exc
     await log_app_token_audit(
         request, principal, allowed=True, reason="test_run_set_members_add",
         action_type=ActionType.UPDATE, team_id=team_id,
-        extra_details={"set_id": set_id, "config_ids": config_ids},
+        extra_details={
+            "set_id": set_id,
+            "config_ids": body.config_ids,
+            "movements": membership_summary.model_dump()["movements"],
+        },
     )
-    return _serialize_set(trs)
+    return _serialize_set(trs, membership_summary)
+
+
+@router.post("/teams/{team_id}/test-run-sets/members/batch-move")
+async def batch_move_app_test_run_configs(
+    team_id: int,
+    body: MembershipBatchRequest,
+    request: Request,
+    db=Depends(get_db),
+    principal: AppTokenPrincipal = Depends(get_current_app_token_principal),
+):
+    """Atomically move or detach multiple Test Run Configs."""
+    await require_app_team_access(team_id, request, principal)
+    await _check_scope(principal, SCOPE_TEST_RUN_WRITE, request, team_id)
+    boundary = create_main_access_boundary_for_session(db)
+
+    def _move(sync_db: Session) -> MembershipMutationSummary:
+        verify_team_exists(team_id, sync_db)
+        expected = {item.config_id: item.set_id for item in body.expected_memberships}
+        return relocate_configs_between_sets(
+            sync_db,
+            team_id,
+            body.config_ids,
+            body.target_set_id,
+            expected_memberships=expected,
+        )
+
+    try:
+        summary = await boundary.run_sync_serialized_write(_move)
+    except (MembershipStateChangedError, MembershipValidationError) as exc:
+        raise _membership_error(exc) from exc
+    await log_app_token_audit(
+        request,
+        principal,
+        allowed=True,
+        reason="test_run_configs_batch_move",
+        action_type=ActionType.UPDATE,
+        team_id=team_id,
+        extra_details={
+            "config_ids": summary.config_ids,
+            "target_set_id": summary.target_set_id,
+            "movements": summary.model_dump()["movements"],
+        },
+    )
+    return summary
 
 
 @router.post("/teams/{team_id}/test-run-sets/members/{config_id}/move")
 async def move_app_test_run_config_between_sets(
     team_id: int,
     config_id: int,
-    body: Dict[str, Any],
+    body: MembershipSingleMoveRequest,
     request: Request,
     db=Depends(get_db),
     principal: AppTokenPrincipal = Depends(get_current_app_token_principal),
@@ -592,7 +711,6 @@ async def move_app_test_run_config_between_sets(
     await require_app_team_access(team_id, request, principal)
     await _check_scope(principal, SCOPE_TEST_RUN_WRITE, request, team_id)
 
-    target_set_id = body.get("target_set_id")
     boundary = create_main_access_boundary_for_session(db)
 
     def _move(sync_db: Session):
@@ -603,36 +721,24 @@ async def move_app_test_run_config_between_sets(
         if not config_db:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到 Test Run Config ID {config_id}")
 
-        previous_set_id = None
-        affected_set_ids = set()
-        if config_db.set_membership:
-            previous_set_id = config_db.set_membership.set_id
-            affected_set_ids.add(previous_set_id)
-
-        if target_set_id is None:
-            detach_config_from_set(sync_db, config_id)
-            if previous_set_id is not None:
-                ensure_test_run_set(sync_db, team_id, previous_set_id)
-        else:
-            target_set = ensure_test_run_set(sync_db, team_id, target_set_id)
-            attach_config_to_set(sync_db, team_id, config_db, target_set.id)
-            affected_set_ids.add(target_set.id)
-            if previous_set_id and previous_set_id != target_set.id:
-                ensure_test_run_set(sync_db, team_id, previous_set_id)
-
-        for affected_set_id in affected_set_ids:
-            set_db = ensure_test_run_set(sync_db, team_id, affected_set_id)
-            recalculate_set_status_sync(sync_db, set_db)
-
-        sync_db.flush()
+        relocate_configs_between_sets(
+            sync_db,
+            team_id,
+            [config_id],
+            body.target_set_id,
+            expected_memberships={config_id: body.expected_source_set_id},
+        )
         sync_db.expire(config_db, ["set_membership"])
         return build_config_summary(config_db)
 
-    summary = await boundary.run_sync_write(_move)
+    try:
+        summary = await boundary.run_sync_serialized_write(_move)
+    except (MembershipStateChangedError, MembershipValidationError) as exc:
+        raise _membership_error(exc) from exc
     await log_app_token_audit(
         request, principal, allowed=True, reason="test_run_config_move",
         action_type=ActionType.UPDATE, team_id=team_id,
-        extra_details={"config_id": config_id, "target_set_id": target_set_id},
+        extra_details={"config_id": config_id, "target_set_id": body.target_set_id},
     )
     return summary
 
@@ -721,6 +827,7 @@ async def batch_create_app_test_run_items(
     boundary = create_main_access_boundary_for_session(db)
 
     def _create(sync_db: Session) -> Dict[str, Any]:
+        TestRunScopeService.lock_scope_mutation(sync_db, team_id, [config_id])
         config_db = _verify_team_and_config(team_id, config_id, sync_db)
         resolved_assignees: List[ResolvedAssignee] = []
         for index, requested_item in enumerate(payload.items):
@@ -807,7 +914,7 @@ async def batch_create_app_test_run_items(
 
         return {"created": created, "skipped": skipped, "errors": errors}
 
-    result = await boundary.run_sync_write(_create)
+    result = await boundary.run_sync_serialized_write(_create)
     await log_app_token_audit(
         request, principal, allowed=True, reason="test_run_items_batch_create",
         action_type=ActionType.CREATE, team_id=team_id,

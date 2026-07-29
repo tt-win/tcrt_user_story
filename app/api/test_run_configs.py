@@ -31,6 +31,7 @@ from app.models.database_models import (
 )
 from app.models.lark_types import TestResultStatus
 from app.models.test_run_config import TestRunStatus
+from app.models.test_run_set import MembershipMovement, MembershipMutationSummary
 from app.services.lark_notify_service import get_lark_notify_service
 from app.services.test_run_scope_service import TestRunScopeService
 from app.services.test_run_assignee import apply_resolved_assignee, resolve_clone_assignee
@@ -45,6 +46,14 @@ router = APIRouter(prefix="/teams/{team_id}/test-run-configs", tags=["test-run-c
 
 # 搜尋 API 路由器（不依賴 team_id 路徑參數）
 search_router = APIRouter(prefix="/test-run-configs/search", tags=["test-run-configs-search"])
+
+
+class MembershipValidationError(ValueError):
+    """The requested references or route semantics are invalid."""
+
+
+class MembershipStateChangedError(ValueError):
+    """The current membership no longer matches the caller's precondition."""
 
 
 def serialize_tp_tickets(tp_tickets: Optional[List[str]]) -> tuple[Optional[str], Optional[str]]:
@@ -319,41 +328,144 @@ def ensure_test_run_set(
     return test_run_set
 
 
-def attach_config_to_set(
+def relocate_configs_between_sets(
     db: Session,
     team_id: int,
-    config_db: TestRunConfigDB,
-    set_id: int
-) -> None:
-    """將 Test Run Config 加入指定 Set"""
-    ensure_test_run_set(db, team_id, set_id)
-
-    existing = db.query(TestRunSetMembershipDB).filter(
-        TestRunSetMembershipDB.config_id == config_db.id
-    ).first()
-
-    if existing:
-        if existing.set_id == set_id:
-            return
-        existing.set_id = set_id
-        existing.team_id = team_id
-    else:
-        membership = TestRunSetMembershipDB(
-            team_id=team_id,
-            set_id=set_id,
-            config_id=config_db.id
+    config_ids: List[int],
+    target_set_id: Optional[int],
+    *,
+    expected_memberships: Optional[dict[int, Optional[int]]] = None,
+    attach_only: bool = False,
+) -> MembershipMutationSummary:
+    """Atomically relocate configs and refresh every changed Set exactly once."""
+    canonical_ids = list(dict.fromkeys(config_ids))
+    configs = (
+        db.query(TestRunConfigDB)
+        .filter(
+            TestRunConfigDB.team_id == team_id,
+            TestRunConfigDB.id.in_(canonical_ids),
         )
-        db.add(membership)
+        .order_by(TestRunConfigDB.id.asc())
+        .with_for_update()
+        .all()
+    )
+    configs_by_id = {config.id: config for config in configs}
+    missing_ids = [config_id for config_id in canonical_ids if config_id not in configs_by_id]
+    if missing_ids:
+        raise MembershipValidationError(f"Config IDs do not exist in team {team_id}: {missing_ids}")
 
+    target_set = None
+    if target_set_id is not None:
+        target_set = (
+            db.query(TestRunSetDB)
+            .filter(TestRunSetDB.team_id == team_id, TestRunSetDB.id == target_set_id)
+            .with_for_update()
+            .first()
+        )
+        if target_set is None:
+            raise MembershipValidationError(
+                f"Test Run Set {target_set_id} does not exist in team {team_id}"
+            )
 
-def detach_config_from_set(
-    db: Session,
-    config_id: int
-) -> None:
-    """將 Test Run Config 從任何 Set 中移出"""
-    db.query(TestRunSetMembershipDB).filter(
-        TestRunSetMembershipDB.config_id == config_id
-    ).delete(synchronize_session=False)
+    memberships = (
+        db.query(TestRunSetMembershipDB)
+        .filter(TestRunSetMembershipDB.config_id.in_(canonical_ids))
+        .order_by(TestRunSetMembershipDB.config_id.asc())
+        .with_for_update()
+        .all()
+    )
+    membership_by_config = {membership.config_id: membership for membership in memberships}
+    actual = {
+        config_id: (
+            membership_by_config[config_id].set_id
+            if config_id in membership_by_config
+            else None
+        )
+        for config_id in canonical_ids
+    }
+    if attach_only and expected_memberships is not None:
+        invalid_expected = [
+            config_id
+            for config_id in canonical_ids
+            if expected_memberships.get(config_id) not in (None, target_set_id)
+        ]
+        if invalid_expected:
+            raise MembershipValidationError(
+                "Attach-only route requires an unassigned or already-target expected source "
+                f"for configs {invalid_expected}; use batch-move"
+            )
+    if expected_memberships is not None:
+        for config_id in canonical_ids:
+            if actual[config_id] != expected_memberships.get(config_id):
+                raise MembershipStateChangedError(
+                    f"Config {config_id} membership changed from the expected source"
+                )
+    if attach_only:
+        invalid = [
+            config_id
+            for config_id in canonical_ids
+            if actual[config_id] not in (None, target_set_id)
+        ]
+        if invalid:
+            raise MembershipValidationError(
+                f"Attach-only route cannot relocate grouped configs: {invalid}; use batch-move"
+            )
+
+    movements: list[MembershipMovement] = []
+    affected_set_ids: set[int] = set()
+    for config_id in canonical_ids:
+        previous_set_id = actual[config_id]
+        changed = previous_set_id != target_set_id
+        movements.append(
+            MembershipMovement(
+                config_id=config_id,
+                previous_set_id=previous_set_id,
+                target_set_id=target_set_id,
+                changed=changed,
+            )
+        )
+        if not changed:
+            continue
+        if previous_set_id is not None:
+            affected_set_ids.add(previous_set_id)
+        if target_set_id is not None:
+            affected_set_ids.add(target_set_id)
+        membership = membership_by_config.get(config_id)
+        if target_set_id is None:
+            if membership is not None:
+                db.delete(membership)
+        elif membership is None:
+            db.add(
+                TestRunSetMembershipDB(
+                    team_id=team_id,
+                    set_id=target_set_id,
+                    config_id=config_id,
+                )
+            )
+        else:
+            membership.team_id = team_id
+            membership.set_id = target_set_id
+
+    db.flush()
+    for affected_set_id in sorted(affected_set_ids):
+        set_db = (
+            db.query(TestRunSetDB)
+            .filter(TestRunSetDB.team_id == team_id, TestRunSetDB.id == affected_set_id)
+            .first()
+        )
+        if set_db is not None:
+            recalculate_set_status_sync(db, set_db)
+
+    moved_count = sum(1 for movement in movements if movement.changed)
+    return MembershipMutationSummary(
+        processed_count=len(canonical_ids),
+        moved_count=moved_count,
+        unchanged_count=len(canonical_ids) - moved_count,
+        target_set_id=target_set_id,
+        config_ids=canonical_ids,
+        affected_set_ids=sorted(affected_set_ids),
+        movements=movements,
+    )
 
 
 def delete_test_run_config_cascade_sync(
@@ -381,18 +493,12 @@ def delete_test_run_config_cascade_sync(
     affected_set_id = membership.set_id if membership else None
 
     if detach:
-        detach_config_from_set(sync_db, config_db.id)
-        if affected_set_id is not None:
-            affected_set = (
-                sync_db.query(TestRunSetDB)
-                .filter(
-                    TestRunSetDB.id == affected_set_id,
-                    TestRunSetDB.team_id == team_id,
-                )
-                .first()
-            )
-            if affected_set is not None:
-                recalculate_set_status_sync(sync_db, affected_set)
+        relocate_configs_between_sets(
+            sync_db,
+            team_id,
+            [config_db.id],
+            None,
+        )
 
     sync_db.query(ResultHistoryDB).filter(
         ResultHistoryDB.config_id == config_id,
@@ -470,21 +576,19 @@ async def create_test_run_config(
         sync_db.add(config_db)
         sync_db.flush()
 
-        parent_set_id = None
         if config.set_id is not None:
-            attach_config_to_set(sync_db, team_id, config_db, config.set_id)
-            parent_set = ensure_test_run_set(sync_db, team_id, config.set_id)
-            parent_set_id = parent_set.id if parent_set else None
-
-        if parent_set_id is not None:
-            recalculate_set_status_sync(sync_db, parent_set)
-
+            relocate_configs_between_sets(
+                sync_db,
+                team_id,
+                [config_db.id],
+                config.set_id,
+            )
         sync_db.flush()
         sync_db.expire(config_db, ['set_membership'])
 
         return convert_db_to_model(config_db, sync_db)
 
-    result = await main_boundary.run_sync_write(_create)
+    result = await main_boundary.run_sync_serialized_write(_create)
     return TestRunConfigResponse(**result.model_dump(), cleanup_summary=None)
 
 
@@ -676,7 +780,7 @@ async def delete_test_run_config(
 ):
     """刪除測試執行配置及相關附件"""
     try:
-        await main_boundary.run_sync_write(
+        await main_boundary.run_sync_serialized_write(
             lambda sync_db: delete_test_run_config_cascade_sync(
                 sync_db, team_id, config_id
             )
@@ -820,6 +924,7 @@ async def restart_test_run(
     - pending: 僅複製未執行（結果為 NULL）的項目
     """
     def _restart(sync_db: Session):
+        TestRunScopeService.lock_scope_mutation(sync_db, team_id, [config_id])
         # 檢查團隊與配置存在
         config_db = sync_db.query(TestRunConfigDB).filter(
             TestRunConfigDB.id == config_id,
@@ -922,9 +1027,12 @@ async def restart_test_run(
         parent_set_id = None
         if config_db.set_membership and config_db.set_membership.set_id is not None:
             parent_set_id = config_db.set_membership.set_id
-            attach_config_to_set(sync_db, team_id, new_config, parent_set_id)
-            parent_set = ensure_test_run_set(sync_db, team_id, parent_set_id)
-            recalculate_set_status_sync(sync_db, parent_set)
+            relocate_configs_between_sets(
+                sync_db,
+                team_id,
+                [new_config.id],
+                parent_set_id,
+            )
 
         sync_db.flush()
 
@@ -937,7 +1045,7 @@ async def restart_test_run(
             "notify_chat_ids_json": new_config.notify_chat_ids_json,
         }
 
-    result = await main_boundary.run_sync_write(_restart)
+    result = await main_boundary.run_sync_serialized_write(_restart)
 
     # 發送開始執行通知（新配置直接進入 ACTIVE 狀態）
     if result["notifications_enabled"] and result["notify_chat_ids_json"]:

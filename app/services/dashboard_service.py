@@ -158,6 +158,8 @@ class DashboardService:
                     icon="fa-robot",
                 )
             )
+        if _role_value(current_user) == UserRole.ADMIN.value:
+            quick_actions.append(_app_token_quick_action())
         return DashboardResponse(
             dashboard_type="personal",
             current_user=_current_user_projection(current_user),
@@ -245,6 +247,7 @@ class DashboardService:
                     href="/team-management",
                     icon="fa-users",
                 ),
+                _app_token_quick_action(),
             ],
         )
 
@@ -977,6 +980,14 @@ def _count(sync_db: Session, column: Any, *conditions: Any) -> int:
 
 def _current_user_projection(user: User) -> DashboardCurrentUser:
     return DashboardCurrentUser(id=user.id, display_name=user.username)
+
+
+def _app_token_quick_action() -> DashboardQuickAction:
+    return DashboardQuickAction(
+        key="dashboard.quickAction.appToken",
+        href="#app-token",
+        icon="fa-key",
+    )
 
 
 def _is_write_capable(user: User) -> bool:

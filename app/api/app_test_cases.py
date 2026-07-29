@@ -6,9 +6,10 @@ from datetime import datetime
 import json
 import logging
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -16,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.api.test_cases import (
     BulkCloneRequest,
     _delete_attachment_common,
+    resolve_test_case_record,
     run_bulk_clone_sync,
     run_test_case_batch_operation_sync,
 )
@@ -30,6 +32,7 @@ from app.config import PROJECT_ROOT
 from app.database import get_db
 from app.db_access.main import create_main_access_boundary_for_session
 from app.models.app_token import AppTokenPrincipal, SCOPE_TEST_CASE_ADMIN, SCOPE_TEST_CASE_WRITE
+from app.models.app_token import SCOPE_TEST_RUN_READ
 from app.services.knowledge.hooks import (
     enqueue_test_case_sync,
     enqueue_test_cases_bulk,
@@ -65,6 +68,44 @@ from app.services.test_run_scope_service import TestRunScopeService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/app", tags=["app-test-case-mutations"])
+
+
+class AppTestCaseMovePreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    record_ids: List[str] = Field(..., min_length=1, max_length=100)
+    target_test_set_id: int = Field(..., gt=0)
+
+    @field_validator("record_ids")
+    @classmethod
+    def normalize_record_ids(cls, value: List[str]) -> List[str]:
+        normalized = []
+        seen = set()
+        for raw in value:
+            record_id = str(raw).strip()
+            if not record_id:
+                raise ValueError("record_ids cannot contain blank values")
+            if record_id not in seen:
+                seen.add(record_id)
+                normalized.append(record_id)
+        return normalized
+
+
+class AppTestCaseMoveRequest(AppTestCaseMovePreviewRequest):
+    impact_fingerprint: str = Field(..., min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+    target_section_id: Optional[int] = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def validate_single_target_section(self):
+        if self.target_section_id is not None and len(self.record_ids) != 1:
+            raise ValueError("target_section_id is only valid for a single-case move")
+        return self
+
+
+class AppTestCaseMoveImpactChanged(Exception):
+    def __init__(self, preview: Dict[str, Any]):
+        self.preview = preview
+        super().__init__("Test Case move impact changed; preview and confirm again")
 
 
 def _serialize_test_case(tc: TestCaseLocalDB) -> Dict[str, Any]:
@@ -109,6 +150,303 @@ async def _audit_mutation(
         team_id=team_id,
         extra_details=redacted,
     )
+
+
+async def _require_case_move_scopes(
+    request: Request,
+    principal: AppTokenPrincipal,
+    team_id: int,
+) -> None:
+    for scope in (SCOPE_TEST_CASE_WRITE, SCOPE_TEST_RUN_READ):
+        if principal.has_scope(scope):
+            continue
+        await log_app_token_audit(
+            request,
+            principal,
+            allowed=False,
+            reason=f"scope_denied:{scope}",
+            team_id=team_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": AppTokenErrorCodes.SCOPE_DENIED, "message": f"Missing {scope} scope"},
+        )
+
+
+def _app_validation_error(message: str, *, status_code: int = 400, code: str | None = None):
+    return HTTPException(
+        status_code=status_code,
+        detail={
+            "code": code or AppTokenErrorCodes.VALIDATION_ERROR,
+            "message": message,
+        },
+    )
+
+
+def _resolve_case_move_records(
+    sync_db: Session,
+    team_id: int,
+    record_ids: List[str],
+    *,
+    lock: bool = False,
+) -> List[TestCaseLocalDB]:
+    resolved = []
+    for record_id in record_ids:
+        item = resolve_test_case_record(sync_db, team_id, record_id)
+        if item is None:
+            raise _app_validation_error(f"Test case {record_id} does not exist in team {team_id}")
+        resolved.append(item)
+    if not lock:
+        return resolved
+    ids = sorted({item.id for item in resolved})
+    locked = (
+        sync_db.query(TestCaseLocalDB)
+        .filter(TestCaseLocalDB.team_id == team_id, TestCaseLocalDB.id.in_(ids))
+        .order_by(TestCaseLocalDB.id.asc())
+        .with_for_update()
+        .all()
+    )
+    if len(locked) != len(ids):
+        raise _app_validation_error("Test Case selection changed before mutation")
+    return locked
+
+
+def _get_or_create_root_unassigned(
+    sync_db: Session,
+    team_id: int,
+    target_set_id: int,
+) -> TestCaseSectionDB:
+    target_set = (
+        sync_db.query(TestCaseSetDB)
+        .filter(TestCaseSetDB.id == target_set_id, TestCaseSetDB.team_id == team_id)
+        .with_for_update()
+        .first()
+    )
+    if target_set is None:
+        raise _app_validation_error(f"Test Case Set {target_set_id} does not exist in team {team_id}")
+    roots = (
+        sync_db.query(TestCaseSectionDB)
+        .filter(
+            TestCaseSectionDB.test_case_set_id == target_set_id,
+            TestCaseSectionDB.parent_section_id.is_(None),
+            TestCaseSectionDB.name == "Unassigned",
+        )
+        .order_by(TestCaseSectionDB.id.asc())
+        .with_for_update()
+        .all()
+    )
+    if len(roots) > 1:
+        raise _app_validation_error(
+            "Target Set has multiple root Unassigned sections",
+            status_code=status.HTTP_409_CONFLICT,
+            code=AppTokenErrorCodes.INTEGRITY_CONFLICT,
+        )
+    if roots:
+        return roots[0]
+    section = TestCaseSectionDB(
+        test_case_set_id=target_set_id,
+        name="Unassigned",
+        description="",
+        level=1,
+        sort_order=0,
+    )
+    sync_db.add(section)
+    sync_db.flush()
+    return section
+
+
+@router.post("/teams/{team_id}/test-cases/impact-preview/move-test-set")
+async def preview_app_test_case_set_move(
+    team_id: int,
+    body: AppTestCaseMovePreviewRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    principal: AppTokenPrincipal = Depends(get_current_app_token_principal),
+):
+    """Preview the exact Run Item impact and return a guarded-move fingerprint."""
+    await require_app_team_access(team_id, request, principal)
+    await _require_case_move_scopes(request, principal, team_id)
+    boundary = create_main_access_boundary_for_session(db)
+
+    def _preview(sync_db: Session):
+        target = sync_db.query(TestCaseSetDB).filter(
+            TestCaseSetDB.id == body.target_test_set_id,
+            TestCaseSetDB.team_id == team_id,
+        ).first()
+        if target is None:
+            raise _app_validation_error(
+                f"Test Case Set {body.target_test_set_id} does not exist in team {team_id}"
+            )
+        cases = _resolve_case_move_records(sync_db, team_id, body.record_ids)
+        return TestRunScopeService.build_guarded_case_move_preview(
+            sync_db,
+            team_id,
+            cases,
+            body.target_test_set_id,
+        )
+
+    preview = await boundary.run_sync_read(_preview)
+    await log_app_token_audit(
+        request,
+        principal,
+        allowed=True,
+        reason="test_case_move_preview",
+        action_type=ActionType.READ,
+        team_id=team_id,
+        extra_details={
+            "case_ids": preview["case_ids"],
+            "target_test_case_set_id": body.target_test_set_id,
+            "impact_fingerprint": preview["impact_fingerprint"],
+            "impacted_item_count": preview["impacted_item_count"],
+        },
+    )
+    return preview
+
+
+@router.post("/teams/{team_id}/test-cases/move-test-set")
+async def move_app_test_cases_to_set(
+    team_id: int,
+    body: AppTestCaseMoveRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    principal: AppTokenPrincipal = Depends(get_current_app_token_principal),
+):
+    """Atomically move cases only when the confirmed impact fingerprint still matches."""
+    await require_app_team_access(team_id, request, principal)
+    await _require_case_move_scopes(request, principal, team_id)
+    boundary = create_main_access_boundary_for_session(db)
+
+    def _move(sync_db: Session):
+        TestRunScopeService.lock_scope_mutation(sync_db, team_id)
+        target = (
+            sync_db.query(TestCaseSetDB)
+            .filter(
+                TestCaseSetDB.id == body.target_test_set_id,
+                TestCaseSetDB.team_id == team_id,
+            )
+            .with_for_update()
+            .first()
+        )
+        if target is None:
+            raise _app_validation_error(
+                f"Test Case Set {body.target_test_set_id} does not exist in team {team_id}"
+            )
+        cases = _resolve_case_move_records(sync_db, team_id, body.record_ids, lock=True)
+        current_preview = TestRunScopeService.build_guarded_case_move_preview(
+            sync_db,
+            team_id,
+            cases,
+            body.target_test_set_id,
+            lock=True,
+        )
+        if current_preview["impact_fingerprint"] != body.impact_fingerprint:
+            raise AppTestCaseMoveImpactChanged(current_preview)
+
+        changed_cases = [
+            case for case in cases if case.test_case_set_id != body.target_test_set_id
+        ]
+        if body.target_section_id is not None:
+            target_section = (
+                sync_db.query(TestCaseSectionDB)
+                .filter(
+                    TestCaseSectionDB.id == body.target_section_id,
+                    TestCaseSectionDB.test_case_set_id == body.target_test_set_id,
+                )
+                .with_for_update()
+                .first()
+            )
+            if target_section is None:
+                raise _app_validation_error(
+                    f"Section {body.target_section_id} does not belong to target Set"
+                )
+        elif changed_cases:
+            target_section = _get_or_create_root_unassigned(
+                sync_db, team_id, body.target_test_set_id
+            )
+        else:
+            target_section = None
+
+        placements = []
+        moved_numbers = []
+        for case in cases:
+            previous_set_id = case.test_case_set_id
+            previous_section_id = case.test_case_section_id
+            changed = previous_set_id != body.target_test_set_id
+            if changed:
+                case.test_case_set_id = body.target_test_set_id
+                case.test_case_section_id = target_section.id
+                moved_numbers.append(case.test_case_number)
+            placements.append(
+                {
+                    "case_id": case.id,
+                    "previous_test_case_set_id": previous_set_id,
+                    "previous_section_id": previous_section_id,
+                    "target_test_case_set_id": case.test_case_set_id,
+                    "target_section_id": case.test_case_section_id,
+                    "changed": changed,
+                }
+            )
+
+        cleanup_summary = TestRunScopeService.cleanup_case_move(
+            sync_db,
+            team_id=team_id,
+            case_numbers=moved_numbers,
+            target_set_id=body.target_test_set_id,
+        )
+        sync_db.flush()
+        moved_count = len(moved_numbers)
+        return {
+            "success": True,
+            "processed_count": len(cases),
+            "moved_count": moved_count,
+            "unchanged_count": len(cases) - moved_count,
+            "case_ids": [case.id for case in cases],
+            "case_numbers": [case.test_case_number for case in cases],
+            "target_test_case_set_id": body.target_test_set_id,
+            "placements": placements,
+            "cleanup_summary": cleanup_summary,
+            "impact_fingerprint": body.impact_fingerprint,
+        }
+
+    try:
+        result = await boundary.run_sync_serialized_write(_move)
+    except AppTestCaseMoveImpactChanged as exc:
+        await log_app_token_audit(
+            request,
+            principal,
+            allowed=False,
+            reason="test_case_move_impact_changed",
+            action_type=ActionType.UPDATE,
+            team_id=team_id,
+            extra_details={
+                "case_ids": exc.preview["case_ids"],
+                "target_test_case_set_id": body.target_test_set_id,
+                "requested_impact_fingerprint": body.impact_fingerprint,
+                "current_impact_fingerprint": exc.preview["impact_fingerprint"],
+                "impacted_item_count": exc.preview["impacted_item_count"],
+            },
+        )
+        raise _app_validation_error(
+            str(exc),
+            status_code=status.HTTP_409_CONFLICT,
+            code=AppTokenErrorCodes.IMPACT_CHANGED,
+        ) from exc
+    await _audit_mutation(
+        request,
+        principal,
+        ActionType.UPDATE,
+        team_id,
+        "test_case:guarded-move",
+        {
+            "case_ids": result["case_ids"],
+            "target_test_case_set_id": result["target_test_case_set_id"],
+            "impact_fingerprint": result["impact_fingerprint"],
+            "cleanup_summary": result["cleanup_summary"],
+        },
+    )
+    if result["case_numbers"]:
+        await enqueue_test_cases_bulk(result["case_numbers"])
+    return result
 
 
 @router.post("/teams/{team_id}/test-cases", status_code=status.HTTP_201_CREATED)
@@ -258,6 +596,14 @@ async def update_app_test_case(
         )
         if not tc:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Test case not found")
+
+        if (
+            body.test_case_set_id is not None
+            and body.test_case_set_id != tc.test_case_set_id
+        ):
+            raise _app_validation_error(
+                "Cross-Set updates require impact preview and the guarded move endpoint"
+            )
 
         if body.test_case_number is not None:
             tc.test_case_number = body.test_case_number
@@ -528,6 +874,10 @@ async def batch_operations_app_test_cases(
 
     if not operation.record_ids:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="記錄 ID 列表不能為空")
+    if operation.operation == "update_test_set":
+        raise _app_validation_error(
+            "Cross-Set updates require impact preview and the guarded move endpoint"
+        )
 
     main_boundary = create_main_access_boundary_for_session(db)
 

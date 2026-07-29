@@ -59,6 +59,7 @@ function Load-EnvFile($Path) {
 if ($args.Count -lt 1) { Show-Usage }
 
 $method = [string]$args[0]
+$isCheck = $false
 $path = ''
 $data = $null
 $query = ''
@@ -68,6 +69,7 @@ if ($method -ieq 'check') {
     if ($args.Count -ne 1) { Show-Usage }
     $method = 'GET'
     $path = '/api/app/teams'
+    $isCheck = $true
 }
 else {
     if ($args.Count -lt 2) { Show-Usage }
@@ -117,7 +119,20 @@ if ($missing.Count -gt 0) {
     Fail "Missing: $($missing -join ' '). Set exported variables or a local env file; never paste a token into chat."
 }
 
-$url = $baseUrl.TrimEnd('/') + $path
+$parsedBaseUrl = $null
+if (-not [Uri]::TryCreate($baseUrl, [UriKind]::Absolute, [ref]$parsedBaseUrl) -or
+    ($parsedBaseUrl.Scheme -ne 'http' -and $parsedBaseUrl.Scheme -ne 'https') -or
+    [string]::IsNullOrEmpty($parsedBaseUrl.Host) -or
+    -not [string]::IsNullOrEmpty($parsedBaseUrl.UserInfo) -or
+    -not [string]::IsNullOrEmpty($parsedBaseUrl.Query) -or
+    -not [string]::IsNullOrEmpty($parsedBaseUrl.Fragment) -or
+    ($parsedBaseUrl.AbsolutePath -ne '/')) {
+    Fail 'TCRT_BASE_URL must be an http/https origin without a path, query, fragment, or userinfo'
+}
+$baseUrl = $parsedBaseUrl.GetLeftPart([UriPartial]::Authority)
+if ($isCheck) { [Console]::Error.WriteLine("[tcrt-app] TCRT_BASE_URL=$baseUrl") }
+
+$url = $baseUrl + $path
 if ($query -ne '') { $url = "$url`?$query" }
 
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }

@@ -1,12 +1,12 @@
 # App Token 使用說明與 API 參考
 
-最後更新：2026-07-20
+最後更新：2026-07-29
 
 本文件是 TCRT team-owned **App Token** 的完整使用說明與 `/api/app/*` API 參考，內容以目前程式碼為準（`app/api/app_*.py`、`app/auth/app_token_dependencies.py`、`app/models/app_token.py`）。
 
 - 概觀、憑證生命週期與 rollback 說明見 [app_token_auth.md](app_token_auth.md)。
 - 既有 `/api/mcp/*` 為 read-only 相容端點，細節見 [mcp_machine_auth.md](mcp_machine_auth.md)。
-- 對應 OpenSpec change：`openspec/changes/add-team-app-token-apis/`。
+- 對應 OpenSpec changes：`openspec/changes/add-team-app-token-apis/`、`openspec/changes/align-tcrt-app-bulk-transfer-workflows/`。
 
 ## 目錄
 
@@ -206,6 +206,9 @@ Response（`raw_token` 只出現這一次）：
 | 403 | `APP_TOKEN_SCOPE_DENIED` | 缺少端點需要的 operation scope |
 | 400 | `APP_TOKEN_VALIDATION_ERROR` | payload 驗證失敗（含跨 team 參照） |
 | 404 | `APP_TOKEN_RESOURCE_NOT_FOUND` | team 或資源不存在 |
+| 409 | `APP_TOKEN_IMPACT_CHANGED` | guarded Test Case 搬移的案例、scope、Run Item 或 history 已在 preview 後改變；需重新 preview 與確認 |
+| 409 | `APP_TOKEN_STATE_CHANGED` | Test Run membership 與 expected source 不符；需重新讀取 |
+| 409 | `APP_TOKEN_INTEGRITY_CONFLICT` | 資料完整性衝突（例如目標 Set 有多個 root `Unassigned`）；不自動合併 |
 | 429 | `APP_TOKEN_RATE_LIMITED` | 認證失敗次數超過 per-IP 上限，附 `Retry-After` |
 
 部分端點沿用其業務邏輯的原生錯誤格式（例如建立重複 `test_case_number` 回 `409`，`detail` 為字串），client 應同時容忍字串與物件兩種 `detail` 形態。
@@ -397,7 +400,7 @@ curl -X POST "http://127.0.0.1:9999/api/app/teams/1/test-cases" \
 
 `PUT /api/app/teams/{team_id}/test-cases/{case_id}` — scope：`test_case:write`
 
-Body 欄位同建立（全部選填，只更新有提供的欄位）。重新指定 `test_case_set_id` / `test_case_section_id` 時會驗證歸屬，失敗回 `400`。找不到 → `404`。
+Body 欄位同建立（全部選填，只更新有提供的欄位）。同 Set 內可用 `test_case_section_id` 調整 Section；跨 Set 的 `test_case_set_id` 會回 `400 APP_TOKEN_VALIDATION_ERROR`，必須使用 8.6 的 guarded 搬移。找不到 → `404`。
 
 ### 8.3 刪除 test case
 
@@ -431,13 +434,39 @@ Body：
 
 | 欄位 | 說明 |
 | --- | --- |
-| `operation` | `delete` / `update_priority` / `update_tcg` / `update_section` / `update_test_set` |
+| `operation` | `delete` / `update_priority` / `update_tcg` / `update_section`；legacy `update_test_set` shape 會回 400 並導向 guarded 搬移 |
 | `record_ids` | 目標 test case id 清單（不可為空） |
 | `update_data` | 各 operation 所需的更新內容（delete 不需要） |
 
 回應：`success`、`processed_count`、`success_count`、`error_count`、`error_messages`，以及批次異動 set 範圍時的 `cleanup_summary`。
 
-### 8.6 批次複製（bulk clone）
+### 8.6 跨 Test Case Set guarded 搬移
+
+Preview 與 mutation 都需要 `test_case:write` **及** `test_run:read`。
+
+1. `POST /api/app/teams/{team_id}/test-cases/impact-preview/move-test-set`
+
+   ```json
+   {"record_ids":["11","TC-1002"],"target_test_set_id":7}
+   ```
+
+   `record_ids` 為 1–100 個本地 id、`lark_record_id` 或 case number，server 去重保序並回傳 canonical `case_ids` / `case_numbers`、來源 Set、受影響 Test Runs、將刪除的 Run Item 數與 `impact_fingerprint`。Fingerprint 不含 Run Item 內容。
+
+2. 若 `impacted_item_count > 0`，先取得使用者針對 canonical cases、目標 Set、受影響 Runs 與刪除數量的明確確認，再呼叫 `POST /api/app/teams/{team_id}/test-cases/move-test-set`：
+
+   ```json
+   {
+     "record_ids":["11","TC-1002"],
+     "target_test_set_id":7,
+     "impact_fingerprint":"<preview 回傳的 64 字元 SHA-256>"
+   }
+   ```
+
+   單筆可另帶目標 Set 所屬的 `target_section_id`；批次或未指定時落在目標 Set 的 root `Unassigned`。Server 會在同一 transaction 重算 fingerprint、搬移案例並清除 out-of-scope Run Items。狀態改變回 `409 APP_TOKEN_IMPACT_CHANGED` 且零寫入，必須重新 preview。
+
+Mutation 回應固定含 `processed_count`、`moved_count`、`unchanged_count`、ordered `placements` 與 `cleanup_summary`。Timeout / 5xx 後先 read-back；placement 符合只能證明 final state，不能證明原請求成功或原 cleanup count。
+
+### 8.7 批次複製（bulk clone）
 
 `POST /api/app/teams/{team_id}/test-cases/bulk-clone` — scope：`test_case:write`
 
@@ -550,7 +579,7 @@ Body：`{"status": "active|completed|draft|archived", "reason": "可選"}`。
 | `default_automation_environment` | string | 預設 automation 環境名 |
 | `initial_config_ids` | int[] | 建立時要加入的 Test Run Config id |
 
-回應：`id`、`team_id`、`name`、`description`、`status`、`archived_at`、`related_tp_tickets`、`automation_suite_ids`、`created_at`、`updated_at`。
+回應：`id`、`team_id`、`name`、`description`、`status`、`archived_at`、`related_tp_tickets`、`automation_suite_ids`、`created_at`、`updated_at` 與永遠存在的 `membership_summary`。`initial_config_ids` 隱含 expected source 為 unassigned；任一已歸組時整筆回 `409 APP_TOKEN_STATE_CHANGED`，不留下空 Set。
 
 ### 12.2 更新 test run set
 
@@ -562,10 +591,11 @@ Body：`{"status": "active|completed|draft|archived", "reason": "可選"}`。
 
 | 方法 | 路徑 | 說明 |
 | --- | --- | --- |
-| POST | `/api/app/teams/{team_id}/test-run-sets/{set_id}/members` | 把既有 config 加入 set，body `{"config_ids": [12, 13]}`；完成後重算 set 狀態 |
-| POST | `/api/app/teams/{team_id}/test-run-sets/members/{config_id}/move` | 移動 config 到其他 set，body `{"target_set_id": 5}`；`null` 表示移出（unassign）；來源與目標 set 狀態都會重算 |
+| POST | `/api/app/teams/{team_id}/test-run-sets/{set_id}/members` | attach-only：`{"config_ids":[12,13],"expected_memberships":[{"config_id":12,"set_id":null},{"config_id":13,"set_id":null}]}`；只接受 unassigned 或 already-target |
+| POST | `/api/app/teams/{team_id}/test-run-sets/members/batch-move` | 原子批次搬移／移出：`{"config_ids":[12,13],"target_set_id":7,"expected_memberships":[{"config_id":12,"set_id":5},{"config_id":13,"set_id":null}]}`；`target_set_id:null` 表示 unassign |
+| POST | `/api/app/teams/{team_id}/test-run-sets/members/{config_id}/move` | 單筆搬移／移出：`{"target_set_id":5,"expected_source_set_id":3}`；兩欄必填但可為 null |
 
-兩者 scope 皆為 `test_run:write`。
+三者 scope 皆為 `test_run:write`。Body extra fields、缺少 required-nullable 欄位或格式錯誤回 422；expected source 過期回 `409 APP_TOKEN_STATE_CHANGED` 且零寫入。Batch response 含 canonical counts、`affected_set_ids` 與 ordered `movements`，來源／目標 Set 各只重算一次；add-members response 也固定含同型 `membership_summary`。
 
 ### 12.4 Archive / 刪除
 

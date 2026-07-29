@@ -23,9 +23,18 @@ def _join_leaked_aiosqlite_threads():
     surviving threads between tests.
     """
     yield
-    for thread in list(threading.enumerate()):
-        if "aiosqlite" in getattr(thread, "name", ""):
-            thread.join(timeout=3)
+    leaked = [
+        thread
+        for thread in threading.enumerate()
+        if "aiosqlite" in getattr(thread, "name", "")
+    ]
+    if not leaked:
+        # Nothing to reclaim: skip the collection.  An unconditional
+        # ``gc.collect()`` here costs ~0.25s per test once every test module is
+        # imported, which dominated the full-suite runtime.
+        return
+    for thread in leaked:
+        thread.join(timeout=3)
     gc.collect()
 
 

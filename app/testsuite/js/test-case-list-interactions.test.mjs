@@ -567,7 +567,7 @@ test('重複開啟 Detail 不累積表單與 Markdown hotkey listeners', () => {
     assert.deepEqual(hotkeyListeners.map(({ eventName }) => eventName), ['keydown']);
 });
 
-test('Detail preview 更新不重複 render，也不量測背景列表高度', () => {
+test('Detail Markdown 編輯器不重複 render、量測或重疊內容', () => {
     const updateMarkdownPreviewSource = markdownSource.match(
         /function updateMarkdownPreview\(fieldId\) \{[\s\S]*?\n\}/,
     )?.[0] || '';
@@ -587,6 +587,34 @@ test('Detail preview 更新不重複 render，也不量測背景列表高度', (
     assert.doesNotMatch(
         attachmentsSourceForNavigation(),
         /adjustTestCasesScrollHeight/,
+    );
+    assert.doesNotMatch(
+        testCaseManagementTemplateSource,
+        /class="markdown-toolbar[^"]*"[^>]*\sstyle=/,
+    );
+    assert.doesNotMatch(
+        testCaseManagementTemplateSource,
+        /class="markdown-textarea"[^>]*\sstyle=/,
+    );
+    assert.match(
+        stylesheetSource,
+        /\.markdown-edit-container\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/,
+    );
+    assert.match(
+        stylesheetSource,
+        /\.markdown-toolbar\s*\{[^}]*flex:\s*0 0 auto;[^}]*flex-wrap:\s*wrap;[^}]*min-height:\s*2\.25rem;/,
+    );
+    assert.match(
+        stylesheetSource,
+        /\.markdown-textarea\s*\{[^}]*flex:\s*1 1 0;[^}]*min-height:\s*0;/,
+    );
+    assert.doesNotMatch(
+        markdownSource,
+        /btn-xs|helpButton\.style\.marginLeft|toolbar\.style\.display/,
+    );
+    assert.match(
+        markdownSource,
+        /toolbar\.classList\.toggle\('d-none', mode === 'preview'\)/,
     );
 });
 

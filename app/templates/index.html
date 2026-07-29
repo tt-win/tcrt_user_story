@@ -13,6 +13,7 @@
 
 {% block head %}
 <link rel="stylesheet" href="{{ asset_url('css/index.css') }}">
+<link rel="stylesheet" href="{{ asset_url('css/app-token-modal.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -100,8 +101,11 @@
         </div>
     </div>
 </div>
+
+{% include "components/app_token_modal.html" %}
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ asset_url('js/team-management/app-tokens.js') }}"></script>
 <script src="{{ asset_url('js/index.js') }}"></script>
 {% endblock %}

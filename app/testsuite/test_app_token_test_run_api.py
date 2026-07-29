@@ -256,6 +256,16 @@ class TestTestRunSet:
             )
             assert resp.status_code == 201
             assert resp.json()["name"] == "Set 1"
+            assert resp.json()["membership_summary"] == {
+                "success": True,
+                "processed_count": 0,
+                "moved_count": 0,
+                "unchanged_count": 0,
+                "target_set_id": resp.json()["id"],
+                "config_ids": [],
+                "affected_set_ids": [],
+                "movements": [],
+            }
 
     def test_delete_set_requires_admin(self, temp_db):
         with temp_db() as session:
@@ -456,18 +466,35 @@ class TestSetArchiveAndMembership:
 
             attach_resp = client.post(
                 f"/api/app/teams/{seeded['team_id']}/test-run-sets/{set_a['id']}/members",
-                json={"config_ids": [config["id"]]},
+                json={
+                    "config_ids": [config["id"]],
+                    "expected_memberships": [{"config_id": config["id"], "set_id": None}],
+                },
                 headers=_bearer(seeded["write_token"]),
             )
             assert attach_resp.status_code == 200, attach_resp.text
+            assert attach_resp.json()["membership_summary"]["moved_count"] == 1
 
             move_resp = client.post(
                 f"/api/app/teams/{seeded['team_id']}/test-run-sets/members/{config['id']}/move",
-                json={"target_set_id": set_b["id"]},
+                json={"target_set_id": set_b["id"], "expected_source_set_id": set_a["id"]},
                 headers=_bearer(seeded["write_token"]),
             )
             assert move_resp.status_code == 200, move_resp.text
             assert move_resp.json()["set_id"] == set_b["id"]
+
+            attach_only_reject = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-sets/{set_a['id']}/members",
+                json={
+                    "config_ids": [config["id"]],
+                    "expected_memberships": [
+                        {"config_id": config["id"], "set_id": set_b["id"]}
+                    ],
+                },
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert attach_only_reject.status_code == 400
+            assert attach_only_reject.json()["detail"]["code"] == "APP_TOKEN_VALIDATION_ERROR"
 
     def test_move_rejects_cross_team_target_set(self, temp_db):
         with temp_db() as session:
@@ -484,10 +511,174 @@ class TestSetArchiveAndMembership:
             ).json()
             resp = client.post(
                 f"/api/app/teams/{seeded['team_id']}/test-run-sets/members/{config['id']}/move",
-                json={"target_set_id": other_set_id},
+                json={"target_set_id": other_set_id, "expected_source_set_id": None},
                 headers=_bearer(seeded["write_token"]),
             )
-            assert resp.status_code == 404, resp.text
+            assert resp.status_code == 400, resp.text
+            assert resp.json()["detail"]["code"] == "APP_TOKEN_VALIDATION_ERROR"
+
+    def test_batch_move_and_detach_are_atomic_and_typed(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_data(session)
+        with TestClient(app) as client:
+            set_a = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-sets",
+                json={"name": "Batch A"},
+                headers=_bearer(seeded["write_token"]),
+            ).json()
+            configs = [
+                client.post(
+                    f"/api/app/teams/{seeded['team_id']}/test-run-configs",
+                    json={"name": f"Batch config {index}"},
+                    headers=_bearer(seeded["write_token"]),
+                ).json()
+                for index in range(2)
+            ]
+            config_ids = [config["id"] for config in configs]
+            missing_target = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-sets/members/batch-move",
+                json={
+                    "config_ids": config_ids,
+                    "expected_memberships": [
+                        {"config_id": config_id, "set_id": None}
+                        for config_id in config_ids
+                    ],
+                },
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert missing_target.status_code == 422
+
+            moved = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-sets/members/batch-move",
+                json={
+                    "config_ids": config_ids,
+                    "target_set_id": set_a["id"],
+                    "expected_memberships": [
+                        {"config_id": config_id, "set_id": None}
+                        for config_id in config_ids
+                    ],
+                },
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert moved.status_code == 200, moved.text
+            assert moved.json()["moved_count"] == 2
+            assert moved.json()["affected_set_ids"] == [set_a["id"]]
+
+            stale = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-sets/members/batch-move",
+                json={
+                    "config_ids": config_ids,
+                    "target_set_id": None,
+                    "expected_memberships": [
+                        {"config_id": config_id, "set_id": None}
+                        for config_id in config_ids
+                    ],
+                },
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert stale.status_code == 409
+            assert stale.json()["detail"]["code"] == "APP_TOKEN_STATE_CHANGED"
+
+            detached = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-sets/members/batch-move",
+                json={
+                    "config_ids": config_ids,
+                    "target_set_id": None,
+                    "expected_memberships": [
+                        {"config_id": config_id, "set_id": set_a["id"]}
+                        for config_id in config_ids
+                    ],
+                },
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert detached.status_code == 200, detached.text
+            assert detached.json()["moved_count"] == 2
+            assert detached.json()["target_set_id"] is None
+
+            detached_noop = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-sets/members/batch-move",
+                json={
+                    "config_ids": config_ids,
+                    "target_set_id": None,
+                    "expected_memberships": [
+                        {"config_id": config_id, "set_id": None}
+                        for config_id in config_ids
+                    ],
+                },
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert detached_noop.status_code == 200, detached_noop.text
+            assert detached_noop.json()["moved_count"] == 0
+            assert detached_noop.json()["affected_set_ids"] == []
+
+    def test_mixed_source_batch_move_reports_each_transition(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_data(session)
+        with TestClient(app) as client:
+            set_a = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-sets",
+                json={"name": "Mixed A"},
+                headers=_bearer(seeded["write_token"]),
+            ).json()
+            set_b = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-sets",
+                json={"name": "Mixed B"},
+                headers=_bearer(seeded["write_token"]),
+            ).json()
+            config_a = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-configs",
+                json={"name": "Mixed config A", "set_id": set_a["id"]},
+                headers=_bearer(seeded["write_token"]),
+            ).json()
+            config_b = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-configs",
+                json={"name": "Mixed config B", "set_id": set_b["id"]},
+                headers=_bearer(seeded["write_token"]),
+            ).json()
+
+            moved = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-sets/members/batch-move",
+                json={
+                    "config_ids": [config_a["id"], config_b["id"]],
+                    "target_set_id": set_b["id"],
+                    "expected_memberships": [
+                        {"config_id": config_a["id"], "set_id": set_a["id"]},
+                        {"config_id": config_b["id"], "set_id": set_b["id"]},
+                    ],
+                },
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert moved.status_code == 200, moved.text
+            assert moved.json()["moved_count"] == 1
+            assert moved.json()["unchanged_count"] == 1
+            assert moved.json()["affected_set_ids"] == sorted([set_a["id"], set_b["id"]])
+            assert [movement["changed"] for movement in moved.json()["movements"]] == [True, False]
+
+    def test_create_set_with_assigned_initial_member_rolls_back(self, temp_db):
+        with temp_db() as session:
+            seeded = _seed_data(session)
+        with TestClient(app) as client:
+            source = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-sets",
+                json={"name": "Initial source"},
+                headers=_bearer(seeded["write_token"]),
+            ).json()
+            config = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-configs",
+                json={"name": "Already assigned", "set_id": source["id"]},
+                headers=_bearer(seeded["write_token"]),
+            ).json()
+
+            rejected = client.post(
+                f"/api/app/teams/{seeded['team_id']}/test-run-sets",
+                json={"name": "Must roll back", "initial_config_ids": [config["id"]]},
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert rejected.status_code == 409, rejected.text
+            assert rejected.json()["detail"]["code"] == "APP_TOKEN_STATE_CHANGED"
+
+        with temp_db() as session:
+            assert session.query(TestRunSet).filter(TestRunSet.name == "Must roll back").count() == 0
 
 
 class TestRunItemsBatchAndExecution:

@@ -30,6 +30,7 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Dict, Optional
@@ -77,7 +78,21 @@ def resolve_config() -> tuple[str, str]:
             "Tokens are issued from TCRT's Team Management UI (App Tokens tab) by a team admin;\n"
             "this script only consumes an existing token, it does not create one."
         )
-    return base_url.rstrip("/"), token
+    parsed = urllib.parse.urlsplit(base_url)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in {"", "/"}
+    ):
+        raise SystemExit(
+            "[tcrt-app] TCRT_BASE_URL must be an http/https origin without "
+            "a path, query, fragment, or userinfo"
+        )
+    return f"{parsed.scheme}://{parsed.netloc}", token
 
 
 def _encode_multipart(file_specs: list) -> tuple[bytes, str]:
@@ -109,8 +124,11 @@ def request(
     data: Optional[dict],
     query: Optional[str],
     files: Optional[list] = None,
+    show_provenance: bool = False,
 ) -> None:
     base_url, token = resolve_config()
+    if show_provenance:
+        print(f"[tcrt-app] TCRT_BASE_URL={base_url}", file=sys.stderr)
     if not path.startswith("/"):
         path = "/" + path
     url = f"{base_url}{path}"
@@ -167,7 +185,7 @@ def main() -> None:
     if args.method.lower() == "check":
         # GET /api/app/teams only needs test_case:read or test_run:read.
         # A 403 here can mean the token is valid but lacks read scope.
-        request("GET", "/api/app/teams", None, None)
+        request("GET", "/api/app/teams", None, None, show_provenance=True)
         return
 
     if not args.path:

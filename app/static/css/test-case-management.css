@@ -260,8 +260,37 @@ body {
     margin-top: 0.5rem;
 }
 
-.markdown-field-container textarea {
-    border-radius: 0.375rem;
+.markdown-edit-container {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.markdown-toolbar {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    row-gap: 0.25rem;
+    min-height: 2.25rem;
+    background-color: var(--tr-bg-sidebar);
+}
+
+.markdown-toolbar .btn-group {
+    flex: 0 0 auto;
+}
+
+.markdown-textarea {
+    flex: 1 1 0;
+    min-height: 0;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.375rem 0.75rem;
+    overflow-y: auto;
+    resize: none;
+    border: 0;
+    border-radius: 0;
+    outline: none;
 }
 
 .markdown-field-container .card {

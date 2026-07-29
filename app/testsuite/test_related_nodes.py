@@ -8,7 +8,6 @@ User Story Map 關聯節點功能的單元和整合測試
 - 資料模型和向下相容性
 """
 
-import pytest
 from uuid import uuid4
 
 from app.models.user_story_map import (
@@ -191,44 +190,3 @@ class TestRelationDeleteRequest:
         """測試 RelationBulkUpdateResponse"""
         response = RelationBulkUpdateResponse(relations=[RelationPayload(node_id="node-3", map_id=3)])
         assert len(response.relations) == 1
-
-
-# 整合測試可在此新增，需要 FastAPI TestClient
-class TestSearchNodesAPI:
-    """搜尋節點 API 測試 (需要 TestClient)"""
-    
-    @pytest.mark.asyncio
-    async def test_search_nodes_same_map(self):
-        """測試在同一地圖內搜尋節點"""
-        # 此測試需要 FastAPI TestClient 和資料庫設定
-        # 暫時作為佔位符
-        pass
-    
-    @pytest.mark.asyncio
-    async def test_search_nodes_cross_map(self):
-        """測試跨地圖搜尋節點"""
-        # 此測試需要 FastAPI TestClient 和資料庫設定
-        pass
-
-
-class TestRelationManagementAPI:
-    """關聯管理 API 測試 (需要 TestClient)"""
-    
-    @pytest.mark.asyncio
-    async def test_create_relation_same_map(self):
-        """測試建立同地圖關聯"""
-        pass
-    
-    @pytest.mark.asyncio
-    async def test_create_relation_cross_map(self):
-        """測試建立跨地圖關聯"""
-        pass
-    
-    @pytest.mark.asyncio
-    async def test_delete_relation(self):
-        """測試刪除關聯"""
-        pass
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

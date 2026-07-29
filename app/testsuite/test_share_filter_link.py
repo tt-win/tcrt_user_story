@@ -6,6 +6,10 @@ Covers:
 - JS serialization/deserialization functions exist
 - Login redirect fix uses `redirect` param
 - Round-trip consistency of filter param names
+
+Each test reads every artifact it needs once; the assertions are grouped by
+artifact rather than split one-per-test so the whole file stays a handful of
+cheap static checks.
 """
 import json
 import re
@@ -22,154 +26,113 @@ FILTER_PARAMS = ["f_num", "f_kw", "f_tcg", "f_pri"]
 
 # ─── Task 4.1: Authenticated direct-open shared link ───
 
-class TestShareLinkUIElements:
-    def test_generate_link_button_exists(self):
-        html = TEMPLATE.read_text(encoding="utf-8")
-        assert 'id="generateFilterLinkBtn"' in html
+def test_share_link_ui_elements_exist():
+    html = TEMPLATE.read_text(encoding="utf-8")
 
-    def test_share_modal_exists(self):
-        html = TEMPLATE.read_text(encoding="utf-8")
-        assert 'id="shareFilterLinkModal"' in html
-
-    def test_share_link_input_field_exists(self):
-        html = TEMPLATE.read_text(encoding="utf-8")
-        assert 'id="shareFilterLinkInput"' in html
-        assert "readonly" in html.split('id="shareFilterLinkInput"')[1].split(">")[0]
-
-    def test_copy_button_exists(self):
-        html = TEMPLATE.read_text(encoding="utf-8")
-        assert 'id="copyShareFilterLinkBtn"' in html
-
-    def test_generate_button_has_i18n(self):
-        html = TEMPLATE.read_text(encoding="utf-8")
-        assert 'data-i18n="testCaseSet.shareFilter.generateLink"' in html
+    assert 'id="generateFilterLinkBtn"' in html
+    assert 'id="shareFilterLinkModal"' in html
+    assert 'id="shareFilterLinkInput"' in html
+    assert "readonly" in html.split('id="shareFilterLinkInput"')[1].split(">")[0]
+    assert 'id="copyShareFilterLinkBtn"' in html
+    assert 'data-i18n="testCaseSet.shareFilter.generateLink"' in html
 
 
-class TestShareLinkJSFunctions:
-    def test_serialize_function_exists(self):
-        js = MODAL_JS.read_text(encoding="utf-8")
-        assert "function serializeFiltersToParams()" in js
+def test_share_link_js_functions_and_bindings_exist():
+    modal_js = MODAL_JS.read_text(encoding="utf-8")
+    for signature in (
+        "function serializeFiltersToParams()",
+        "function buildShareFilterURL()",
+        "function restoreFiltersFromQueryString()",
+        "function generateShareFilterLink()",
+        "function copyShareFilterLink()",
+    ):
+        assert signature in modal_js, f"{signature} missing from {MODAL_JS}"
 
-    def test_build_url_function_exists(self):
-        js = MODAL_JS.read_text(encoding="utf-8")
-        assert "function buildShareFilterURL()" in js
-
-    def test_restore_from_qs_function_exists(self):
-        js = MODAL_JS.read_text(encoding="utf-8")
-        assert "function restoreFiltersFromQueryString()" in js
-
-    def test_generate_handler_exists(self):
-        js = MODAL_JS.read_text(encoding="utf-8")
-        assert "function generateShareFilterLink()" in js
-
-    def test_copy_handler_exists(self):
-        js = MODAL_JS.read_text(encoding="utf-8")
-        assert "function copyShareFilterLink()" in js
-
-    def test_event_binding_generate_link(self):
-        js = INIT_JS.read_text(encoding="utf-8")
-        assert "generateFilterLinkBtn" in js
-        assert "generateShareFilterLink" in js
-
-    def test_event_binding_copy_link(self):
-        js = INIT_JS.read_text(encoding="utf-8")
-        assert "copyShareFilterLinkBtn" in js
-        assert "copyShareFilterLink" in js
+    init_js = INIT_JS.read_text(encoding="utf-8")
+    for marker in (
+        "generateFilterLinkBtn",
+        "generateShareFilterLink",
+        "copyShareFilterLinkBtn",
+        "copyShareFilterLink",
+    ):
+        assert marker in init_js, f"{marker} not bound in {INIT_JS}"
 
 
 # ─── Task 4.2: Unauthenticated login redirect preserves URL ───
 
-class TestLoginRedirectPreservesURL:
-    def test_login_success_uses_redirect_param(self):
-        js = LOGIN_JS.read_text(encoding="utf-8")
-        assert "urlParams.get('redirect')" in js
-        assert "window.location.href = redirectTo" in js
+def test_login_redirect_preserves_original_url():
+    login_js = LOGIN_JS.read_text(encoding="utf-8")
+    assert "urlParams.get('redirect')" in login_js
+    assert "window.location.href = redirectTo" in login_js
 
-    def test_login_success_does_not_hardcode_root(self):
-        js = LOGIN_JS.read_text(encoding="utf-8")
-        login_success_block = js.split("Login successful")[1].split("handleLoginError")[0]
-        hardcoded = re.findall(r"window\.location\.href\s*=\s*'/'", login_success_block)
-        assert len(hardcoded) == 0, "Login success should not hardcode redirect to '/'"
+    login_success_block = login_js.split("Login successful")[1].split("handleLoginError")[0]
+    hardcoded = re.findall(r"window\.location\.href\s*=\s*'/'", login_success_block)
+    assert len(hardcoded) == 0, "Login success should not hardcode redirect to '/'"
 
-    def test_auth_redirect_preserves_query_string(self):
-        """auth.js redirectToLogin should include pathname + search."""
-        auth_js = Path("app/static/js/auth.js").read_text(encoding="utf-8")
-        assert "window.location.pathname + window.location.search" in auth_js
+    # auth.js redirectToLogin should include pathname + search.
+    auth_js = Path("app/static/js/auth.js").read_text(encoding="utf-8")
+    assert "window.location.pathname + window.location.search" in auth_js
 
 
 # ─── Task 4.3: Round-trip filter serialization/deserialization ───
 
-class TestFilterParamRoundTrip:
-    def test_serialize_uses_correct_param_names(self):
-        js = MODAL_JS.read_text(encoding="utf-8")
-        for param in FILTER_PARAMS:
-            assert f"'{param}'" in js or f'"{param}"' in js, (
-                f"Filter param {param} not found in serialization"
-            )
+def test_filter_params_round_trip():
+    modal_js = MODAL_JS.read_text(encoding="utf-8")
+    restore_fn = modal_js.split("function restoreFiltersFromQueryString")[1].split(
+        "\nfunction "
+    )[0]
+    # buildShareFilterURL should remove old f_* params before merging.
+    build_fn = modal_js.split("function buildShareFilterURL")[1].split("\nfunction ")[0]
 
-    def test_deserialize_reads_same_param_names(self):
-        js = MODAL_JS.read_text(encoding="utf-8")
-        restore_fn = js.split("function restoreFiltersFromQueryString")[1].split(
-            "\nfunction "
-        )[0]
-        for param in FILTER_PARAMS:
-            assert param in restore_fn, (
-                f"Filter param {param} not read in deserialization"
-            )
+    for param in FILTER_PARAMS:
+        assert f"'{param}'" in modal_js or f'"{param}"' in modal_js, (
+            f"Filter param {param} not found in serialization"
+        )
+        assert param in restore_fn, f"Filter param {param} not read in deserialization"
+        assert f"'{param}'" in build_fn or f'"{param}"' in build_fn, (
+            f"Filter param {param} not cleaned in buildShareFilterURL"
+        )
 
-    def test_build_url_cleans_old_filter_params(self):
-        """buildShareFilterURL should remove old f_* params before merging."""
-        js = MODAL_JS.read_text(encoding="utf-8")
-        build_fn = js.split("function buildShareFilterURL")[1].split("\nfunction ")[0]
-        for param in FILTER_PARAMS:
-            assert f"'{param}'" in build_fn or f'"{param}"' in build_fn
+    # buildShareFilterURL must ensure team_id and set_id in shared link.
+    assert "team_id" in build_fn
+    assert "set_id" in build_fn
 
-    def test_query_string_restoration_triggers_apply(self):
-        """Init should call applyFilters after restoring from QS."""
-        js = INIT_JS.read_text(encoding="utf-8")
-        assert "restoreFiltersFromQueryString" in js
-        assert "applyFilters()" in js
-
-    def test_build_url_includes_team_id_and_set_id(self):
-        """buildShareFilterURL must ensure team_id and set_id in shared link."""
-        js = MODAL_JS.read_text(encoding="utf-8")
-        build_fn = js.split("function buildShareFilterURL")[1].split("\nfunction ")[0]
-        assert "team_id" in build_fn
-        assert "set_id" in build_fn
+    # Init should call applyFilters after restoring from QS.
+    init_js = INIT_JS.read_text(encoding="utf-8")
+    assert "restoreFiltersFromQueryString" in init_js
+    assert "applyFilters()" in init_js
 
 
-class TestTeamIdFromUrlPriority:
-    """URL team_id must take precedence for shared links."""
+def test_url_team_id_takes_precedence_for_shared_links():
+    # test-case-set-integration getTeamIdFromPage should prioritize URL.
+    integration_js = Path("app/static/js/test-case-set-integration.js").read_text(
+        encoding="utf-8"
+    )
+    assert "getUrlParam('team_id')" in integration_js or (
+        'getUrlParam("team_id")' in integration_js
+    )
+    assert "getTeamIdFromPage" in integration_js
 
-    def test_get_team_id_from_page_reads_url_first(self):
-        """test-case-set-integration getTeamIdFromPage should prioritize URL."""
-        js = Path("app/static/js/test-case-set-integration.js").read_text(encoding="utf-8")
-        assert "getUrlParam('team_id')" in js or 'getUrlParam("team_id")' in js
-        assert "getTeamIdFromPage" in js
-
-    def test_ensure_team_context_respects_url_team_id(self):
-        """ensureTeamContext should use URL team_id when it differs from AppUtils."""
-        js = Path("app/static/js/test-case-management/cache.js").read_text(encoding="utf-8")
-        assert "urlTeamId" in js
-        assert "getTeamIdForCache" in js
+    # ensureTeamContext should use URL team_id when it differs from AppUtils.
+    cache_js = Path("app/static/js/test-case-management/cache.js").read_text(
+        encoding="utf-8"
+    )
+    assert "urlTeamId" in cache_js
+    assert "getTeamIdForCache" in cache_js
 
 
 # ─── i18n completeness ───
 
-class TestI18nKeys:
-    def _load_locale(self, name):
-        return json.loads((LOCALES_DIR / name).read_text(encoding="utf-8"))
-
-    def test_share_filter_keys_in_all_locales(self):
-        required_keys = [
-            "generateLink",
-            "generateLinkTooltip",
-            "modalTitle",
-            "noFilters",
-        ]
-        for locale_file in LOCALE_FILES:
-            data = self._load_locale(locale_file)
-            sf = data.get("testCaseSet", {}).get("shareFilter", {})
-            for key in required_keys:
-                assert key in sf, f"Missing key testCaseSet.shareFilter.{key} in {locale_file}"
-                assert sf[key], f"Empty value for testCaseSet.shareFilter.{key} in {locale_file}"
+def test_share_filter_keys_in_all_locales():
+    required_keys = [
+        "generateLink",
+        "generateLinkTooltip",
+        "modalTitle",
+        "noFilters",
+    ]
+    for locale_file in LOCALE_FILES:
+        data = json.loads((LOCALES_DIR / locale_file).read_text(encoding="utf-8"))
+        sf = data.get("testCaseSet", {}).get("shareFilter", {})
+        for key in required_keys:
+            assert key in sf, f"Missing key testCaseSet.shareFilter.{key} in {locale_file}"
+            assert sf[key], f"Empty value for testCaseSet.shareFilter.{key} in {locale_file}"

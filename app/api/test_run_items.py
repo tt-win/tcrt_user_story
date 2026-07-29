@@ -894,6 +894,7 @@ async def batch_create_items(
         await _require_test_run_write_permission(current_user, team_id)
 
     def _create(sync_db: Session) -> Dict[str, Any]:
+        TestRunScopeService.lock_scope_mutation(sync_db, team_id, [config_id])
         config_db = _verify_team_and_config(team_id, config_id, sync_db)
         resolved_assignees: List[ResolvedAssignee] = []
         for index, requested_item in enumerate(payload.items):
@@ -1007,7 +1008,7 @@ async def batch_create_items(
             "created_items": created_items,
         }
 
-    result = await main_boundary.run_sync_write(_create)
+    result = await main_boundary.run_sync_serialized_write(_create)
 
     # 記錄批次建立 audit log
     if result["created"] > 0:

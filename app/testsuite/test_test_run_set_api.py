@@ -13,8 +13,10 @@ import json
 from app.models.database_models import (
     AutomationScriptGroup,
     Team,
+    TestCaseLocal,
     TestCaseSet,
     TestRunConfig,
+    TestRunItem,
     TestRunSetMembership,
 )
 from app.testsuite.db_test_helpers import (
@@ -216,7 +218,6 @@ def test_draft_to_completed_status_via_single_api_call(temp_db):
 
 def test_restart_attaches_new_run_to_same_set_and_copies_failed_items(temp_db):
     """restart must create a new ACTIVE run in the same set (assistant restart_test_run path)."""
-    from app.models.database_models import TestRunItem
     from app.models.lark_types import TestResultStatus
     from app.models.test_run_config import TestRunStatus
 
@@ -286,6 +287,42 @@ def test_restart_attaches_new_run_to_same_set_and_copies_failed_items(temp_db):
         assert len(items) == 1
         assert items[0].test_case_number == "TC-FAIL"
         assert items[0].test_result is None
+
+
+def test_create_from_cases_uses_shared_membership_and_item_write_protocol(temp_db):
+    _, SessionLocal = temp_db
+    client = TestClient(app)
+
+    with SessionLocal() as session:
+        team_id, _, _, case_set_id = _seed_team_with_runs(session)
+        case = TestCaseLocal(
+            team_id=team_id,
+            lark_record_id="generated-case-1",
+            test_case_number="TC-GENERATED-1",
+            title="Generated membership",
+            test_case_set_id=case_set_id,
+            tcg_json=json.dumps(["TP-5001"]),
+        )
+        session.add(case)
+        session.commit()
+
+    response = client.post(
+        f"/api/teams/{team_id}/test-run-sets/from-test-cases",
+        json={
+            "name": "Generated Set",
+            "test_case_records": ["generated-case-1"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert len(payload["test_runs"]) == 1
+    config_id = payload["test_runs"][0]["id"]
+
+    with SessionLocal() as session:
+        membership = session.query(TestRunSetMembership).filter_by(config_id=config_id).one()
+        assert membership.set_id == payload["id"]
+        item = session.query(TestRunItem).filter_by(config_id=config_id).one()
+        assert item.test_case_number == "TC-GENERATED-1"
 
 
 def test_test_run_set_status_auto_updates(temp_db):
