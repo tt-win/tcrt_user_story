@@ -44,3 +44,27 @@ System Administration Dashboard SHALL 將 Attention count／latest timestamp、C
 
 - **WHEN** Super Admin 檢視 System Health
 - **THEN** 畫面只使用既有 allowlisted count、timestamp 與 configured boolean，不顯示任何 provider detail、connection probe 或原始錯誤
+
+### Requirement: Scheduled service summary MUST preserve scheduler semantics
+
+System Administration Dashboard MUST 將 scheduler persistence status 正規化為安全 outcome：`completed` MUST 呈現為成功，`interrupted` MUST 呈現為錯誤並納入 Attention，且未知值 MUST 降級為 generic unknown。Scheduled Services 的 naive timestamp MUST 沿用排程管理頁的 local wall-clock 語意，不得因假設為 UTC 而產生額外時區位移。已知服務 MUST 以三語 allowlisted 友善名稱呈現；未知服務 MAY fallback 至安全 `service_key`，但 MUST NOT 暴露資料庫 `display_name`、message 或 raw error。
+
+#### Scenario: 成功排程顯示成功結果
+
+- **WHEN** scheduler 紀錄的 `last_run_status` 為 `completed`
+- **THEN** Dashboard API 回傳安全 outcome `success`，畫面以目前語系的成功 badge 呈現而不是 `unknown`
+
+#### Scenario: 中斷排程列入需要注意
+
+- **WHEN** scheduler 紀錄的 `last_run_status` 為 `interrupted`
+- **THEN** Dashboard API 回傳安全 outcome `error`，且 Attention count 與 latest timestamp 包含該服務
+
+#### Scenario: 本機排程時間不產生額外位移
+
+- **WHEN** Scheduled Services 收到沒有 timezone offset 的 scheduler local timestamp
+- **THEN** Dashboard 使用與排程管理頁一致的 local wall-clock parse path 呈現，不得將該值先視為 UTC 再轉換
+
+#### Scenario: 已知服務顯示本地化名稱
+
+- **WHEN** `service_key` 為 `lark_org_sync` 或 `audit_cleanup`
+- **THEN** Dashboard 顯示目前語系的 allowlisted 友善名稱，並保留原始 key 作為非主要識別資訊且不讀取資料庫 `display_name`

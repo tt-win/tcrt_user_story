@@ -102,6 +102,38 @@
             : String(value);
     }
 
+    function formatScheduledServiceDate(value) {
+        if (!value) return t('common.notSet', '未設定');
+        const normalizedValue = typeof value === 'string'
+            ? value.replace(' ', 'T')
+            : value;
+        const parsed = new Date(normalizedValue);
+        if (Number.isNaN(parsed.getTime())) return String(value);
+        return parsed.toLocaleString(navigator.language || 'en-US');
+    }
+
+    function scheduledServiceLabel(serviceKey) {
+        const labels = {
+            lark_org_sync: t('dashboard.larkOrgSyncService', 'Lark 組織同步'),
+            audit_cleanup: t('dashboard.auditCleanupService', '審計記錄清理'),
+        };
+        return labels[serviceKey] || serviceKey;
+    }
+
+    function systemServiceOutcomeBadge(outcome) {
+        const normalized = String(outcome || 'unknown').toLowerCase();
+        const presentations = {
+            success: [t('dashboard.serviceOutcomeSuccess', '成功'), 'bg-success'],
+            failed: [t('dashboard.serviceOutcomeFailed', '失敗'), 'bg-danger'],
+            error: [t('dashboard.serviceOutcomeError', '錯誤'), 'bg-danger'],
+            running: [t('dashboard.running', '執行中'), 'bg-info'],
+            skipped: [t('dashboard.serviceOutcomeSkipped', '略過'), 'bg-info'],
+            unknown: [t('dashboard.serviceOutcomeUnknown', '未知'), 'bg-secondary'],
+        };
+        const [label, badgeClass] = presentations[normalized] || presentations.unknown;
+        return resultBadge(label, badgeClass);
+    }
+
     function resultBadge(result, classOverride = null) {
         const normalized = String(result || '').toLowerCase().replace(/\s+/g, '-');
         const classMap = {
@@ -940,13 +972,13 @@
             const service = element(
                 'td',
                 'dashboard-system-service-name fw-semibold',
-                item.service_key
+                scheduledServiceLabel(item.service_key)
             );
             service.title = item.service_key;
             const lastRun = element(
                 'td',
                 'dashboard-system-service-date',
-                formatDate(item.last_run_at)
+                formatScheduledServiceDate(item.last_run_at)
             );
             const serviceState = element('td');
             const stateLabel = item.running
@@ -961,7 +993,7 @@
                     : 'bg-secondary';
             serviceState.append(resultBadge(stateLabel, stateClass));
             const serviceResult = element('td');
-            serviceResult.append(resultBadge(item.outcome));
+            serviceResult.append(systemServiceOutcomeBadge(item.outcome));
             row.append(service, lastRun, serviceState, serviceResult);
             body.append(row);
         });

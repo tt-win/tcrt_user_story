@@ -269,6 +269,25 @@ def test_system_dashboard_uses_compact_aligned_workspace_components() -> None:
     assert ".dashboard-system-health-group {" in stylesheet
 
 
+def test_system_dashboard_presents_scheduler_values_consistently() -> None:
+    source = (_ROOT / "app" / "static" / "js" / "index.js").read_text(
+        encoding="utf-8"
+    )
+    formatter = source.split("function formatScheduledServiceDate", 1)[1].split(
+        "function scheduledServiceLabel", 1
+    )[0]
+    renderer = source.split("function renderSystemServices", 1)[1].split(
+        "function appendSystemHealthGroup", 1
+    )[0]
+
+    assert "value.replace(' ', 'T')" in formatter
+    assert "new Date(normalizedValue)" in formatter
+    assert "window.AppUtils" not in formatter
+    assert "scheduledServiceLabel(item.service_key)" in renderer
+    assert "formatScheduledServiceDate(item.last_run_at)" in renderer
+    assert "systemServiceOutcomeBadge(item.outcome)" in renderer
+
+
 def test_system_dashboard_labels_exist_in_all_locales() -> None:
     for locale in ("en-US", "zh-CN", "zh-TW"):
         messages = (
@@ -280,6 +299,11 @@ def test_system_dashboard_labels_exist_in_all_locales() -> None:
             "lastRun",
             "serviceState",
             "serviceResult",
+            "larkOrgSyncService",
+            "auditCleanupService",
+            "serviceOutcomeSuccess",
+            "serviceOutcomeError",
+            "serviceOutcomeUnknown",
         ):
             assert f'"{key}":' in messages
 
