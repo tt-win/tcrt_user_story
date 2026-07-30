@@ -513,6 +513,11 @@
             await loadAllStatistics();
         });
 
+        // 語系變更後重算千分位（formatNumber 依 i18n locale）
+        document.addEventListener('languageChanged', () => {
+            loadAllStatistics();
+        });
+
         // 標籤頁切換事件（延遲載入策略）
         document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(tab => {
             tab.addEventListener('shown.bs.tab', function(event) {
@@ -632,11 +637,11 @@
                 ? sumByField(filteredTeamTestRuns, 'test_run_count')
                 : (data.test_run_total || 0);
 
-            // 更新關鍵指標卡片
-            document.getElementById('overview-team-count').textContent = teamCountValue;
-            document.getElementById('overview-user-count').textContent = data.user_count || 0;
-            document.getElementById('overview-test-case-total').textContent = testCaseTotal;
-            document.getElementById('overview-test-run-total').textContent = testRunTotal;
+            // 更新關鍵指標卡片（語系千分位）
+            document.getElementById('overview-team-count').textContent = formatNumber(teamCountValue);
+            document.getElementById('overview-user-count').textContent = formatNumber(data.user_count || 0);
+            document.getElementById('overview-test-case-total').textContent = formatNumber(testCaseTotal);
+            document.getElementById('overview-test-run-total').textContent = formatNumber(testRunTotal);
 
             // 更新團隊 Test Case 統計表格
             const teamTestCasesTbody = document.getElementById('team-test-cases-tbody');
@@ -644,7 +649,7 @@
                 teamTestCasesTbody.innerHTML = filteredTeamTestCases.map(team => `
                     <tr>
                         <td>${escapeHtml(team.team_name)}</td>
-                        <td><strong>${team.test_case_count}</strong></td>
+                        <td><strong>${formatNumber(team.test_case_count)}</strong></td>
                     </tr>
                 `).join('');
             } else {
@@ -657,7 +662,7 @@
                 teamTestRunsTbody.innerHTML = filteredTeamTestRuns.map(team => `
                     <tr>
                         <td>${escapeHtml(team.team_name)}</td>
-                        <td><strong>${team.test_run_count}</strong></td>
+                        <td><strong>${formatNumber(team.test_run_count)}</strong></td>
                     </tr>
                 `).join('');
             } else {
@@ -709,10 +714,10 @@
                 tbody.innerHTML = allTeamsActivity.map(team => `
                     <tr>
                         <td>${escapeHtml(team.team_name)}</td>
-                        <td><strong>${team.total}</strong></td>
-                        <td>${team.by_action?.CREATE ?? 0}</td>
-                        <td>${team.by_action?.UPDATE ?? 0}</td>
-                        <td>${team.by_action?.DELETE ?? 0}</td>
+                        <td><strong>${formatNumber(team.total)}</strong></td>
+                        <td>${formatNumber(team.by_action?.CREATE ?? 0)}</td>
+                        <td>${formatNumber(team.by_action?.UPDATE ?? 0)}</td>
+                        <td>${formatNumber(team.by_action?.DELETE ?? 0)}</td>
                     </tr>
                 `).join('');
             } else {
@@ -899,11 +904,13 @@
                     const name = escapeHtml(dept.display_name || dept.dept_name || dept.dept_id || '-');
                     const total = Number(dept.total_user_count ?? dept.user_count ?? 0);
                     const direct = Number(dept.direct_user_count ?? 0);
-                    const directMarkup = direct > 0 ? `<span class="text-muted ms-1">(${directLabel}: ${direct})</span>` : '';
+                    const directMarkup = direct > 0
+                        ? `<span class="text-muted ms-1">(${directLabel}: ${formatNumber(direct)})</span>`
+                        : '';
                     return `
                         <tr>
                             <td title="${escapeHtml(dept.dept_id || '')}">${name}</td>
-                            <td><strong>${total}</strong>${directMarkup}</td>
+                            <td><strong>${formatNumber(total)}</strong>${directMarkup}</td>
                         </tr>
                     `;
                 }).join('');
@@ -1549,16 +1556,16 @@
         const rows = sortedTeams.map(team => `
             <tr>
                 <td>${escapeHtml(team.team_name || translate('teamStats.teamNameFallback', 'Team #{id}', { id: team.team_id }))}</td>
-                <td><strong>${team.total_created}</strong></td>
-                <td>${team.total_updated}</td>
+                <td><strong>${formatNumber(team.total_created)}</strong></td>
+                <td>${formatNumber(team.total_updated)}</td>
             </tr>
         `);
 
         rows.push(`
             <tr class="table-active">
                 <td>${escapeHtml(totalLabel)}</td>
-                <td><strong>${totalCreated}</strong></td>
-                <td>${totalUpdated}</td>
+                <td><strong>${formatNumber(totalCreated)}</strong></td>
+                <td>${formatNumber(totalUpdated)}</td>
             </tr>
         `);
 
@@ -1929,7 +1936,10 @@
     function formatNumber(value) {
         const number = Number(value || 0);
         if (!Number.isFinite(number)) return '0';
-        return number.toLocaleString('en-US');
+        const locale = (window.i18n && typeof window.i18n.getCurrentLanguage === 'function')
+            ? window.i18n.getCurrentLanguage()
+            : (navigator.language || 'en-US');
+        return number.toLocaleString(locale);
     }
 
     function formatUsd(value) {
