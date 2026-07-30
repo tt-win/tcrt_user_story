@@ -557,7 +557,7 @@ body.dashboard-page .app-main {
 
 .dashboard-assigned-preview-number {
     flex: 0 0 auto;
-    font-family: var(--font-condensed);
+    font-family: var(--font-mono);
     font-weight: 600;
 }
 

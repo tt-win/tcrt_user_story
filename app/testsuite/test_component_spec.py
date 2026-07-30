@@ -586,6 +586,19 @@ def test_app_header_does_not_clip_dropdowns():
     assert "overflow: visible" in title.group(1)
 
 
+def test_app_header_buttons_disable_hover_lift():
+    """Header chrome buttons must not translateY on hover (scrollport would clip the top edge)."""
+    style = (Path(__file__).resolve().parents[1] / "static" / "css" / "style.css").read_text(
+        encoding="utf-8"
+    )
+    block = re.search(
+        r"\.app-header \.btn:hover,\s*\.app-header \.btn:focus-visible,[\s\S]*?\{([^}]+)\}",
+        style,
+    )
+    assert block, "missing .app-header .btn:hover override"
+    assert "transform: none" in block.group(1)
+
+
 def test_chrome_dropdown_toggles_use_fixed_popper(client):
     """Every chrome dropdown toggle uses Popper fixed strategy (title + toolbar + footer)."""
     soup = render_page(client, "/team-management")
@@ -620,3 +633,113 @@ def test_language_switcher_clears_assistant_fab():
     ).read_text(encoding="utf-8")
     assert "var(--z-assistant)" in assistant
     assert "var(--footer-height)" in assistant
+
+
+# --------------------------------------------------------------------------- #
+# Self-hosted presentation assets + font token integrity
+# --------------------------------------------------------------------------- #
+
+_STATIC_DIR = Path(__file__).resolve().parents[1] / "static"
+_VENDOR_DIR = _STATIC_DIR / "vendor"
+
+# Page-scoped libraries not covered by the base-layout vendor set in
+# fix-frontend-asset-and-font-integrity (tracked debt). New external hosts must
+# not be added without extending vendor/ or this allowlist deliberately.
+_ALLOWED_PAGE_SCOPED_ASSET_PREFIXES = (
+    "https://cdn.jsdelivr.net/npm/marked@",
+    "https://cdn.jsdelivr.net/npm/dompurify@",
+    "https://cdn.jsdelivr.net/npm/chart.js@",
+    "https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@",
+    "https://cdn.jsdelivr.net/npm/reactflow@",
+    "https://cdn.jsdelivr.net/npm/monaco-editor@",
+    "https://cdn.jsdelivr.net/npm/handsontable@",
+    "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/",
+    "https://unpkg.com/dagre@",
+    "https://unpkg.com/react@",
+    "https://unpkg.com/react-dom@",
+    "https://unpkg.com/reactflow@",
+)
+
+
+def _asset_url(attr: str | None) -> str:
+    return (attr or "").strip()
+
+
+def _is_external_http(url: str) -> bool:
+    return url.startswith("http://") or url.startswith("https://")
+
+
+def _is_allowed_page_scoped_asset(url: str) -> bool:
+    return any(url.startswith(prefix) for prefix in _ALLOWED_PAGE_SCOPED_ASSET_PREFIXES)
+
+
+@pytest.mark.parametrize("page_name, route", all_page_routes())
+def test_pages_have_no_external_presentation_asset_origins(page_name, route, client):
+    """Presentation <link>/<script>/<img> stay on-origin; iframe/a are out of scope."""
+    soup = render_page(client, route)
+    offenders: list[str] = []
+
+    for tag_name, attr in (("link", "href"), ("script", "src"), ("img", "src")):
+        for node in soup.find_all(tag_name):
+            url = _asset_url(node.get(attr))
+            if not url or not _is_external_http(url):
+                continue
+            if tag_name in {"link", "script"} and _is_allowed_page_scoped_asset(url):
+                continue
+            offenders.append(f"{tag_name}[{attr}]={url}")
+
+    assert not offenders, (
+        f"{page_name}: external presentation assets must be self-hosted "
+        f"(or an explicit page-scoped allowlist entry): " + "; ".join(offenders)
+    )
+
+
+def test_font_tokens_are_backed_by_vendor_files():
+    """Every --font-* token maps to a declared self-hosted @font-face family + woff2."""
+    style = (_STATIC_DIR / "css" / "style.css").read_text(encoding="utf-8")
+    fonts_css = (_VENDOR_DIR / "fonts" / "fonts.css").read_text(encoding="utf-8")
+
+    token_map = dict(re.findall(r"--(font-[\w-]+)\s*:\s*([^;]+);", style))
+    assert "font-sans" in token_map
+    assert "font-mono" in token_map
+    assert "font-condensed" not in token_map
+
+    for token, value in token_map.items():
+        # First quoted family is the primary face that must be self-hosted.
+        match = re.search(r"['\"]([^'\"]+)['\"]", value)
+        assert match, f"--{token} has no quoted family: {value!r}"
+        family = match.group(1)
+        assert f"font-family: '{family}'" in fonts_css or f'font-family: "{family}"' in fonts_css, (
+            f"--{token} family {family!r} missing from vendor fonts.css"
+        )
+
+    woff2_files = list((_VENDOR_DIR / "fonts").rglob("*.woff2"))
+    assert woff2_files, "expected self-hosted woff2 files under app/static/vendor/fonts/"
+    assert (_VENDOR_DIR / "bootstrap" / "bootstrap.min.css").is_file()
+    assert (_VENDOR_DIR / "bootstrap" / "bootstrap.bundle.min.js").is_file()
+    assert (_VENDOR_DIR / "fontawesome" / "css" / "all.min.css").is_file()
+    assert (_VENDOR_DIR / "pako" / "pako.min.js").is_file()
+    assert (_VENDOR_DIR / "MANIFEST.md").is_file()
+
+
+def test_base_layout_uses_vendor_assets_not_cdn(client):
+    """base.html common chrome loads Bootstrap / FA / fonts / pako from /static/vendor/."""
+    soup = render_page(client, "/")
+    hrefs = [_asset_url(n.get("href")) for n in soup.find_all("link")]
+    srcs = [_asset_url(n.get("src")) for n in soup.find_all("script")]
+    joined = "\n".join(hrefs + srcs)
+    assert "/static/vendor/bootstrap/bootstrap.min.css" in joined
+    assert "/static/vendor/fontawesome/css/all.min.css" in joined
+    assert "/static/vendor/fonts/fonts.css" in joined
+    assert "/static/vendor/bootstrap/bootstrap.bundle.min.js" in joined
+    assert "/static/vendor/pako/pako.min.js" in joined
+    for forbidden in (
+        "fonts.googleapis.com",
+        "fonts.gstatic.com",
+        "cdn.jsdelivr.net/npm/bootstrap@",
+        "cdn.jsdelivr.net/npm/pako@",
+        "cdnjs.cloudflare.com/ajax/libs/font-awesome/",
+        "gravatar.com",
+        "feishucdn.com",
+    ):
+        assert forbidden not in joined, f"base layout still references {forbidden}"

@@ -1,18 +1,15 @@
 /* 全局字型設定 */
 :root {
-    --font-sans: 'Noto Sans', 'Noto Sans CJK TC', sans-serif;
-    --font-condensed: 'Noto Sans Condensed', 'Noto Sans CJK TC', sans-serif;
+    --font-sans: 'Noto Sans', 'Noto Sans TC', sans-serif;
+    --font-mono: 'Noto Sans Mono', 'Noto Sans TC', ui-monospace, monospace;
 }
 
-body {
-    font-family: var(--font-sans) !important;
-}
-
-/* Test Case Number 使用 Noto Sans Condensed */
+/* 編號類欄位使用等寬字型（具名 class，避免萬用選擇器誤傷說明文字） */
 .test-case-number,
-[class*="case-number"],
-[class*="test-number"] {
-    font-family: var(--font-condensed) !important;
+.test-case-number-open,
+.test-case-number-value,
+.case-number {
+    font-family: var(--font-mono);
 }
 
 /* 緊湊設計系統 */
@@ -199,9 +196,7 @@ body {
 }
 
 body {
-    font-family:
-        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
-        Arial, sans-serif;
+    font-family: var(--font-sans);
     font-size: 14px;
     line-height: 1.5;
     color: var(--tr-text-primary);
@@ -276,6 +271,16 @@ a.btn:active {
 .btn:hover {
     transform: translateY(-1px);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Fixed chrome is a tight horizontal strip; overflow-x:auto on the toolbar
+   scrollport also clips overflow-y, so the 1px hover lift shears the top border.
+   Keep shadow feedback, drop the lift inside header/footer chrome. */
+.app-header .btn:hover,
+.app-header .btn:focus-visible,
+.app-footer .btn:hover,
+.app-footer .btn:focus-visible {
+    transform: none;
 }
 
 .btn:disabled,
@@ -1657,6 +1662,10 @@ body:not([data-assistant-widget="off"]) #language-switcher {
     color: var(--btn-info-hover-color);
     transform: translateY(-1px);
     box-shadow: var(--btn-info-shadow);
+}
+
+.app-header #version-update-btn:hover {
+    transform: none;
 }
 
 #version-update-btn:focus,

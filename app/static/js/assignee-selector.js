@@ -590,7 +590,9 @@ class AssigneeSelector {
             // 頭像
             if (this.options.showAvatar && contact.avatar) {
                 const avatar = document.createElement('img');
-                avatar.src = contact.avatar;
+                avatar.src = window.AuthClient
+                    ? window.AuthClient.avatarUrl(contact.avatar)
+                    : contact.avatar;
                 avatar.className = 'assignee-selector-avatar';
                 avatar.alt = contact.name;
                 avatar.onerror = () => {

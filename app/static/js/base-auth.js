@@ -164,7 +164,9 @@ class BaseAuthManager {
         // 更新頭像
         if (this.userAvatarImage && this.userAvatarIcon) {
             if (userInfo.avatar_url) {
-                this.userAvatarImage.src = userInfo.avatar_url;
+                this.userAvatarImage.src = window.AuthClient
+                    ? window.AuthClient.avatarUrl(userInfo.avatar_url)
+                    : userInfo.avatar_url;
                 this.userAvatarImage.classList.remove('d-none');
                 this.userAvatarIcon.classList.add('d-none');
             } else {

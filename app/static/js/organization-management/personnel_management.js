@@ -266,7 +266,7 @@
       const role = (u.role || '').toUpperCase();
       return `
         <button type="button" class="list-group-item list-group-item-action d-flex align-items-center" data-user-id="${u.id}">
-          <img src="${avatar}" onerror="this.src='https://www.gravatar.com/avatar/?d=mp'" class="rounded me-2" style="width:28px;height:28px;object-fit:cover;">
+          <img src="${avatar}" onerror="this.style.display='none'" class="rounded me-2" style="width:28px;height:28px;object-fit:cover;">
           <div class="flex-grow-1 text-start">
             <div class="fw-semibold">${escapeHtml(display)}</div>
             <div class="text-muted small">${escapeHtml(u.email || '')}</div>
@@ -296,17 +296,27 @@
     return u.full_name || u.username || '';
   }
 
+  function userAvatarProxyUrl(userId) {
+    const path = `/api/avatars/users/${userId}`;
+    return window.AuthClient ? window.AuthClient.avatarUrl(path) : path;
+  }
+
+  function larkAvatarProxyUrl(larkUserId) {
+    const path = `/api/avatars/lark/${encodeURIComponent(larkUserId)}`;
+    return window.AuthClient ? window.AuthClient.avatarUrl(path) : path;
+  }
+
   function getAvatarUrl(u) {
-    let larkData = null;
-    if (u.lark_user_id && u.lark_user_id.trim() && state.larkCache.has(u.lark_user_id)) {
-      larkData = state.larkCache.get(u.lark_user_id);
+    if (u && u.avatar_url && String(u.avatar_url).startsWith('/api/avatars/')) {
+      return window.AuthClient ? window.AuthClient.avatarUrl(u.avatar_url) : u.avatar_url;
     }
-    console.log('getAvatarUrl for', u.id, 'using lark:', !!larkData, 'avatar:', larkData ? larkData.avatar : 'fallback');
-    if (u.lark_user_id && u.lark_user_id.trim() && state.larkCache.has(u.lark_user_id)) {
-      const avatar = state.larkCache.get(u.lark_user_id).avatar;
-      return avatar && avatar.trim() ? avatar : 'https://www.gravatar.com/avatar/?d=mp';
+    if (u && u.id != null) {
+      return userAvatarProxyUrl(u.id);
     }
-    return 'https://www.gravatar.com/avatar/?d=mp';
+    if (u && u.lark_user_id && u.lark_user_id.trim()) {
+      return larkAvatarProxyUrl(u.lark_user_id.trim());
+    }
+    return userAvatarProxyUrl(0);
   }
 
   async function onSelectUser(userId) {
@@ -667,8 +677,8 @@
     // 如果沒有 larkId，顯示未配置消息
     if (!larkId || !larkId.trim()) {
       notConfiguredDiv.style.display = 'block';
-      img.src = 'https://www.gravatar.com/avatar/?d=mp';
-      img.style.display = 'block'; // 重置顯示狀態
+      img.removeAttribute('src');
+      img.style.display = 'none';
       nameEl.textContent = '';
       return;
     }
@@ -676,8 +686,8 @@
     // 如果沒有快取資料，也顯示未配置消息
     if (!state.larkCache.has(larkId)) {
       notConfiguredDiv.style.display = 'block';
-      img.src = 'https://www.gravatar.com/avatar/?d=mp';
-      img.style.display = 'block'; // 重置顯示狀態
+      img.removeAttribute('src');
+      img.style.display = 'none';
       nameEl.textContent = '';
       return;
     }
@@ -687,14 +697,14 @@
     
     // 檢查是否有有用的資料（名稱和頭像）
     const hasName = data.name && data.name.trim();
-    const hasAvatar = data.avatar && data.avatar.trim();
     
-    // 總是顯示預覽框，如果有連結
+    // 總是顯示預覽框，如果有連結（頭像一律走本站代理端點）
     console.log('Showing preview box');
-    const avatarUrl = hasAvatar ? data.avatar : 'https://www.gravatar.com/avatar/?d=mp';
-    img.src = avatarUrl;
-    img.style.display = 'block'; // 總是顯示圖片，使用 Gravatar 作為 fallback
-    img.onerror = function() { this.src = 'https://www.gravatar.com/avatar/?d=mp'; }; // 額外確保 onerror fallback
+    img.src = (data.avatar && data.avatar.trim())
+      ? (window.AuthClient ? window.AuthClient.avatarUrl(data.avatar) : data.avatar)
+      : larkAvatarProxyUrl(larkId);
+    img.style.display = 'block';
+    img.onerror = function() { this.style.display = 'none'; };
     nameEl.textContent = hasName ? data.name : '';
     box.style.display = 'flex'; // 使用 flex 顯示，以正確顯示對齊
     // 隱藏未配置消息

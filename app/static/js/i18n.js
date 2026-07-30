@@ -36,8 +36,8 @@ class I18nSystem {
              // Reflect on <html lang>
              try { document.documentElement.lang = this.currentLanguage; } catch (_) {}
              
-             // Load translation files
-             await this.loadTranslations();
+             // Load only the active locale at startup
+             await this.loadTranslations([this.currentLanguage]);
              
              // Mark as loaded BEFORE translation applied
              this.isLoaded = true;
@@ -52,6 +52,15 @@ class I18nSystem {
          } catch (error) {
              console.error('Failed to initialize i18n:', error);
              this.isLoaded = false;
+             // Never leave the page permanently hidden behind i18n-loading
+             try {
+                 document.body && document.body.classList.remove('i18n-loading');
+             } catch (_) {}
+             try {
+                 document.dispatchEvent(new CustomEvent('i18nReady', {
+                     detail: { language: this.currentLanguage, failed: true }
+                 }));
+             } catch (_) {}
           }
       }
 
@@ -147,15 +156,27 @@ class I18nSystem {
     }
 
     /**
-     * Load translation files for all supported languages
+     * Load translation files for the requested languages (default: active only).
+     * @param {string[]|null} languages - Locale codes to fetch; null loads currentLanguage only.
      */
-     async loadTranslations() {
-         // Load translations for each supported language with cache busting
-         this.loadingLanguages = new Set();
-         // Set cache buster once for all language loads to prevent race conditions
+     async loadTranslations(languages = null) {
+         const targets = Array.isArray(languages) && languages.length
+             ? languages.filter((language) => this.supportedLanguages.includes(language))
+             : [this.currentLanguage];
+
+         if (!this.loadingLanguages) {
+             this.loadingLanguages = new Set();
+         }
+         // Set cache buster once for this load batch
          this.cacheBuster = Date.now();
-         const cachePromises = this.supportedLanguages.map(async (language) => {
-             if (this.loadingLanguages.has(language)) return;
+
+         const cachePromises = targets.map(async (language) => {
+             if (this.translations[language]) {
+                 return;
+             }
+             if (this.loadingLanguages.has(language)) {
+                 return;
+             }
              this.loadingLanguages.add(language);
              try {
                  const response = await fetch(`/static/locales/${language}.json?ver=${encodeURIComponent(this.translationVersion)}&t=${this.cacheBuster}`, {
@@ -178,26 +199,25 @@ class I18nSystem {
                  if (cached) {
                      this.translations[language] = JSON.parse(cached);
                      console.warn(`Using cached translations for ${language} due to load error`);
-                 } else {
+                 } else if (language === this.currentLanguage && language !== this.fallbackLanguage) {
                      // If current language fails to load, try fallback
-                     if (language === this.currentLanguage && language !== this.fallbackLanguage) {
-                         console.warn(`Falling back to ${this.fallbackLanguage}`);
-                         this.currentLanguage = this.fallbackLanguage;
-                         // Load fallback translations if not already loaded
-                         if (!this.translations[this.fallbackLanguage]) {
-                             try {
-                                 const resp = await fetch(`/static/locales/${this.fallbackLanguage}.json?ver=${encodeURIComponent(this.translationVersion)}&t=${this.cacheBuster}`, {
-                                     cache: 'no-store'
-                                 });
-                                 if (resp.ok) {
-                                     this.translations[this.fallbackLanguage] = await resp.json();
-                                 }
-                             } catch (e) {
-                                 console.error('Failed to load fallback translations:', e);
+                     console.warn(`Falling back to ${this.fallbackLanguage}`);
+                     this.currentLanguage = this.fallbackLanguage;
+                     if (!this.translations[this.fallbackLanguage]) {
+                         try {
+                             const resp = await fetch(`/static/locales/${this.fallbackLanguage}.json?ver=${encodeURIComponent(this.translationVersion)}&t=${this.cacheBuster}`, {
+                                 cache: 'no-store'
+                             });
+                             if (resp.ok) {
+                                 this.translations[this.fallbackLanguage] = await resp.json();
                              }
+                         } catch (e) {
+                             console.error('Failed to load fallback translations:', e);
                          }
                      }
                  }
+             } finally {
+                 this.loadingLanguages.delete(language);
              }
          });
  
@@ -222,24 +242,27 @@ async switchLanguage(language) {
         if (language === this.currentLanguage) {
             return true; // Already using this language
         }
+
+        const previousLanguage = this.currentLanguage;
  
-        // Check if translations are loaded
+        // Fetch target locale on demand; only switch after a successful load.
         if (!this.translations[language]) {
             console.warn(`Translations for ${language} not loaded, attempting to load...`);
             try {
-                const response = await fetch(`/static/locales/${language}.json?ver=${encodeURIComponent(this.translationVersion)}&t=${this.cacheBuster}`, {
-                    cache: 'no-store'
-                });
-                if (!response.ok) {
+                await this.loadTranslations([language]);
+                if (!this.translations[language]) {
                     throw new Error(`Failed to load ${language}`);
                 }
-                this.translations[language] = await response.json();
             } catch (error) {
                 console.error(`Failed to load ${language}:`, error);
-                // Restore UI to previous language
-                if (this.currentLanguage && this.translations[this.currentLanguage]) {
+                // Preserve current language; do not partially apply the target.
+                this.currentLanguage = previousLanguage;
+                if (this.translations[this.currentLanguage]) {
                     this.translatePage();
                 }
+                try {
+                    document.body && document.body.classList.remove('i18n-loading');
+                } catch (_) {}
                 alert(this.t(
                     'common.languageLoadFailed',
                     { language },

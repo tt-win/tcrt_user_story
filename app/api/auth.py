@@ -626,6 +626,8 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
         # 檢查 Lark 整合狀態
         lark_status = await UserService.check_lark_integration_status(current_user.id)
 
+        from app.services.avatar_proxy_service import get_avatar_proxy_service
+
         return UserInfoResponse(
             user_id=current_user.id,
             username=current_user.username,
@@ -636,7 +638,7 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
             permissions=permissions,
             accessible_teams=accessible_teams,
             lark_name=lark_status.get("name"),
-            avatar_url=lark_status.get("avatar")
+            avatar_url=get_avatar_proxy_service().user_proxy_url(current_user.id),
         )
         
     except Exception as e:

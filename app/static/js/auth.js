@@ -454,6 +454,34 @@ class AuthClient {
         
         console.log('[AuthClient] 認證客戶端已銷毀');
     }
+
+    /**
+     * Build an <img>-safe URL for avatar proxy paths.
+     * Browser image requests cannot send Authorization, so append access_token.
+     * @param {string|null|undefined} url
+     * @returns {string}
+     */
+    avatarUrl(url) {
+        if (!url) {
+            return '';
+        }
+        const value = String(url).trim();
+        if (!value.startsWith('/api/avatars/')) {
+            return value;
+        }
+        const token = this.getToken();
+        if (!token) {
+            return value;
+        }
+        try {
+            const parsed = new URL(value, window.location.origin);
+            parsed.searchParams.set('access_token', token);
+            return `${parsed.pathname}${parsed.search}`;
+        } catch (_) {
+            const sep = value.includes('?') ? '&' : '?';
+            return `${value}${sep}access_token=${encodeURIComponent(token)}`;
+        }
+    }
 }
 
 // 創建全域認證客戶端實例
