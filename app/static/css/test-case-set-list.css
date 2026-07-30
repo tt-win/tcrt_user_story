@@ -15,7 +15,7 @@
    stacking context that clips the menu). */
 .test-case-set-card:hover,
 .test-case-set-card:has(.dropdown.show) {
-  z-index: 1030;
+  z-index: var(--z-chrome);
 }
 
 .test-case-set-card .dropdown-menu {

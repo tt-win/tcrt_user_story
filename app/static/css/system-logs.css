@@ -7,6 +7,7 @@
 
 .log-output {
     height: 70vh;
+    height: 70dvh;
     overflow-y: auto;
     font-family: SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
     font-size: 0.8rem;

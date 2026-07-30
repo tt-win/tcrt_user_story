@@ -1,0 +1,161 @@
+{
+  "note": "Local stacking below the --z-* window scale; not chrome overlays. Allowed residual numerics.",
+  "numericLocalZIndex": [
+    {
+      "file": "app/static/css/assistant-widget.css",
+      "line": 134,
+      "value": 5,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/automation-hub.css",
+      "line": 72,
+      "value": 10,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/automation-hub.css",
+      "line": 671,
+      "value": 1,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/index.css",
+      "line": 52,
+      "value": 1,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/index.css",
+      "line": 375,
+      "value": 1,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/qa-ai-helper.css",
+      "line": 354,
+      "value": 1,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/qa-ai-helper.css",
+      "line": 715,
+      "value": 5,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/qa-ai-helper.css",
+      "line": 792,
+      "value": 0,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/qa-ai-helper.css",
+      "line": 810,
+      "value": 2,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/qa-ai-helper.css",
+      "line": 819,
+      "value": 1,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/qa-ai-helper.css",
+      "line": 851,
+      "value": 1,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/style.css",
+      "line": 1351,
+      "value": 2,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/style.css",
+      "line": 1656,
+      "value": 1,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/system-setup-standalone.css",
+      "line": 109,
+      "value": 1,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/team-management.css",
+      "line": 5,
+      "value": 1,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/test-case-helper-modal.css",
+      "line": 51,
+      "value": 20,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/test-case-helper-modal.css",
+      "line": 428,
+      "value": 2,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/test-case-management.css",
+      "line": 177,
+      "value": 10,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/test-case-management.css",
+      "line": 604,
+      "value": 10,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/test-case-management.css",
+      "line": 612,
+      "value": 10,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/test-case-management.css",
+      "line": 613,
+      "value": 15,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/test-case-management.css",
+      "line": 705,
+      "value": 20,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/test-case-management.css",
+      "line": 1082,
+      "value": 2,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/test-case-reference.css",
+      "line": 49,
+      "value": 1,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/test-case-reference.css",
+      "line": 59,
+      "value": 2,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    },
+    {
+      "file": "app/static/css/test-run-execution.css",
+      "line": 468,
+      "value": 10,
+      "reason": "in-component relative stacking (below window-level --z-* scale)"
+    }
+  ]
+}

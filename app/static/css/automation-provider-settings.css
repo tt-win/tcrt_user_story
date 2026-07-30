@@ -8,6 +8,7 @@
 
 .provider-table-wrap {
   max-height: 62vh;
+  max-height: 62dvh;
   overflow: auto;
 }
 

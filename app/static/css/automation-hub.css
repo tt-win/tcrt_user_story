@@ -48,6 +48,7 @@
 
 .automation-panel {
   min-height: 56vh;
+  min-height: 56dvh;
   overflow: hidden;
 }
 
@@ -117,6 +118,7 @@
 .automation-script-tree,
 .automation-suite-list {
   max-height: calc(56vh - 40px);
+  max-height: calc(56dvh - 40px);
   overflow: auto;
 }
 
@@ -248,6 +250,7 @@ mark.automation-hl {
 .automation-browser-panel .automation-script-tree,
 .automation-browser-panel .automation-test-flat-list {
   max-height: calc(100vh - 320px);
+  max-height: calc(100dvh - 320px);
   min-height: 200px;
 }
 
@@ -259,6 +262,7 @@ mark.automation-hl {
 /* ── Suite modal script picker ─────────────────────────────────── */
 .automation-suite-picker {
   max-height: 48vh;
+  max-height: 48dvh;
   overflow: auto;
   border: 1px solid var(--tr-border-subtle, #edf0f2);
   border-radius: 0.375rem;
@@ -285,11 +289,13 @@ mark.automation-hl {
 /* Full-width suite list when the Suites tab owns the whole pane. */
 .automation-suite-list-full {
   max-height: calc(100vh - 260px);
+  max-height: calc(100dvh - 260px);
 }
 
 /* ── Test view rows ────────────────────────────────────────────── */
 .automation-test-flat-list {
   max-height: calc(56vh - 40px);
+  max-height: calc(56dvh - 40px);
   overflow: auto;
 }
 
@@ -652,6 +658,7 @@ mark.automation-hl {
 /* ── Coverage Tables ───────────────────────────────────────────── */
 .automation-coverage-table-wrap {
   max-height: 48vh;
+  max-height: 48dvh;
   overflow: auto;
   border: 1px solid var(--tr-border, #dee2e6);
   border-radius: 8px;
@@ -695,6 +702,7 @@ mark.automation-hl {
 
 .automation-coverage-gap-list {
   max-height: 32vh;
+  max-height: 32dvh;
 }
 
 .automation-coverage-gap-item {
@@ -709,6 +717,7 @@ mark.automation-hl {
 /* ── Webhook Settings ──────────────────────────────────────────── */
 .automation-webhook-table-wrap {
   max-height: 60vh;
+  max-height: 60dvh;
   overflow: auto;
 }
 
@@ -772,6 +781,7 @@ mark.automation-hl {
   .automation-script-tree,
   .automation-suite-list {
     max-height: 44vh;
+    max-height: 44dvh;
   }
 
   .automation-coverage-stats {
@@ -975,6 +985,7 @@ mark.automation-hl {
 
 .automation-coverage-explorer {
   max-height: 52vh;
+  max-height: 52dvh;
   overflow: auto;
   border-bottom: 1px solid var(--tr-border-subtle, #edf0f2);
 }

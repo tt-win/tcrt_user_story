@@ -4130,5 +4130,8 @@
     "confirmOverwrite": "要以原廠設定覆寫 System Prompt 與所有內建 Skill 內容嗎？會保留啟用狀態，不會刪除自訂 Skill。",
     "confirmDeleteBuiltin": "這是內建 Skill，刪除後下次執行「還原原廠設定（覆寫內建 Skill）」會自動重新加入。確定要刪除嗎？",
     "loadFailed": "載入失敗"
+  },
+  "chrome": {
+    "moreActions": "更多"
   }
 }

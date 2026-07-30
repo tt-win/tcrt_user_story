@@ -513,7 +513,7 @@
     "systemLogs": "System Logs",
     "teamStatistics": "Team Statistics"
   },
-    "audit": {
+  "audit": {
     "viewLogs": "Audit Logs",
     "pageTitle": "Audit Log Review",
     "pageSubtitle": "Review and trace system activities",
@@ -3039,7 +3039,7 @@
         "summary": "Summary (All Sheets)",
         "perSheet": "Per Sheet Stats (Stacked)",
         "openHtml": "Open HTML Report",
-    "close": "Close",
+        "close": "Close",
         "noData": "No data"
       },
       "messages": {
@@ -4130,5 +4130,8 @@
     "confirmOverwrite": "Overwrite System Prompt and all builtin skill bodies from factory? Enabled flags are kept. Custom skills are not deleted.",
     "confirmDeleteBuiltin": "This is a builtin skill. It will be removed from the database until the next \"Restore factory (overwrite builtins)\" re-inserts it. Continue?",
     "loadFailed": "Load failed"
+  },
+  "chrome": {
+    "moreActions": "More"
   }
 }

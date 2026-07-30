@@ -12,7 +12,7 @@
 }
 
 .team-card.dropdown-open {
-    z-index: 1200;
+    z-index: var(--z-assistant);
 }
 
 .alert-sm {

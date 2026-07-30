@@ -31,13 +31,13 @@ The system SHALL provide consistent hover, active, disabled, outline, and loadin
 
 ### Requirement: Single source-of-truth design tokens
 
-系統 SHALL 在單一位置（`style.css` 的 `:root`）定義全站唯一一層 design token，涵蓋顏色、間距（spacing scale）、圓角（radius）與陰影／層級（elevation）。所有頁面與元件 SHALL 透過 token 取得這些視覺值，而非各自定義或硬編。既有的多前綴 token（`--tr-`／`--btn-`／`--qa-`／`--tc-`／`--ai-`）SHALL 收斂為單一命名規格；遷移期舊前綴 SHALL 以別名（alias）指向 canonical token，以維持非破壞性相容。
+系統 SHALL 在單一位置（`style.css` 的 `:root`）定義全站唯一一層 design token，涵蓋顏色、間距（spacing scale）、圓角（radius）、陰影（shadow）與堆疊層級（z-index scale）。所有頁面與元件 SHALL 透過 token 取得這些視覺值，而非各自定義或硬編。既有的多前綴 token（`--tr-`／`--btn-`／`--qa-`／`--tc-`／`--ai-`）SHALL 收斂為單一命名規格；遷移期舊前綴 SHALL 以別名（alias）指向 canonical token，以維持非破壞性相容。
 
 #### Scenario: Tokens defined in one place
 
-- **WHEN** 任一頁面或元件需要顏色、間距、圓角或陰影值
+- **WHEN** 任一頁面或元件需要顏色、間距、圓角、陰影或堆疊層級值
 - **THEN** 該值 SHALL 解析自 `:root` 中定義的單一 canonical token
-- **AND** 不同頁面對同一語意（如主色、標準間距）SHALL 解析到相同的 token 值
+- **AND** 不同頁面對同一語意（如主色、標準間距、固定框架層級）SHALL 解析到相同的 token 值
 
 #### Scenario: Legacy prefixes resolve to canonical tokens
 
@@ -49,6 +49,12 @@ The system SHALL provide consistent hover, active, disabled, outline, and loadin
 
 - **WHEN** 任一 CSS 檔需要視覺值（含先前完全未使用 token 的 `team-statistics.css`、`test-case-reference.css`、`test-case-set-list.css`）
 - **THEN** 該檔 SHALL 以 `var(--…)` 引用 canonical token 取得視覺值
+
+#### Scenario: Stacking order is tokenized
+
+- **WHEN** 任一元件需要 `z-index`
+- **THEN** 該值 SHALL 解析自 `:root` 的 `--z-*` scale
+- **AND** SHALL 不出現硬編堆疊數值，亦 SHALL 不以 `!important` 宣告 `z-index`
 
 ### Requirement: Single canonical primary color aligned with framework
 
