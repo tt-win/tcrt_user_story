@@ -133,6 +133,8 @@ node_modules/
 # Configuration files with sensitive data
 config.yaml
 config.yaml.backup
+# 本機測試帳號密碼（僅供本機驗證使用，絕不進版控）
+credentials.md
 # backup_script.sh
 
 # Certificates
@@ -196,6 +198,7 @@ api_*.md
 !prompts/**/*.md
 !openspec/**/*.md
 !app/static/locales/GLOSSARY.md
+!app/static/vendor/MANIFEST.md
 
 # Node (dev tooling for frontend lint; no build pipeline)
 node_modules/
