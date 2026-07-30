@@ -82,9 +82,13 @@ def _serialize_user_response(
     avatar_url: Optional[str] = None,
     lark_name: Optional[str] = None,
 ) -> UserResponse:
+    from app.services.avatar_proxy_service import get_avatar_proxy_service
+
     resolved_lark_name = lark_name or (
         user.lark_user.name if getattr(user, "lark_user", None) else None
     )
+    # Always serve avatars via the application-origin proxy (never upstream CDN URLs).
+    proxy_avatar = get_avatar_proxy_service().user_proxy_url(user.id)
     return UserResponse(
         id=user.id,
         username=user.username,
@@ -94,7 +98,7 @@ def _serialize_user_response(
         role=user.role.value,
         is_active=user.is_active,
         lark_user_id=getattr(user, "lark_user_id", None),
-        avatar_url=avatar_url,
+        avatar_url=proxy_avatar,
         created_at=user.created_at,
         updated_at=user.updated_at,
         last_login_at=user.last_login_at,
@@ -108,7 +112,10 @@ def _serialize_user_self_out(
     avatar_url: Optional[str] = None,
     lark_name: Optional[str] = None,
 ) -> UserSelfOut:
+    from app.services.avatar_proxy_service import get_avatar_proxy_service
+
     role_value = str(user.role.value) if isinstance(user.role, UserRole) else str(user.role)
+    proxy_avatar = get_avatar_proxy_service().user_proxy_url(user.id)
     return UserSelfOut(
         id=user.id,
         username=user.username,
@@ -119,7 +126,7 @@ def _serialize_user_self_out(
         created_at=user.created_at,
         updated_at=user.updated_at,
         last_login_at=user.last_login_at,
-        avatar_url=avatar_url,
+        avatar_url=proxy_avatar,
         lark_name=lark_name,
         teams=teams or [],
     )

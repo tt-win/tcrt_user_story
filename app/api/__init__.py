@@ -52,12 +52,14 @@ from .pins import router as pins_router
 from .assistant import router as assistant_router
 from .admin_assistant import router as admin_assistant_router
 from .dashboard import router as dashboard_router
+from .avatars import router as avatars_router
 
 # 創建主 API 路由器
 api_router = APIRouter()
 
 # 包含所有子路由
 api_router.include_router(auth_router)
+api_router.include_router(avatars_router)
 api_router.include_router(users_router)
 api_router.include_router(teams_router)
 api_router.include_router(test_run_configs_router)

@@ -217,7 +217,7 @@
 .qa-helper-markdown-preview h2,
 .qa-helper-markdown-preview h3,
 .qa-helper-markdown-preview h4 {
-  font-family: "Noto Sans Condensed", "Noto Sans", sans-serif;
+  font-family: var(--font-mono);
   margin-top: 1rem;
   margin-bottom: 0.5rem;
 }
@@ -315,14 +315,14 @@
 }
 
 .qa-helper-side-card h6 {
-  font-family: "Noto Sans Condensed", "Noto Sans", sans-serif;
+  font-family: var(--font-mono);
   letter-spacing: 0.01em;
 }
 
 .qa-helper-textarea,
 .qa-helper-textarea-lg,
 .qa-helper-textarea-sm {
-  font-family: "Noto Sans", "Noto Sans CJK TC", sans-serif;
+  font-family: var(--font-sans);
   resize: vertical;
 }
 
@@ -782,7 +782,7 @@
   background: none;
   border: none;
   color: rgba(36, 99, 235, 0.13);
-  font-family: "Noto Sans Condensed", "Noto Sans", sans-serif;
+  font-family: var(--font-mono);
   font-size: 4.5rem;
   font-weight: 900;
   letter-spacing: -0.02em;
@@ -794,7 +794,7 @@
 
 .qa-helper-goal-entry-title {
   color: #0f172a;
-  font-family: "Noto Sans Condensed", "Noto Sans", sans-serif;
+  font-family: var(--font-mono);
   font-size: 0.98rem;
   font-weight: 700;
 }

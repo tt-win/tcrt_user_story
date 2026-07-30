@@ -90,12 +90,15 @@ async def list_lark_users(
             result = await session.execute(query)
             rows = result.scalars().all()
 
+            from app.services.avatar_proxy_service import get_avatar_proxy_service
+
+            avatar_service = get_avatar_proxy_service()
             users = [
                 LarkUserLite(
                     id=row.user_id,
                     name=row.name,
                     email=row.enterprise_email,
-                    avatar=row.avatar_240 or row.avatar_640 or row.avatar_origin,
+                    avatar=avatar_service.lark_proxy_url(row.user_id),
                 )
                 for row in rows
             ]
@@ -130,7 +133,8 @@ async def get_lark_user_basic(
                 detail="找不到對應的 Lark 使用者"
             )
 
-        # 如果資料庫 avatar_240 為空，嘗試即時從 Lark API 獲取
+        # Ensure upstream avatar is cached locally when missing; browser always
+        # receives the application-origin proxy URL (never a Feishu CDN URL).
         avatar = user.avatar_240
         if not avatar or not avatar.strip():
             from app.services.lark_client import LarkClient
@@ -160,7 +164,13 @@ async def get_lark_user_basic(
             else:
                 print(f"API response: No user data from Lark API for {lark_user_id}")
 
-        return LarkUserBasic(id=user.user_id, name=user.name, avatar=avatar)
+        from app.services.avatar_proxy_service import get_avatar_proxy_service
+
+        return LarkUserBasic(
+            id=user.user_id,
+            name=user.name,
+            avatar=get_avatar_proxy_service().lark_proxy_url(user.user_id),
+        )
     except HTTPException:
         raise
     except Exception as e:

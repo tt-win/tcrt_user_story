@@ -230,7 +230,9 @@ class ProfileManager {
         
         if (avatarImg && avatarIcon) {
             if (userData.avatar_url) {
-                avatarImg.src = userData.avatar_url;
+                avatarImg.src = window.AuthClient
+                    ? window.AuthClient.avatarUrl(userData.avatar_url)
+                    : userData.avatar_url;
                 avatarImg.classList.remove('d-none');
                 avatarIcon.classList.add('d-none');
             } else {

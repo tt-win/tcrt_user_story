@@ -438,12 +438,14 @@ class LarkUserService:
 
                 result = []
                 for user in users:
+                    from app.services.avatar_proxy_service import get_avatar_proxy_service
+
                     result.append({
                         'id': user.user_id,
                         'name': user.name,
                         'display_name': user.name or user.en_name,
                         'email': user.enterprise_email,
-                        'avatar': user.avatar_240,
+                        'avatar': get_avatar_proxy_service().lark_proxy_url(user.user_id),
                         'department_id': user.primary_department_id,
                         'job_title': user.job_title,
                         'employee_type': user.employee_type
@@ -470,6 +472,9 @@ class LarkUserService:
                     LarkUser.is_exited.is_(False)
                 ).order_by(LarkUser.name.asc()).limit(limit).all()
 
+                from app.services.avatar_proxy_service import get_avatar_proxy_service
+
+                avatar_service = get_avatar_proxy_service()
                 result: List[Dict[str, Any]] = []
                 for user in users:
                     result.append({
@@ -477,7 +482,7 @@ class LarkUserService:
                         'name': user.name,
                         'display_name': user.name or user.en_name,
                         'email': user.enterprise_email,
-                        'avatar': user.avatar_240,
+                        'avatar': avatar_service.lark_proxy_url(user.user_id),
                         'department_id': user.primary_department_id,
                         'job_title': user.job_title,
                         'employee_type': user.employee_type

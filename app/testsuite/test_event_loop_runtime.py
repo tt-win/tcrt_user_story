@@ -48,4 +48,5 @@ async def test_slow_lark_call_does_not_block_version_request(monkeypatch):
 
     assert response.status_code == 200
     assert elapsed < 1
-    assert (await slow_request).avatar == "https://example.test/avatar.png"
+    # API returns the application-origin proxy URL; upstream is fetched by /api/avatars/*.
+    assert (await slow_request).avatar == "/api/avatars/lark/u-1"
