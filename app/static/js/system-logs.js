@@ -12,6 +12,7 @@
     const STREAM_URL = '/api/admin/system-logs/stream';
     const RUNTIME_SETTINGS_URL = '/api/admin/system-runtime-settings';
     const KNOWLEDGE_HEALTH_URL = '/api/knowledge/health';
+    const KNOWLEDGE_HEALTH_REFRESH_MS = 5000;
     const KNOWLEDGE_QUERY_LOGS_URL = '/api/admin/knowledge-query-logs';
 
     class SystemLogsPage {
@@ -394,18 +395,29 @@
                 neo4jDatabase: byId('kgNeo4jDatabase'),
                 backfillRows: byId('kgBackfillRows'),
             };
+            this.refreshController = Core.createKnowledgeGraphRefreshController({
+                refreshSnapshot: (options) => this.load(options),
+                intervalMs: KNOWLEDGE_HEALTH_REFRESH_MS,
+            });
             this.elements.tabButton.addEventListener('shown.bs.tab', () => {
-                this.load();
+                this.refreshController.start();
+            });
+            this.elements.tabButton.addEventListener('hidden.bs.tab', () => {
+                this.refreshController.stop();
             });
             this.elements.refreshBtn.addEventListener('click', () => {
-                this.load();
+                this.refreshController.refresh();
             });
+            window.addEventListener('pagehide', () => this.refreshController.stop());
         }
 
-        async load() {
-            this.showLoading();
+        async load(options = {}) {
+            const silent = options.silent === true;
+            if (!silent) this.showLoading();
             try {
-                const response = await this.page.authClient.fetch(KNOWLEDGE_HEALTH_URL);
+                const response = await this.page.authClient.fetch(KNOWLEDGE_HEALTH_URL, {
+                    cache: 'no-store',
+                });
                 if (!response.ok) {
                     if (response.status === 503) {
                         this.state.status = 'loaded';
@@ -420,6 +432,7 @@
                 this.state.data = data;
                 this.state.error = null;
             } catch (err) {
+                if (silent && this.state.data) return;
                 this.state.status = 'error';
                 this.state.error = err && err.message ? err.message : String(err);
             }
@@ -591,6 +604,7 @@
             return {
                 pending: 'bg-secondary',
                 running: 'bg-primary',
+                in_progress: 'bg-primary',
                 completed: 'bg-success',
                 failed: 'bg-danger',
             }[status] || 'bg-secondary';

@@ -169,3 +169,62 @@ test('notice queue: 暫停期間有界累積並於續播一次 drain', () => {
     ]);
     assert.equal(queue.length, 0);
 });
+
+test('knowledge graph refresh: 分頁可見時立即載入並定期靜默刷新', async () => {
+    const calls = [];
+    let scheduledTick;
+    let clearedTimer = null;
+    const controller = core.createKnowledgeGraphRefreshController({
+        refreshSnapshot(options) {
+            calls.push(options);
+            return Promise.resolve();
+        },
+        intervalMs: 5000,
+        setIntervalFn(callback, intervalMs) {
+            assert.equal(intervalMs, 5000);
+            scheduledTick = callback;
+            return 42;
+        },
+        clearIntervalFn(timerId) {
+            clearedTimer = timerId;
+        },
+    });
+
+    await controller.start();
+    assert.deepEqual(calls, [{ silent: false }]);
+    await scheduledTick();
+    assert.deepEqual(calls, [{ silent: false }, { silent: true }]);
+
+    controller.stop();
+    assert.equal(clearedTimer, 42);
+    await scheduledTick();
+    assert.equal(calls.length, 2);
+});
+
+test('knowledge graph refresh: 前一個請求未完成時不重疊送出', async () => {
+    let release;
+    let callCount = 0;
+    let scheduledTick;
+    const controller = core.createKnowledgeGraphRefreshController({
+        refreshSnapshot() {
+            callCount += 1;
+            return new Promise((resolve) => {
+                release = resolve;
+            });
+        },
+        setIntervalFn(callback) {
+            scheduledTick = callback;
+            return 7;
+        },
+        clearIntervalFn() {},
+    });
+
+    const initial = controller.start();
+    await Promise.resolve();
+    const overlappingTick = scheduledTick();
+    await Promise.resolve();
+    assert.equal(callCount, 1);
+    release();
+    await Promise.all([initial, overlappingTick]);
+    controller.stop();
+});

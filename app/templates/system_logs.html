@@ -225,14 +225,14 @@
                         <dd class="col-sm-8" id="kgNeo4jDatabase"></dd>
                     </dl>
 
-                    <h6 class="kg-section-title" data-i18n="systemLogs.kg.sectionBackfill">Backfill（initial bulk load）</h6>
-                    <p class="text-muted small mb-2" data-i18n="systemLogs.kg.backfillHint">Backfill 需透過 CLI 啟動（`python -m app.services.knowledge backfill --entity <type>`）；此面板僅顯示目前進度，無法從瀏覽器端直接觸發。</p>
+                    <h6 class="kg-section-title" data-i18n="systemLogs.kg.sectionBackfill">Qdrant Backfill（initial bulk load）</h6>
+                    <p class="text-muted small mb-2" data-i18n="systemLogs.kg.backfillHint">此處顯示 TCRT → Qdrant 的初始 backfill 進度，不是 Neo4j 同步數量。分頁開啟時每 5 秒自動更新；已完成的紀錄會保持不變，直到下次 backfill。</p>
                     <div class="table-responsive">
                         <table class="table table-sm table-hover align-middle kg-table">
                             <thead>
                                 <tr>
                                     <th data-i18n="systemLogs.kg.entityType">Entity</th>
-                                    <th data-i18n="systemLogs.kg.processed">Processed</th>
+                                    <th data-i18n="systemLogs.kg.processed">已處理 / 已掃描</th>
                                     <th data-i18n="systemLogs.kg.lastId">Last processed id</th>
                                     <th data-i18n="systemLogs.kg.status">Status</th>
                                     <th data-i18n="systemLogs.kg.updatedAt">Updated at</th>

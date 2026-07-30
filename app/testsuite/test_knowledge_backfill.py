@@ -115,6 +115,7 @@ async def test_backfill_batches(tmp_path: Path) -> None:
     tcs = [make_tc(i) for i in range(7)]
     progress = await svc.backfill_test_cases(async_iter(tcs))
     assert progress.processed_count == 7
+    assert progress.total_count == 7
     assert progress.status == "completed"
     # 7 items / batch_size 3 = 3 batches (3+3+1)
     assert len(fake_q.upserted) == 3
@@ -178,6 +179,32 @@ async def test_backfill_persists_progress(tmp_path: Path) -> None:
     assert "test_cases" in data
     assert data["test_cases"]["status"] == "completed"
     assert data["test_cases"]["processed_count"] == 4
+    assert data["test_cases"]["total_count"] == 4
+
+
+def test_load_progress_normalizes_legacy_last_batch_total(tmp_path: Path) -> None:
+    """Legacy progress exposed the final batch size as the overall total."""
+    svc, _ = make_services(tmp_path)
+    (tmp_path / "progress.json").write_text(
+        json.dumps(
+            {
+                "test_cases": {
+                    "processed_count": 42380,
+                    "total_count": 781,
+                    "last_processed_id": "TCG-141324.040.020",
+                    "status": "completed",
+                    "started_at": "2026-07-23T00:00:00+00:00",
+                    "updated_at": "2026-07-23T16:56:31+00:00",
+                }
+            }
+        )
+    )
+
+    progress = svc._load_progress("test_cases")
+
+    assert progress is not None
+    assert progress.processed_count == 42380
+    assert progress.total_count == 42380
 
 
 @pytest.mark.asyncio
@@ -205,6 +232,7 @@ async def test_backfill_resumes_from_checkpoint(tmp_path: Path) -> None:
     progress = await svc.backfill_test_cases(async_iter(tcs))
     # Cumulative: 3 (existing) + 2 (new: 00003, 00004) = 5
     assert progress.processed_count == 5
+    assert progress.total_count == 5
     # Only 2 new items upserted in this run
     assert len(fake_q.upserted) == 1
     assert len(fake_q.upserted[0][1]) == 2
@@ -236,6 +264,7 @@ async def test_backfill_resumes_from_failed_status(tmp_path: Path) -> None:
     progress = await svc.backfill_test_cases(async_iter(tcs))
     # Cumulative: 3 (existing) + 2 (new: 00003, 00004) = 5
     assert progress.processed_count == 5
+    assert progress.total_count == 5
     assert len(fake_q.upserted) == 1
     assert len(fake_q.upserted[0][1]) == 2
 
@@ -314,6 +343,7 @@ async def test_backfill_skips_empty_text(tmp_path: Path) -> None:
     progress = await svc.backfill_test_cases(async_iter(tcs))
     # Only 2 upserted (the empty-text one is skipped)
     assert progress.processed_count == 2
+    assert progress.total_count == 3
     total_points = sum(len(points) for _, points in fake_q.upserted)
     assert total_points == 2
 
@@ -329,6 +359,7 @@ async def test_backfill_skips_entity_without_identity(tmp_path: Path) -> None:
     progress = await svc.backfill_test_cases(async_iter(tcs))
 
     assert progress.processed_count == 1
+    assert progress.total_count == 2
     points = [point for _, batch in fake_q.upserted for point in batch]
     assert [point.payload["test_case_number"] for point in points] == ["TCG-001"]
 

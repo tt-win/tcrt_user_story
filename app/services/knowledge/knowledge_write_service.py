@@ -87,10 +87,17 @@ class KnowledgeWriteService:
         entry = data.get(entity_type)
         if not entry:
             return None
+        processed_count = entry.get("processed_count", 0)
+        total_count = entry.get("total_count", 0)
+        # Releases before 2026-07-30 overwrote total_count with the size of
+        # the latest batch.  Keep old progress files readable without
+        # mutating them, and never expose an impossible processed > total
+        # snapshot to the health page.
+        total_count = max(total_count, processed_count)
         return BackfillProgress(
             entity_type=entity_type,
-            processed_count=entry.get("processed_count", 0),
-            total_count=entry.get("total_count", 0),
+            processed_count=processed_count,
+            total_count=total_count,
             last_processed_id=entry.get("last_processed_id"),
             status=entry.get("status", "in_progress"),
             started_at=entry.get("started_at", ""),
@@ -563,8 +570,10 @@ class KnowledgeWriteService:
             batch: list[dict[str, Any]] = []
             failed_entities: list[str] = []
             resumed = last_processed_id is not None
+            source_count = 0
             try:
                 async for entity in fetch_all:
+                    source_count += 1
                     entity_id = entity_key_builder(entity)
                     if resumed:
                         if entity_id == last_processed_id:
@@ -573,7 +582,7 @@ class KnowledgeWriteService:
 
                     batch.append(entity)
                     if len(batch) >= batch_size:
-                        count, total = await self._process_batch(
+                        count, _ = await self._process_batch(
                             batch,
                             collection,
                             text_builder,
@@ -582,14 +591,14 @@ class KnowledgeWriteService:
                             payload_builder,
                         )
                         progress.processed_count += count
-                        progress.total_count = total
+                        progress.total_count = source_count
                         progress.last_processed_id = entity_key_builder(batch[-1])
                         progress.updated_at = datetime.now(timezone.utc).isoformat()
                         self._save_progress(progress)
                         batch = []
 
                 if batch:
-                    count, total = await self._process_batch(
+                    count, _ = await self._process_batch(
                         batch,
                         collection,
                         text_builder,
@@ -598,11 +607,12 @@ class KnowledgeWriteService:
                         payload_builder,
                     )
                     progress.processed_count += count
-                    progress.total_count = total
+                    progress.total_count = source_count
                     progress.last_processed_id = entity_key_builder(batch[-1])
                     progress.updated_at = datetime.now(timezone.utc).isoformat()
                     self._save_progress(progress)
 
+                progress.total_count = source_count
                 progress.status = "completed"
                 progress.updated_at = datetime.now(timezone.utc).isoformat()
                 self._save_progress(progress)
