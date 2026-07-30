@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta
 import hashlib
 import json
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
 
 from app.auth.app_token_dependencies import generate_app_token
+from app.auth.dependencies import get_current_user
+from app.auth.models import UserRole
+from app.auth.permission_service import permission_service
 from app.database import get_db
 from app.main import app
 from app.models.database_models import (
@@ -133,6 +138,7 @@ def _seed_data(session, scopes=None):
     return {
         "team_id": team.id,
         "other_team_id": other_team.id,
+        "user_id": user.id,
         "write_token": raw_token,
         "read_token": read_only_raw,
     }
@@ -222,15 +228,78 @@ class TestUpdateTestCase:
                 json={"test_case_number": "TC-UPD-001", "title": "Original"},
                 headers=_bearer(seeded["write_token"]),
             )
-            case_id = create_resp.json()["id"]
+            created_case = create_resp.json()
+            case_id = created_case["id"]
+            baseline = datetime.utcnow() - timedelta(days=2)
+
+            with temp_db() as session:
+                persisted_case = session.get(TestCaseLocal, case_id)
+                persisted_case.created_at = baseline
+                persisted_case.updated_at = baseline
+                session.commit()
+
+            update_payload = {
+                "title": "Updated Title",
+                "priority": "Low",
+                "test_case_set_id": created_case["test_case_set_id"],
+                "test_case_section_id": created_case["test_case_section_id"],
+                "tcg": ["PRJ-123"],
+                "test_data": [
+                    {
+                        "id": "td-update-1",
+                        "name": "endpoint",
+                        "category": "url",
+                        "value": "https://staging.example.com",
+                    }
+                ],
+            }
 
             resp = client.put(
                 f"/api/app/teams/{seeded['team_id']}/test-cases/{case_id}",
-                json={"title": "Updated Title", "priority": "Low"},
+                json=update_payload,
                 headers=_bearer(seeded["write_token"]),
             )
             assert resp.status_code == 200
             assert resp.json()["title"] == "Updated Title"
+
+            with temp_db() as session:
+                persisted_case = session.get(TestCaseLocal, case_id)
+                first_updated_at = persisted_case.updated_at
+                assert first_updated_at > baseline
+
+            same_value_resp = client.put(
+                f"/api/app/teams/{seeded['team_id']}/test-cases/{case_id}",
+                json=update_payload,
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert same_value_resp.status_code == 200
+
+            empty_resp = client.put(
+                f"/api/app/teams/{seeded['team_id']}/test-cases/{case_id}",
+                json={},
+                headers=_bearer(seeded["write_token"]),
+            )
+            assert empty_resp.status_code == 200
+
+            with temp_db() as session:
+                persisted_case = session.get(TestCaseLocal, case_id)
+                assert persisted_case.updated_at == first_updated_at
+
+            app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+                id=seeded["user_id"],
+                username="creator",
+                role=UserRole.ADMIN,
+            )
+            try:
+                trends_resp = client.get(
+                    "/api/admin/team_statistics/test_case_trends?days=30"
+                )
+            finally:
+                app.dependency_overrides.pop(get_current_user, None)
+                asyncio.run(permission_service.cache.clear(seeded["user_id"]))
+
+            assert trends_resp.status_code == 200, trends_resp.text
+            assert trends_resp.json()["overall"]["total_updated"] == 1
 
     def test_update_nonexistent_404(self, temp_db):
         with temp_db() as session:
@@ -899,6 +968,7 @@ class TestGuardedCaseSetMove:
     def test_generic_cross_set_update_is_rejected(self, temp_db):
         with temp_db() as session:
             seeded, case_id, target_id, _target_section_id, _item_id = self._seed_move(session)
+            original_updated_at = session.get(TestCaseLocal, case_id).updated_at
         with TestClient(app) as client:
             response = client.put(
                 f"/api/app/teams/{seeded['team_id']}/test-cases/{case_id}",
@@ -907,6 +977,8 @@ class TestGuardedCaseSetMove:
             )
             assert response.status_code == 400
             assert response.json()["detail"]["code"] == "APP_TOKEN_VALIDATION_ERROR"
+        with temp_db() as session:
+            assert session.get(TestCaseLocal, case_id).updated_at == original_updated_at
 
 
 class TestSecurityHardening:
