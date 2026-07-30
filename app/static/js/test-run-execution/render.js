@@ -64,6 +64,7 @@ function updateControlButtons(status) {
     const batchModifyBtn = document.getElementById('batchModifyBtn');
     if (batchModifyBtn) {
         const allowModify = permissions.canBatchModify && status !== 'completed';
+        batchModifyBtn.dataset.permissionDisabled = allowModify ? 'false' : 'true';
         if (!allowModify) {
             batchModifyBtn.disabled = true;
             batchModifyBtn.classList.add('disabled');
@@ -71,7 +72,7 @@ function updateControlButtons(status) {
                 ? window.i18n.t('testRun.cannotEditCompleted')
                 : '已完成的 Test Run 不可編輯 Test Case';
         } else {
-            batchModifyBtn.disabled = false;
+            batchModifyBtn.disabled = selectedItems.size === 0;
             batchModifyBtn.classList.remove('disabled');
             batchModifyBtn.removeAttribute('title');
         }
@@ -80,7 +81,8 @@ function updateControlButtons(status) {
     const batchDeleteBtn = document.getElementById('batchDeleteBtn');
     if (batchDeleteBtn) {
         const allowDelete = permissions.canBatchDelete && status !== 'completed';
-        batchDeleteBtn.disabled = !allowDelete;
+        batchDeleteBtn.dataset.permissionDisabled = allowDelete ? 'false' : 'true';
+        batchDeleteBtn.disabled = !allowDelete || selectedItems.size === 0;
         if (!allowDelete) {
             batchDeleteBtn.classList.add('disabled');
         } else {
@@ -767,6 +769,16 @@ function updateItemSelectionUI() {
             toolbar.classList.add('d-none');
             toolbar.style.setProperty('display', 'none', 'important');
         }
+        ['batchModifyBtn', 'batchDeleteBtn'].forEach((id) => {
+            const btn = document.getElementById(id);
+            if (btn && !btn.classList.contains('disabled')) {
+                // Keep permission-based disabled; only gate on selection when otherwise enabled.
+                if (btn.dataset.permissionDisabled === 'true') return;
+                btn.disabled = !visible;
+            } else if (btn) {
+                btn.disabled = true;
+            }
+        });
     };
     
     // 如果不顯示 checkbox，隱藏工具列

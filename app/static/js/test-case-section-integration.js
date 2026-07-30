@@ -266,7 +266,7 @@ class TestCaseSectionIntegration {
     const targetSectionId = document.getElementById('crossSectionSelect').value;
 
     if (!targetSectionId) {
-      alert(window.i18n.t('section.crossSection.selectTargetSection'));
+      AppUtils.notify(window.i18n.t('section.crossSection.selectTargetSection'));
       return;
     }
 
@@ -274,12 +274,12 @@ class TestCaseSectionIntegration {
       // 這裡需要呼叫相應的 API 來複製 Test Case
       // 由於 Test Case API 還沒有完全更新，這個功能將在後續完成
 
-      alert(window.i18n.t('section.crossSection.copyComingSoon'));
+      AppUtils.notify(window.i18n.t('section.crossSection.copyComingSoon'));
       bootstrap.Modal.getInstance(document.getElementById('crossSectionCopyModal')).hide();
 
     } catch (error) {
       console.error('Error copying test case:', error);
-      alert(window.i18n.t('section.crossSection.copyFailed', { reason: error.message }));
+      AppUtils.notify(window.i18n.t('section.crossSection.copyFailed', { reason: error.message }), 'danger');
     }
   }
 

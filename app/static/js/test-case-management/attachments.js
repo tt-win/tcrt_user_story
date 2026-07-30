@@ -292,7 +292,7 @@ async function removeAttachment(fileToken, filename, index) {
     const confirmMessage = window.i18n ?
         window.i18n.t('confirm.deleteAttachment', {filename: filename}) :
         `確定要刪除附件 "${filename}" 嗎？`;
-    if (confirm(confirmMessage)) {
+    if (await AppUtils.confirm(confirmMessage, { danger: true })) {
         try {
             console.log(`正在刪除附件: ${filename}...`);
 

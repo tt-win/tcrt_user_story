@@ -73,7 +73,10 @@
     "languageJapanese": "日本語",
     "viewToggle": "View toggle",
     "system": "System",
-    "languageLoadFailed": "Failed to load language file: {language}"
+    "languageLoadFailed": "Failed to load language file: {language}",
+    "retry": "Retry",
+    "loadingFailed": "Failed to load data",
+    "noData": "No data"
   },
   "dashboard": {
     "pageTitle": "My Dashboard",
@@ -4133,5 +4136,14 @@
   },
   "chrome": {
     "moreActions": "More"
+  },
+  "dataView": {
+    "teamRequiredTitle": "Select a team first",
+    "teamRequiredHint": "Loading this data requires a team context. Choose a team from the navigation bar.",
+    "teamParseFailedHint": "Could not read team information. Please reselect a team and try again.",
+    "loadFailedTitle": "Failed to load",
+    "loadFailedHint": "Could not load data. Please try again.",
+    "permissionDeniedTitle": "Permission denied",
+    "permissionDeniedHint": "You do not have permission to view this data."
   }
 }

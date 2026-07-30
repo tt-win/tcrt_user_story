@@ -228,7 +228,7 @@ function showNotification(message, type = 'info') {
         }
     }
     if (type === 'error') {
-        alert(message);
+        AppUtils.notify(message, 'danger');
     }
 }
 

@@ -263,11 +263,11 @@ async switchLanguage(language) {
                 try {
                     document.body && document.body.classList.remove('i18n-loading');
                 } catch (_) {}
-                alert(this.t(
+                AppUtils.notify(this.t(
                     'common.languageLoadFailed',
                     { language },
                     `無法載入語言檔：${language}`
-                ));
+                ), 'danger');
                 return false;
             }
         }

@@ -200,8 +200,8 @@
     if (c) c.innerHTML = '';
   }
 
-  function confirmAction(message) {
-    return window.confirm(message);
+  async function confirmAction(message, options) {
+    return AppUtils.confirm(message, options);
   }
 
   function bindIfPresent(target, eventName, handler) {
@@ -1121,7 +1121,7 @@
 
   async function reloadTicketFromJira() {
     if (state.ticketMarkdownDirty) {
-      const confirmed = confirmAction(
+      const confirmed = await confirmAction(
         t('qaAiHelper.confirmReloadOverwrite', {}, '目前編輯內容尚未儲存，確定要從 JIRA 重新載入並覆蓋嗎？')
       );
       if (!confirmed) return;
@@ -3186,9 +3186,9 @@
     bindIfPresent('qaHelperSessionManagerDeleteOneBtn', 'click', async () => {
       const selected = sessionManagerSelectedItem();
       if (!selected) return;
-      if (!confirmAction(t('qaAiHelper.deleteSessionConfirm', {
+      if (!(await confirmAction(t('qaAiHelper.deleteSessionConfirm', {
         ticket: String(((selected || {}).session || {}).ticket_key || '-'),
-      }, '確定要刪除目前 Session 嗎？'))) return;
+      }, '確定要刪除目前 Session 嗎？'), { danger: true }))) return;
       await deleteSessions([selected.session.id]);
       renderSessionManager();
       setFeedback('success', t('qaAiHelper.sessionDeleted', {}, '已刪除 Session'));
@@ -3196,9 +3196,9 @@
     bindIfPresent('qaHelperSessionManagerDeleteSelectedBtn', 'click', async () => {
       if (!(state.sessionManagerCheckedIds || []).length) return;
       const selectedCount = state.sessionManagerCheckedIds.length;
-      if (!confirmAction(t('qaAiHelper.deleteSelectedSessionsConfirm', {
+      if (!(await confirmAction(t('qaAiHelper.deleteSelectedSessionsConfirm', {
         count: selectedCount,
-      }, '確定要刪除勾選的 Sessions 嗎？'))) return;
+      }, '確定要刪除勾選的 Sessions 嗎？'), { danger: true }))) return;
       await deleteSessions(state.sessionManagerCheckedIds);
       renderSessionManager();
       setFeedback('success', t('qaAiHelper.sessionsDeleted', {
@@ -3208,7 +3208,7 @@
     bindIfPresent('qaHelperSessionManagerClearBtn', 'click', async () => {
       const ids = (state.sessions || []).map((item) => Number(((item || {}).session || {}).id || 0)).filter((id) => id > 0);
       if (!ids.length) return;
-      if (!confirmAction(t('qaAiHelper.clearAllSessionsConfirm', {}, '確定要清空全部 Sessions 嗎？'))) return;
+      if (!(await confirmAction(t('qaAiHelper.clearAllSessionsConfirm', {}, '確定要清空全部 Sessions 嗎？'), { danger: true }))) return;
       await deleteSessions(ids);
       renderSessionManager();
       setFeedback('success', t('qaAiHelper.sessionsCleared', {
@@ -3269,7 +3269,7 @@
       const teamId = ensureTeamId();
       const sessionId = state.sessionId || Number(el('qaHelperSessionSelect').value || 0);
       if (!teamId || !sessionId) return;
-      if (!confirmAction(t('qaAiHelper.deleteSessionConfirm', {}, '確定要刪除目前 Session 嗎？'))) return;
+      if (!(await confirmAction(t('qaAiHelper.deleteSessionConfirm', {}, '確定要刪除目前 Session 嗎？'), { danger: true }))) return;
       const response = await authFetch(`/api/teams/${teamId}/qa-ai-helper/sessions/${sessionId}`, { method: 'DELETE' });
       if (!response.ok) {
         throw new Error(await response.text());

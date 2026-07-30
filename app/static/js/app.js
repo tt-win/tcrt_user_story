@@ -149,18 +149,116 @@ const AppUtils = {
         this.showMessage(message, 'warning');
     },
 
-    // 顯示確認對話框
-    showConfirm: function(message) {
+    // Non-blocking notification (toast / flash). Prefer this over native alert dialogs.
+    notify: function(message, type = 'info') {
+        this.showMessage(message, type);
+        return Promise.resolve();
+    },
+
+    // Non-blocking confirm modal. Prefer this over native confirm dialogs.
+    // Resolves true on confirm, false on cancel / dismiss.
+    confirm: function(message, options = {}) {
+        const opts = options && typeof options === 'object' ? options : {};
+        const title = opts.title
+            || this.translate('common.confirm', '確認');
+        const confirmLabel = opts.confirmLabel
+            || this.translate('common.confirm', '確認');
+        const cancelLabel = opts.cancelLabel
+            || this.translate('common.cancel', '取消');
+        const confirmIntent = opts.confirmIntent || 'primary';
+        const danger = opts.danger === true || confirmIntent === 'danger';
+
         return new Promise((resolve) => {
-            const confirmed = window.confirm(message);
-            resolve(confirmed);
+            let settled = false;
+            const finish = (value) => {
+                if (settled) return;
+                settled = true;
+                resolve(Boolean(value));
+            };
+
+            const existing = document.getElementById('app-utils-confirm-modal');
+            if (existing) {
+                existing.remove();
+            }
+
+            const modalId = 'app-utils-confirm-modal';
+            const confirmBtnClass = danger ? 'btn-danger' : `btn-${confirmIntent}`;
+            const modalHtml = `
+                <div class="modal fade" id="${modalId}" tabindex="-1" aria-labelledby="${modalId}-label" aria-hidden="true">
+                  <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                      <div class="modal-header">
+                        <h5 class="modal-title" id="${modalId}-label">${this.escapeHtml(title)}</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="${this.escapeHtml(cancelLabel)}"></button>
+                      </div>
+                      <div class="modal-body">
+                        <p class="mb-0 app-utils-confirm-message"></p>
+                      </div>
+                      <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-app-confirm="cancel">${this.escapeHtml(cancelLabel)}</button>
+                        <button type="button" class="btn ${confirmBtnClass}" data-app-confirm="ok">${this.escapeHtml(confirmLabel)}</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            const modalEl = document.getElementById(modalId);
+            const messageEl = modalEl.querySelector('.app-utils-confirm-message');
+            if (messageEl) {
+                messageEl.textContent = String(message ?? '');
+            }
+
+            const cleanup = () => {
+                try {
+                    const instance = bootstrap.Modal.getInstance(modalEl);
+                    if (instance) instance.dispose();
+                } catch (_e) { /* ignore */ }
+                if (modalEl && modalEl.parentNode) {
+                    modalEl.parentNode.removeChild(modalEl);
+                }
+            };
+
+            const okBtn = modalEl.querySelector('[data-app-confirm="ok"]');
+            if (okBtn) {
+                okBtn.addEventListener('click', () => {
+                    finish(true);
+                    const instance = bootstrap.Modal.getInstance(modalEl);
+                    if (instance) instance.hide();
+                });
+            }
+
+            modalEl.addEventListener('hidden.bs.modal', () => {
+                finish(false);
+                cleanup();
+            });
+
+            if (!(window.bootstrap && typeof window.bootstrap.Modal === 'function')) {
+                // Fail closed when Bootstrap modal runtime is unavailable.
+                cleanup();
+                this.showMessage(String(message ?? ''), 'warning');
+                finish(false);
+                return;
+            }
+
+            const modal = new bootstrap.Modal(modalEl, { backdrop: 'static', keyboard: true });
+            modal.show();
         });
+    },
+
+    // Legacy alias — delegates to non-blocking AppUtils.confirm.
+    showConfirm: function(message, options) {
+        return this.confirm(message, options);
     },
 
     // 通用訊息顯示函數
     showMessage: function(message, type = 'info') {
         const container = document.getElementById('flash-messages');
-        if (!container) return;
+        if (!container) {
+            // Last-resort visible feedback when flash container is missing.
+            console.warn('[AppUtils.notify]', type, message);
+            return;
+        }
 
         const alertId = 'alert-' + Date.now();
         const closeLabel = this.escapeHtml(this.translate('common.close', '關閉'));

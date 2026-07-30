@@ -51,6 +51,10 @@ function initTeamManagement() {
     // 綁定事件監聽器
     document.getElementById('createTeamBtn').addEventListener('click', showCreateTeamModal);
     document.getElementById('refreshBtn').addEventListener('click', loadTeams);
+    const teamsRetryBtn = document.getElementById('teamsErrorRetryBtn');
+    if (teamsRetryBtn) {
+        teamsRetryBtn.addEventListener('click', loadTeams);
+    }
     document.getElementById('saveTeamBtn').addEventListener('click', saveTeam);
     // 審計記錄和團隊統計現在使用下拉選單中的 <a> 標籤，不需要額外的事件監聽器
     // 「組織與系統設定」已改為導向 /organization-management 的連結（<a>），
@@ -81,13 +85,11 @@ async function loadTeams() {
 
     } catch (error) {
         console.error('Load teams failed:', error);
+        const errorMsg = window.i18n ? window.i18n.t('messages.loadFailed') : '載入失敗';
         if (AppUtils && AppUtils.showError) {
-            const errorMsg = window.i18n ? window.i18n.t('messages.loadFailed') : '載入失敗';
             AppUtils.showError(errorMsg + '：' + error.message);
-        } else {
-            console.error('AppUtils not available:', error.message);
         }
-        showNoTeams();
+        showTeamsError();
     } finally {
         hideLoading();
     }
@@ -104,20 +106,48 @@ function renderTeams() {
 }
 
 function showLoading() {
-    document.getElementById('loading-state').style.display = 'block';
+    const loading = document.getElementById('loading-state');
+    if (loading) {
+        loading.classList.remove('d-none');
+        loading.style.display = '';
+    }
     document.getElementById('teams-section').style.display = 'none';
     document.getElementById('no-teams-section').style.display = 'none';
+    const err = document.getElementById('teams-error-state');
+    if (err) err.classList.add('d-none');
 }
 
 function hideLoading() {
     // 僅隱藏載入狀態，實際可見區域由 renderTeams()/showNoTeams() 控制
-    document.getElementById('loading-state').style.display = 'none';
+    const loading = document.getElementById('loading-state');
+    if (loading) {
+        loading.classList.add('d-none');
+        loading.style.display = 'none';
+    }
+}
+
+function showTeamsError() {
+    const loading = document.getElementById('loading-state');
+    if (loading) {
+        loading.classList.add('d-none');
+        loading.style.display = 'none';
+    }
+    document.getElementById('teams-section').style.display = 'none';
+    document.getElementById('no-teams-section').style.display = 'none';
+    const err = document.getElementById('teams-error-state');
+    if (err) err.classList.remove('d-none');
 }
 
 async function showNoTeams() {
-    document.getElementById('loading-state').style.display = 'none';
+    const loading = document.getElementById('loading-state');
+    if (loading) {
+        loading.classList.add('d-none');
+        loading.style.display = 'none';
+    }
     document.getElementById('teams-section').style.display = 'none';
     document.getElementById('no-teams-section').style.display = 'block';
+    const err = document.getElementById('teams-error-state');
+    if (err) err.classList.add('d-none');
 
     // 根據權限決定提示文字
     const hintElement = document.querySelector('#no-teams-section p');
@@ -145,9 +175,15 @@ async function showNoTeams() {
 }
 
 function showTeamsList() {
-    document.getElementById('loading-state').style.display = 'none';
+    const loading = document.getElementById('loading-state');
+    if (loading) {
+        loading.classList.add('d-none');
+        loading.style.display = 'none';
+    }
     document.getElementById('no-teams-section').style.display = 'none';
     document.getElementById('teams-section').style.display = 'block';
+    const err = document.getElementById('teams-error-state');
+    if (err) err.classList.add('d-none');
 }
 
 function renderTeamCards() {

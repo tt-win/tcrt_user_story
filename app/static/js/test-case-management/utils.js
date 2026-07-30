@@ -7,7 +7,7 @@ function showSuccess(message) {
     if (AppUtils && AppUtils.showSuccess) {
         AppUtils.showSuccess(message);
     } else {
-        alert(message);
+        AppUtils.notify(message, 'success');
     }
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
     adjustTestCasesScrollHeight();
@@ -17,7 +17,7 @@ function showError(message) {
     if (AppUtils && AppUtils.showError) {
         AppUtils.showError(message);
     } else {
-        alert(message);
+        AppUtils.notify(message, 'danger');
     }
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
     adjustTestCasesScrollHeight();

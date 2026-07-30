@@ -330,6 +330,11 @@
     const rescanScriptsBtn = document.getElementById('rescanScriptsBtn');
     if (rescanScriptsBtn) rescanScriptsBtn.addEventListener('click', syncScripts);
 
+    const scriptRetry = document.getElementById('scriptErrorRetryBtn');
+    if (scriptRetry) scriptRetry.addEventListener('click', loadAll);
+    const suiteRetry = document.getElementById('suiteErrorRetryBtn');
+    if (suiteRetry) suiteRetry.addEventListener('click', loadAll);
+
     const scriptSearch = document.getElementById('scriptSearch');
     if (scriptSearch) scriptSearch.addEventListener('input', renderScripts);
 
@@ -443,6 +448,7 @@
 
   async function loadAll() {
     setLoading(true);
+    hideHubListErrors();
     try {
       const [scriptResult, groupResult] = await Promise.all([
         apiFetch(`/api/teams/${state.teamId}/automation-scripts?limit=200`),
@@ -463,6 +469,7 @@
       }
     } catch (error) {
       showError(error.message || t('automationHub.loadFailed', 'Failed to load Automation Hub'));
+      showHubListErrors();
     } finally {
       setLoading(false);
       refreshTexts();
@@ -502,6 +509,8 @@
     const treeContainer = document.getElementById('scriptTree');
     const flatContainer = document.getElementById('testFlatList');
     const emptyState = document.getElementById('scriptEmpty');
+    const errorState = document.getElementById('scriptError');
+    if (errorState) errorState.classList.add('d-none');
     const query = document.getElementById('scriptSearch').value.trim().toLowerCase();
     state.searchQuery = query;   // read by highlightMatch() while rendering labels
 
@@ -969,6 +978,8 @@
   function renderGroups() {
     const container = document.getElementById('suiteList');
     const emptyState = document.getElementById('suiteEmpty');
+    const errorState = document.getElementById('suiteError');
+    if (errorState) errorState.classList.add('d-none');
     const countEl = document.getElementById('suiteCount');
     if (countEl) countEl.textContent = String(state.groups.length);
     emptyState.classList.toggle('d-none', state.groups.length > 0);
@@ -1191,6 +1202,37 @@
     const suiteLoading = document.getElementById('suiteLoading');
     if (scriptLoading) scriptLoading.classList.toggle('d-none', !isLoading);
     if (suiteLoading) suiteLoading.classList.toggle('d-none', !isLoading);
+    if (isLoading) {
+      hideHubListErrors();
+      const scriptEmpty = document.getElementById('scriptEmpty');
+      const suiteEmpty = document.getElementById('suiteEmpty');
+      if (scriptEmpty) scriptEmpty.classList.add('d-none');
+      if (suiteEmpty) suiteEmpty.classList.add('d-none');
+    }
+  }
+
+  function hideHubListErrors() {
+    const scriptError = document.getElementById('scriptError');
+    const suiteError = document.getElementById('suiteError');
+    if (scriptError) scriptError.classList.add('d-none');
+    if (suiteError) suiteError.classList.add('d-none');
+  }
+
+  function showHubListErrors() {
+    const scriptEmpty = document.getElementById('scriptEmpty');
+    const suiteEmpty = document.getElementById('suiteEmpty');
+    const scriptTree = document.getElementById('scriptTree');
+    const suiteList = document.getElementById('suiteList');
+    const flatList = document.getElementById('testFlatList');
+    if (scriptEmpty) scriptEmpty.classList.add('d-none');
+    if (suiteEmpty) suiteEmpty.classList.add('d-none');
+    if (scriptTree) scriptTree.innerHTML = '';
+    if (suiteList) suiteList.innerHTML = '';
+    if (flatList) flatList.innerHTML = '';
+    const scriptError = document.getElementById('scriptError');
+    const suiteError = document.getElementById('suiteError');
+    if (scriptError) scriptError.classList.remove('d-none');
+    if (suiteError) suiteError.classList.remove('d-none');
   }
 
   function showNoTeam() {

@@ -59,6 +59,8 @@
     if (testBtn) testBtn.addEventListener('click', testProviderConfig);
     const emptyAdd = document.getElementById('emptyStateAddProviderBtn');
     if (emptyAdd) emptyAdd.addEventListener('click', () => openProviderModal());
+    const providerRetry = document.getElementById('providerErrorRetryBtn');
+    if (providerRetry) providerRetry.addEventListener('click', loadAll);
     const addRepoSave = document.getElementById('addRepoSaveBtn');
     if (addRepoSave) addRepoSave.addEventListener('click', submitAddRepo);
 
@@ -90,6 +92,7 @@
       renderProviders();
     } catch (error) {
       showError(error.message || t('automationHub.providers.loadFailed', 'Failed to load providers'));
+      showProviderError();
     } finally {
       setLoading(false);
       refreshTexts();
@@ -144,6 +147,8 @@
     const rows = document.getElementById('providerRows');
     const emptyState = document.getElementById('empty-state');
     const contentCard = document.getElementById('provider-content');
+    const errorState = document.getElementById('provider-error-state');
+    if (errorState) errorState.classList.add('d-none');
     document.getElementById('provider-count').textContent = String(state.providers.length);
     const isEmpty = state.providers.length === 0;
     emptyState.classList.toggle('d-none', !isEmpty);
@@ -708,6 +713,8 @@
   function showNoTeam() {
     document.getElementById('no-team-state').classList.remove('d-none');
     document.getElementById('provider-content').classList.add('d-none');
+    const errorState = document.getElementById('provider-error-state');
+    if (errorState) errorState.classList.add('d-none');
   }
 
   function setLoading(isLoading) {
@@ -715,7 +722,17 @@
     if (isLoading) {
       document.getElementById('empty-state').classList.add('d-none');
       document.getElementById('provider-content').classList.add('d-none');
+      const errorState = document.getElementById('provider-error-state');
+      if (errorState) errorState.classList.add('d-none');
     }
+  }
+
+  function showProviderError() {
+    document.getElementById('loading-state').classList.add('d-none');
+    document.getElementById('empty-state').classList.add('d-none');
+    document.getElementById('provider-content').classList.add('d-none');
+    const errorState = document.getElementById('provider-error-state');
+    if (errorState) errorState.classList.remove('d-none');
   }
 
   function refreshTexts() {

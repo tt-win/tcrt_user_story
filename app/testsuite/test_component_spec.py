@@ -743,3 +743,141 @@ def test_base_layout_uses_vendor_assets_not_cdn(client):
         "feishucdn.com",
     ):
         assert forbidden not in joined, f"base layout still references {forbidden}"
+
+
+# --------------------------------------------------------------------------- #
+# Data view state contract (establish-data-view-state-contract)
+# --------------------------------------------------------------------------- #
+
+_NATIVE_DIALOG_RE = re.compile(r"(?<![\w.$])(alert|confirm)\s*\(")
+_JS_ROOT = _STATIC_DIR / "js"
+_TEMPLATE_ROOT = Path(__file__).resolve().parents[1] / "templates"
+
+
+def test_app_utils_exposes_nonblocking_confirm_and_notify():
+    """AppUtils must provide Promise-based confirm/notify (no native dialogs)."""
+    app_js = (_JS_ROOT / "app.js").read_text(encoding="utf-8")
+    assert re.search(r"\bconfirm\s*:\s*function\s*\(", app_js)
+    assert re.search(r"\bnotify\s*:\s*function\s*\(", app_js)
+    assert "window.confirm(" not in app_js
+    assert "window.alert(" not in app_js
+
+
+def test_frontend_js_has_no_native_alert_or_confirm():
+    """Static JS must not call native alert()/confirm() (data-view-states contract)."""
+    offenders: list[str] = []
+    for path in sorted(_JS_ROOT.rglob("*.js")):
+        if "vendor" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8")
+        for match in _NATIVE_DIALOG_RE.finditer(text):
+            # Allow matches that only appear inside comments on the same line.
+            line_start = text.rfind("\n", 0, match.start()) + 1
+            line = text[line_start : text.find("\n", match.start())]
+            stripped = line.lstrip()
+            if stripped.startswith("//") or stripped.startswith("*") or stripped.startswith("/*"):
+                continue
+            rel = path.relative_to(_JS_ROOT.parents[1])
+            offenders.append(f"{rel}:{text.count(chr(10), 0, match.start()) + 1}:{line.strip()}")
+    assert not offenders, "native alert/confirm remain:\n" + "\n".join(offenders)
+
+
+def test_templates_have_no_native_alert_or_confirm():
+    """Jinja templates must not embed native alert()/confirm() call sites."""
+    offenders: list[str] = []
+    for path in sorted(_TEMPLATE_ROOT.rglob("*.html")):
+        text = path.read_text(encoding="utf-8")
+        for match in _NATIVE_DIALOG_RE.finditer(text):
+            line_start = text.rfind("\n", 0, match.start()) + 1
+            line = text[line_start : text.find("\n", match.start())]
+            stripped = line.lstrip()
+            if stripped.startswith("//") or stripped.startswith("<!--"):
+                continue
+            rel = path.relative_to(_TEMPLATE_ROOT.parents[1])
+            offenders.append(f"{rel}:{text.count(chr(10), 0, match.start()) + 1}:{line.strip()}")
+    assert not offenders, "native alert/confirm in templates:\n" + "\n".join(offenders)
+
+
+def test_shared_skeleton_and_empty_state_components_exist():
+    """Shared data-view state macros must be present under components/."""
+    skeleton = (_TEMPLATE_ROOT / "components" / "skeleton.html").read_text(encoding="utf-8")
+    empty = (_TEMPLATE_ROOT / "components" / "empty_state.html").read_text(encoding="utf-8")
+    assert "macro skeleton" in skeleton
+    assert "tcrt-skeleton" in skeleton
+    assert "variant='cards'" in skeleton or 'variant="cards"' in skeleton or "variant == 'cards'" in skeleton
+    assert "macro empty_state" in empty
+    assert "tcrt-empty-state" in empty
+    style = (_STATIC_DIR / "css" / "style.css").read_text(encoding="utf-8")
+    assert ".tcrt-skeleton" in style
+    assert ".tcrt-empty-state" in style
+
+
+def test_test_case_sets_page_has_state_containers_and_display_paths(client):
+    """/test-case-sets must ship loading/empty/error containers with JS display paths."""
+    soup = render_page(client, "/test-case-sets")
+    for element_id in ("setsLoadingState", "emptyState", "setsErrorState", "noTeamState"):
+        node = soup.find(id=element_id)
+        assert node is not None, f"missing #{element_id}"
+
+    retry = soup.find(id="setsErrorRetryBtn")
+    assert retry is not None, "error state must expose a retry control"
+
+    main_js = (_JS_ROOT / "test-case-set-list" / "main.js").read_text(encoding="utf-8")
+    assert "showSetsViewState('empty')" in main_js
+    assert "showSetsViewState('error'" in main_js or 'showSetsViewState("error"' in main_js
+    assert "showSetsViewState('no-team')" in main_js
+    assert "showSetsViewState('loading')" in main_js
+    # Display path must actually unhide empty/error (not only add d-none).
+    assert "setHidden(emptyState, state !== 'empty')" in main_js
+    assert "setHidden(errorState, state !== 'error')" in main_js
+
+
+def test_selection_dependent_personnel_actions_default_disabled(client):
+    """Org personnel delete/reset must render disabled until a user is selected."""
+    soup = render_page(client, "/organization-management")
+    for element_id in ("pm-delete", "pm-reset"):
+        btn = soup.find(id=element_id)
+        assert btn is not None, f"missing #{element_id}"
+        assert btn.has_attr("disabled"), f"#{element_id} must default to disabled"
+
+
+def test_selection_dependent_batch_actions_default_disabled():
+    """Test case batch actions must default to disabled with zero selection.
+
+    `/test-case-management` redirects without a set id, so assert the template source.
+    """
+    template = (_TEMPLATE_ROOT / "test_case_management.html").read_text(encoding="utf-8")
+    for element_id in ("batchModifyBtn", "batchCopyBtn", "batchDeleteBtn"):
+        match = re.search(
+            rf'id="{element_id}"[^>]*>',
+            template,
+        )
+        assert match, f"missing #{element_id} in test_case_management.html"
+        tag = match.group(0)
+        assert "disabled" in tag, f"#{element_id} must default to disabled: {tag}"
+
+
+def test_destructive_confirm_gates_are_not_bypassed():
+    """High-risk destructive flows must await AppUtils.confirm before the mutating call."""
+    personnel = (
+        _JS_ROOT / "organization-management" / "personnel_management.js"
+    ).read_text(encoding="utf-8")
+    delete_fn = re.search(
+        r"async function onDelete\([\s\S]*?\n  \}\n\n  async function onResetPwd",
+        personnel,
+    )
+    assert delete_fn, "onDelete not found"
+    delete_body = delete_fn.group(0)
+    assert "await AppUtils.confirm(" in delete_body
+    confirm_pos = delete_body.find("await AppUtils.confirm(")
+    delete_pos = delete_body.find("method: 'DELETE'")
+    assert confirm_pos != -1 and delete_pos != -1 and confirm_pos < delete_pos
+
+    cross = (_JS_ROOT / "test-case-cross-set-ops.js").read_text(encoding="utf-8")
+    move_fn = re.search(r"async confirmCrossSetMove\([\s\S]*?\n  \}", cross)
+    assert move_fn, "confirmCrossSetMove not found"
+    move_body = move_fn.group(0)
+    assert "await AppUtils.confirm(" in move_body
+    confirm_pos = move_body.find("await AppUtils.confirm(")
+    api_pos = move_body.find("move-across-sets")
+    assert confirm_pos != -1 and api_pos != -1 and confirm_pos < api_pos

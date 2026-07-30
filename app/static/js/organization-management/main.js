@@ -482,7 +482,7 @@ async function revokeMcpToken(credentialId) {
     const item = mcpTokenItems.find((entry) => String(entry.credential_id) === String(credentialId));
     const name = item && item.name ? item.name : `#${credentialId}`;
     const confirmTpl = getI18n('mcpToken.revokeConfirm', '確定要撤銷 token「{name}」嗎？撤銷後該 token 將立即失效且無法復原。');
-    if (!window.confirm(confirmTpl.replace('{name}', name))) return;
+    if (!await AppUtils.confirm(confirmTpl.replace('{name}', name))) return;
 
     try {
         if (!window.AuthClient) throw new Error('AuthClient 尚未初始化');

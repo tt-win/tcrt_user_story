@@ -41,7 +41,7 @@ async function generateHtmlReport() {
   }
 
   if (!teamId || !configId) {
-    alert(translate('testRun.generateHtmlMissingParams', {}, '無法取得 team_id 或 config_id，請從管理頁進入執行頁面。'));
+    AppUtils.notify(translate('testRun.generateHtmlMissingParams', {}, '無法取得 team_id 或 config_id，請從管理頁進入執行頁面。'), 'danger');
     return;
   }
 
@@ -69,7 +69,7 @@ async function generateHtmlReport() {
   } catch (err) {
     const errorMessage = err?.message || err;
     const alertMessage = translate('testRun.generateHtmlError', { error: errorMessage }, `生成 HTML 報告時發生錯誤：${errorMessage}`);
-    alert(alertMessage);
+    AppUtils.notify(alertMessage, 'danger');
   } finally {
     btn.disabled = false;
     icon.classList.remove('fa-spinner', 'fa-spin');

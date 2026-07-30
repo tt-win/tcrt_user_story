@@ -118,7 +118,7 @@
       window.AppUtils.showError(message);
       return;
     }
-    if (window.alert) window.alert(message);
+    AppUtils.notify(message, 'danger');
   }
 
   function setVisible(el, visible) {
@@ -294,7 +294,7 @@
     if (window.AppUtils && window.AppUtils.showConfirm) {
       const ok = await window.AppUtils.showConfirm(message);
       if (!ok) return;
-    } else if (!window.confirm(message)) {
+    } else if (!await AppUtils.confirm(message)) {
       return;
     }
     try {

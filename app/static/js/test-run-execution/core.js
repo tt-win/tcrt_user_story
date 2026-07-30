@@ -107,7 +107,7 @@ function showExecutionPermissionDenied() {
     if (window.AppUtils && typeof window.AppUtils.showWarning === 'function') {
         window.AppUtils.showWarning(message);
     } else {
-        alert(message);
+        AppUtils.notify(message, 'warning');
     }
 }
 

@@ -61,6 +61,8 @@
     if (addBtn) addBtn.addEventListener('click', () => openEnvModal());
     const emptyAddBtn = document.getElementById('environmentEmptyAddBtn');
     if (emptyAddBtn) emptyAddBtn.addEventListener('click', () => openEnvModal());
+    const envRetry = document.getElementById('environmentErrorRetryBtn');
+    if (envRetry) envRetry.addEventListener('click', () => load(state.teamId));
     const saveEnvBtn = document.getElementById('environmentSaveBtn');
     if (saveEnvBtn) saveEnvBtn.addEventListener('click', saveEnvironment);
     const saveParamBtn = document.getElementById('environmentParamSaveBtn');
@@ -83,6 +85,7 @@
   async function load(teamId) {
     state.teamId = teamId || state.teamId;
     if (!state.teamId) return;
+    hideEnvironmentError();
     try {
       const data = await apiFetch(`/api/teams/${state.teamId}/automation-environments`);
       state.environments = Array.isArray(data) ? data : [];
@@ -96,11 +99,13 @@
       } catch (_e) {
         state.declaredVars = [];
       }
+      render();
     } catch (error) {
       state.environments = [];
+      state.loaded = false;
       showError(error.message || t('automationHub.environments.loadFailed', 'Failed to load environments'));
+      showEnvironmentError();
     }
-    render();
   }
 
   function render() {
@@ -108,6 +113,7 @@
     const empty = document.getElementById('environmentEmpty');
     const countEl = document.getElementById('environmentCount');
     if (!list) return;
+    hideEnvironmentError();
     if (countEl) countEl.textContent = String(state.environments.length);
 
     const isEmpty = state.environments.length === 0;
@@ -122,6 +128,23 @@
       const activeEnv = state.environments.find((e) => e.id === state.activeEnvId);
       if (activeEnv) renderVarsModal(activeEnv);
     }
+  }
+
+  function hideEnvironmentError() {
+    const el = document.getElementById('environmentError');
+    if (el) el.classList.add('d-none');
+  }
+
+  function showEnvironmentError() {
+    const list = document.getElementById('environmentList');
+    const empty = document.getElementById('environmentEmpty');
+    if (list) {
+      list.classList.add('d-none');
+      list.innerHTML = '';
+    }
+    if (empty) empty.classList.add('d-none');
+    const el = document.getElementById('environmentError');
+    if (el) el.classList.remove('d-none');
   }
 
   function missingRequiredCount(env) {
@@ -585,9 +608,9 @@
     if (window.AppUtils) window.AppUtils.showError(message);
   }
 
-  function showConfirm(message) {
-    if (window.AppUtils && window.AppUtils.showConfirm) return window.AppUtils.showConfirm(message);
-    return Promise.resolve(window.confirm(message));
+  async function showConfirm(message) {
+    if (window.AppUtils && window.AppUtils.confirm) return window.AppUtils.confirm(message);
+    return AppUtils.confirm(message);
   }
 
   function t(key, fallback) {

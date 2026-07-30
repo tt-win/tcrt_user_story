@@ -1557,7 +1557,7 @@ const UserStoryMapFlow = () => {
     }, [findReparentTarget]);
 
     // 放開時：落在合法父節點上 → 改父；否則 → 只更新位置（防抖儲存）
-    const onNodeDragStop = useCallback((event, node) => {
+    const onNodeDragStop = useCallback(async (event, node) => {
         clearDropTargetHighlight();
         const target = node ? findReparentTarget(node) : null;
         if (target) {
@@ -1566,7 +1566,7 @@ const UserStoryMapFlow = () => {
             const msg = tUsm('reparentConfirm',
                 `將「${srcTitle}」及其子節點移動到「${tgtTitle}」下？`,
                 { source: srcTitle, target: tgtTitle });
-            if (confirm(msg)) {
+            if (await AppUtils.confirm(msg, { danger: true })) {
                 dragStartPositionsRef.current.delete(node?.id);
                 if (layoutFrameRef.current === 'recomputed' && hasUsmAccess('mapUpdate')) {
                     const nextShadow = new Map();
@@ -1849,7 +1849,7 @@ const UserStoryMapFlow = () => {
     }, []);
 
     // Node click handler
-    const onNodeClick = useCallback((event, node) => {
+    const onNodeClick = useCallback(async (event, node) => {
         // 在搬移模式中，處理目標節點選擇
         if (moveMode && moveSourceNodeId) {
             // 此時所有驗證已在 CustomNode 中完成，只有可選擇的節點能被點擊
@@ -1861,7 +1861,7 @@ const UserStoryMapFlow = () => {
                 `確定要將「${sourceNode.data.title}」及其所有子節點搬移到「${targetNode.data.title}」下嗎？此操作無法復原。`,
                 { source: sourceNode.data.title, target: targetNode.data.title }
             );
-            if (confirm(message)) {
+            if (await AppUtils.confirm(message, { danger: true })) {
                 performMoveNode(moveSourceNodeId, node.id);
             }
             return;
@@ -3784,7 +3784,7 @@ const UserStoryMapFlow = () => {
             'applyLayoutConfirm',
             '將以目前排版覆寫已儲存座標，舊座標會保留在稽核記錄。要繼續嗎？'
         );
-        if (!confirm(confirmMsg)) return;
+        if (!await AppUtils.confirm(confirmMsg)) return;
 
         // Layout full expanded tree synchronously — do not race the collapse effect / React state
         reflowDirectiveRef.current = null;
@@ -3861,7 +3861,7 @@ const UserStoryMapFlow = () => {
     }, [setCollapsedNodeIds]);
 
     // Delete node
-    const deleteNode = (nodeId) => {
+    const deleteNode = async (nodeId) => {
         if (!hasUsmAccess('nodeDelete')) {
             showUsmMessage('noPermissionDeleteNode', '您沒有權限刪除節點', 'error');
             return;
@@ -3889,7 +3889,7 @@ const UserStoryMapFlow = () => {
                 `確定要刪除「${titleText}」嗎？將一併刪除其下 ${descCount} 個子節點，此操作無法復原。`,
                 { title: titleText, count: descCount })
             : tUsm('deleteNodeConfirmNamed', `確定要刪除「${titleText}」嗎？`, { title: titleText });
-        if (confirm(confirmMsg)) {
+        if (await AppUtils.confirm(confirmMsg, { danger: true })) {
             let remainingIds = new Set();
             setNodes((nds) => {
                 const updated = nds
@@ -3944,7 +3944,7 @@ const UserStoryMapFlow = () => {
     };
 
     // 批次刪除：多選（框選 / Cmd-點選）後一次刪除選取節點及其子樹，單次確認、單次儲存
-    const bulkDeleteNodes = (ids) => {
+    const bulkDeleteNodes = async (ids) => {
         if (!hasUsmAccess('nodeDelete')) {
             showUsmMessage('noPermissionDeleteNode', '您沒有權限刪除節點', 'error');
             return;
@@ -3962,7 +3962,7 @@ const UserStoryMapFlow = () => {
         const confirmMsg = tUsm('bulkDeleteConfirm',
             `刪除選取的 ${ids.length} 個節點（連同子節點共 ${total} 個）？此操作無法復原。`,
             { selected: ids.length, total });
-        if (!confirm(confirmMsg)) return;
+        if (!await AppUtils.confirm(confirmMsg, { danger: true })) return;
 
         let remainingIds = new Set();
         setNodes((nds) => {
@@ -4730,7 +4730,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                                     // Keep map list modal open to show updated list
                                 } else {
                                     const data = await response.json();
-                                    alert(data.detail || '刪除失敗');
+                                    AppUtils.notify(data.detail || '刪除失敗', 'danger');
                                 }
                             } catch (error) {
                                 console.error('Failed to delete map:', error);

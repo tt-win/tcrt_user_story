@@ -57,18 +57,17 @@
 {% endblock %}
 
 {% block content %}
+{% from 'components/empty_state.html' import empty_state %}
+{% from 'components/skeleton.html' import skeleton %}
 <div class="container-fluid">
 
-    <!-- Loading state -->
-    <div id="loading-state" class="text-center py-5" style="display: none;">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden" data-i18n="common.loading">載入中...</span>
-        </div>
-        <div class="mt-3 text-muted" data-i18n="testRun.loadingConfigs">載入測試執行配置中...</div>
+    <!-- Loading state (visible until JS takes over) -->
+    <div id="loading-state">
+        {{ skeleton(variant='cards', rows=6) }}
     </div>
 
     <!-- 無配置時的提示區域 -->
-    <div id="no-configs-section" style="display: none;">
+    <div id="no-configs-section" class="d-none">
         <div class="row justify-content-center">
             <div class="col-md-6 col-lg-4">
                 <div class="card text-center add-test-run-card" onclick="openConfigFormModal()">
@@ -87,8 +86,32 @@
         </div>
     </div>
 
+    {{ empty_state(
+      id='trmErrorState',
+      variant='error',
+      icon='fas fa-exclamation-triangle',
+      title='載入失敗',
+      title_i18n='dataView.loadFailedTitle',
+      description='無法載入測試執行資料，請稍後再試。',
+      description_i18n='dataView.loadFailedHint',
+      retry_id='trmErrorRetryBtn',
+      retry_label='重試',
+      retry_i18n='common.retry',
+      hidden=True
+    ) }}
+
+    {{ empty_state(
+      id='trmNoTeamState',
+      icon='fas fa-users',
+      title='請先選擇團隊',
+      title_i18n='dataView.teamRequiredTitle',
+      description='載入測試執行需要團隊脈絡。請先從導覽列選擇團隊。',
+      description_i18n='dataView.teamRequiredHint',
+      hidden=True
+    ) }}
+
     <!-- 檢視切換 (卡片 / 精簡列表)，套用至下方三個區塊 -->
-    <div class="d-flex justify-content-end align-items-center gap-2 mb-3">
+    <div id="trm-view-toggle" class="d-flex justify-content-end align-items-center gap-2 mb-3">
         <div class="btn-group" role="group" data-i18n-aria-label="common.viewToggle" aria-label="View toggle">
             <button type="button" class="btn btn-outline-secondary btn-sm active" id="trmViewToggleCard" data-i18n-title="common.cardView" title="Card view">
                 <i class="fas fa-th-large"></i>
@@ -100,7 +123,7 @@
     </div>
 
     <!-- Test Run Set 與未歸組區域 -->
-    <div id="test-run-configs-section">
+    <div id="test-run-configs-section" class="d-none">
         <div id="test-run-sets-section" class="mb-5">
             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                 <div>
@@ -119,6 +142,15 @@
                 <div>
                     <h4 class="mb-0" data-i18n="adhoc.title">Ad-hoc Runs</h4>
                     <small class="text-muted" data-i18n="adhoc.card.createHint">Quick test runs without predefined test cases</small>
+                </div>
+            </div>
+            <div id="adhocErrorState" class="d-none mb-3">
+                <div class="alert alert-warning d-flex align-items-center justify-content-between flex-wrap gap-2 mb-0" role="status">
+                    <span data-i18n="dataView.loadFailedHint">無法載入資料，請稍後再試。</span>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="adhocErrorRetryBtn">
+                        <i class="fas fa-redo me-1" aria-hidden="true"></i>
+                        <span data-i18n="common.retry">重試</span>
+                    </button>
                 </div>
             </div>
             <div class="row" id="adhoc-runs-container"></div>

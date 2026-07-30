@@ -536,7 +536,7 @@ async function showBugTicketPreview(ticketNumber, triggerElement) {
     } catch (error) {
         console.error('打開 JIRA ticket 失敗:', error);
         // 如果出現錯誤，顯示提示訊息
-        alert(treTranslate('testRun.openJiraTicketFailed', '無法打開 JIRA ticket，請稍後重試'));
+        AppUtils.notify(treTranslate('testRun.openJiraTicketFailed', '無法打開 JIRA ticket，請稍後重試'), 'danger');
     }
 }
 

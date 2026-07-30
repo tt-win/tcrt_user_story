@@ -110,7 +110,7 @@
     const single = !!options.single;
     const suiteLines = suiteIds.map((id) => `- ${describeSuite(id)}`).join('\n');
     const singleSuiteName = single ? describeSuite(suiteIds[0]) : '';
-    const confirmed = window.confirm(single
+    const confirmed = await AppUtils.confirm(single
       ? (
           translate(
             'testRun.sets.detail.runAutomationSuiteConfirm',
@@ -124,8 +124,7 @@
             `即將觸發 ${suiteIds.length} 個 automation suite。\n${suiteLines}\n確認後將對每個 suite 送 CIProvider.trigger_run。`,
             { count: suiteIds.length, suites: suiteLines }
           )
-        )
-    );
+        ));
     if (!confirmed) return;
 
     const btn = options.button || document.getElementById('setDetailRunAutomationBtn');

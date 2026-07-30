@@ -182,7 +182,7 @@ function initializeMarkdownEditor() {
             if (window.AppUtils && window.AppUtils.showWarning) {
                 window.AppUtils.showWarning(message);
             } else {
-                alert(message);
+                AppUtils.notify(message, 'warning');
             }
         }
     });
