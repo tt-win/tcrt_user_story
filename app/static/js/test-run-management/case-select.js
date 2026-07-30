@@ -990,7 +990,7 @@ async function createItemsFromSelection() {
   
   if (selectedCaseMap.size === 0) {
     const warn = window.i18n ? window.i18n.t('errors.pleaseSelectTestCases') : '請先選擇至少一筆 Test Case';
-    AppUtils.showWarning ? AppUtils.showWarning(warn) : alert(warn);
+    AppUtils.notify(warn, 'warning');
     return;
   }
   

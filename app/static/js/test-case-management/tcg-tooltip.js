@@ -335,7 +335,7 @@ async function showTCGPreviewForModal() {
 
     const tcgInput = document.getElementById('tcg');
     if (!tcgInput || !tcgInput.value.trim()) {
-        alert(window.i18n ? window.i18n.t('errors.noTCGNumber') : '請先輸入 TCG 編號');
+        AppUtils.notify(window.i18n ? window.i18n.t('errors.noTCGNumber') : '請先輸入 TCG 編號', 'danger');
         return;
     }
 

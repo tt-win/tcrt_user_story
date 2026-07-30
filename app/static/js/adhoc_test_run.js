@@ -206,7 +206,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function onSubmitAddRowCount(event) {
     event?.preventDefault();
     if (isRunReadOnly) {
-      alert(tt("adhoc.readonly", "Read-only (archived)"));
+      AppUtils.notify(tt("adhoc.readonly", "Read-only (archived)"));
       return;
     }
     if (!hot || !dom.addRowCountInput) return;
@@ -368,7 +368,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   
                           } else {
   
-                              alert(tt('adhoc.rerunFailed','Failed to re-run'));
+                              AppUtils.notify(tt('adhoc.rerunFailed','Failed to re-run'), 'danger');
   
                           }
   
@@ -376,7 +376,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   
                           console.error(e);
   
-                          alert(tt('adhoc.rerunFailed','Failed to re-run'));
+                          AppUtils.notify(tt('adhoc.rerunFailed','Failed to re-run'), 'danger');
   
                       }
   
@@ -604,12 +604,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         e.stopPropagation();
         if (isRunReadOnly) return;
         if (
-          confirm(
-            tt(
+          await AppUtils.confirm(tt(
               "adhoc.confirmDeleteSheet",
               "Are you sure you want to delete this sheet?",
-            ),
-          )
+            ), { danger: true })
         ) {
           await deleteSheet(sheet.id);
         }
@@ -640,11 +638,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         await loadRun();
       } else {
-        alert(tt("messages.deleteFailed", "Delete failed"));
+        AppUtils.notify(tt("messages.deleteFailed", "Delete failed"), 'danger');
       }
     } catch (e) {
       console.error(e);
-      alert(tt("messages.deleteFailed", "Delete error"));
+      AppUtils.notify(tt("messages.deleteFailed", "Delete error"), 'danger');
     }
   }
 
@@ -663,11 +661,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         await loadRun();
         switchToSheet(id);
       } else {
-        alert(tt("adhoc.execution.messages.renameFailed", "Rename failed"));
+        AppUtils.notify(tt("adhoc.execution.messages.renameFailed", "Rename failed"), 'danger');
       }
     } catch (e) {
       console.error(e);
-      alert(tt("adhoc.execution.messages.renameFailed", "Rename error"));
+      AppUtils.notify(tt("adhoc.execution.messages.renameFailed", "Rename error"), 'danger');
     }
   }
 
@@ -827,14 +825,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function onPasteFromContextMenu(selection) {
     if (isRunReadOnly || !hot) return;
     if (!navigator.clipboard?.readText) {
-      alert(tt("adhoc.pasteUnavailable", "Paste unavailable in this browser. Please use Ctrl+V / Cmd+V."));
+      AppUtils.notify(tt("adhoc.pasteUnavailable", "Paste unavailable in this browser. Please use Ctrl+V / Cmd+V."));
       return;
     }
     let clipboardText = "";
     try {
       clipboardText = await navigator.clipboard.readText();
     } catch (_) {
-      alert(tt("adhoc.pasteUnavailable", "Paste unavailable in this browser. Please use Ctrl+V / Cmd+V."));
+      AppUtils.notify(tt("adhoc.pasteUnavailable", "Paste unavailable in this browser. Please use Ctrl+V / Cmd+V."));
       return;
     }
 
@@ -1321,11 +1319,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     const sectionId = sectionSelect?.value || null;
     const checks = Array.from(document.querySelectorAll(".convert-item-checkbox")).filter((c) => c.checked && c.value);
     if (!setId) {
-      alert(tt('adhoc.convertSelectSet','Please select a Test Case Set'));
+      AppUtils.notify(tt('adhoc.convertSelectSet','Please select a Test Case Set'));
       return;
     }
     if (checks.length === 0) {
-      alert(tt('adhoc.convertSelectItems','Select at least one test case'));
+      AppUtils.notify(tt('adhoc.convertSelectItems','Select at least one test case'));
       return;
     }
     const itemIds = checks.map((c) => Number(c.value)).filter((v) => !Number.isNaN(v));
@@ -1360,7 +1358,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (window.AppUtils && AppUtils.showError) {
           AppUtils.showError(msg);
         } else {
-          alert(msg);
+          AppUtils.notify(msg, 'danger');
         }
       }
     } catch (e) {
@@ -1369,7 +1367,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (window.AppUtils && AppUtils.showError) {
         AppUtils.showError(msg);
       } else {
-        alert(msg);
+        AppUtils.notify(msg, 'danger');
       }
     }
   }
@@ -1606,7 +1604,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function onAddSheet() {
     if (isRunReadOnly) {
-      alert(tt("adhoc.readonly", "Read-only (archived)"));
+      AppUtils.notify(tt("adhoc.readonly", "Read-only (archived)"));
       return;
     }
     const name = prompt(
@@ -1635,13 +1633,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       switchToSheet(newSheet.id);
     } catch (e) {
       console.error(e);
-      alert(tt("adhoc.execution.messages.createSheetFailed", "Create sheet failed"));
+      AppUtils.notify(tt("adhoc.execution.messages.createSheetFailed", "Create sheet failed"), 'danger');
     }
   }
 
   function onAddRow() {
     if (isRunReadOnly) {
-      alert(tt("adhoc.readonly", "Read-only (archived)"));
+      AppUtils.notify(tt("adhoc.readonly", "Read-only (archived)"), 'danger');
       return;
     }
     if (!hot) return;
@@ -1650,7 +1648,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function onAddSection() {
     if (isRunReadOnly) {
-      alert(tt("adhoc.readonly", "Read-only (archived)"));
+      AppUtils.notify(tt("adhoc.readonly", "Read-only (archived)"));
       return;
     }
     if (!hot) return;
@@ -2038,7 +2036,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       modal.show();
     } catch (e) {
       console.error("adhoc reports error", e);
-      alert(tt("adhoc.loadFailed", "Failed to load reports"));
+      AppUtils.notify(tt("adhoc.loadFailed", "Failed to load reports"), 'danger');
     }
   }
 
@@ -2224,7 +2222,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       URL.revokeObjectURL(url);
     } catch (e) {
       console.error("export html error", e);
-      alert("Failed to export HTML report");
+      AppUtils.notify("Failed to export HTML report", 'danger');
     }
   }
 
@@ -2328,7 +2326,7 @@ ${sheetBlocks}
       setTimeout(() => URL.revokeObjectURL(url), 30000);
     } catch (e) {
       console.error("open html report error", e);
-      alert("Failed to open HTML report");
+      AppUtils.notify("Failed to open HTML report", 'danger');
     }
   }
 });

@@ -58,14 +58,14 @@ class TestCaseCrossSetOps {
    */
   showCrossSetCopyModal(testCaseIds) {
     if (!testCaseIds || testCaseIds.length === 0) {
-      alert(window.i18n.t('testCaseSet.selectAtLeastOne'));
+      AppUtils.notify(window.i18n.t('testCaseSet.selectAtLeastOne'));
       return;
     }
 
     const sets = this.allSets.filter(s => s.id !== this.currentSetId);
 
     if (sets.length === 0) {
-      alert(window.i18n.t('testCaseSet.crossSet.noOtherSets'));
+      AppUtils.notify(window.i18n.t('testCaseSet.crossSet.noOtherSets'));
       return;
     }
 
@@ -127,14 +127,14 @@ class TestCaseCrossSetOps {
    */
   showCrossSetMoveModal(testCaseIds) {
     if (!testCaseIds || testCaseIds.length === 0) {
-      alert(window.i18n.t('testCaseSet.selectAtLeastOne'));
+      AppUtils.notify(window.i18n.t('testCaseSet.selectAtLeastOne'));
       return;
     }
 
     const sets = this.allSets.filter(s => s.id !== this.currentSetId);
 
     if (sets.length === 0) {
-      alert(window.i18n.t('testCaseSet.crossSet.noOtherSets'));
+      AppUtils.notify(window.i18n.t('testCaseSet.crossSet.noOtherSets'));
       return;
     }
 
@@ -230,7 +230,7 @@ class TestCaseCrossSetOps {
 
     } catch (error) {
       console.error('Error loading sections:', error);
-      alert(window.i18n.t('section.crossSection.loadFailed'));
+      AppUtils.notify(window.i18n.t('section.crossSection.loadFailed'), 'danger');
     }
   }
 
@@ -263,12 +263,12 @@ class TestCaseCrossSetOps {
     const targetSectionId = document.getElementById('targetSection').value;
 
     if (!targetSetId) {
-      alert(window.i18n.t('testCaseSet.crossSet.selectTargetSet'));
+      AppUtils.notify(window.i18n.t('testCaseSet.crossSet.selectTargetSet'));
       return;
     }
 
     if (!targetSectionId) {
-      alert(window.i18n.t('section.crossSection.selectTargetSection'));
+      AppUtils.notify(window.i18n.t('section.crossSection.selectTargetSection'));
       return;
     }
 
@@ -292,7 +292,7 @@ class TestCaseCrossSetOps {
       }
 
       bootstrap.Modal.getInstance(document.getElementById('crossSetCopyModal')).hide();
-      alert(window.i18n.t('testCaseSet.crossSet.copySuccess', { count: testCaseIds.length }));
+      AppUtils.notify(window.i18n.t('testCaseSet.crossSet.copySuccess', { count: testCaseIds.length }), 'success');
 
       // 刷新表格
       if (typeof loadTestCases === 'function') {
@@ -301,7 +301,7 @@ class TestCaseCrossSetOps {
 
     } catch (error) {
       console.error('Error copying test cases:', error);
-      alert(window.i18n.t('testCaseSet.crossSet.copyFailed', { reason: error.message }));
+      AppUtils.notify(window.i18n.t('testCaseSet.crossSet.copyFailed', { reason: error.message }), 'danger');
     }
   }
 
@@ -313,16 +313,16 @@ class TestCaseCrossSetOps {
     const targetSectionId = document.getElementById('targetSection').value;
 
     if (!targetSetId) {
-      alert(window.i18n.t('testCaseSet.crossSet.selectTargetSet'));
+      AppUtils.notify(window.i18n.t('testCaseSet.crossSet.selectTargetSet'));
       return;
     }
 
     if (!targetSectionId) {
-      alert(window.i18n.t('section.crossSection.selectTargetSection'));
+      AppUtils.notify(window.i18n.t('section.crossSection.selectTargetSection'));
       return;
     }
 
-    if (!confirm(window.i18n.t('testCaseSet.crossSet.moveConfirm', { count: testCaseIds.length }))) {
+    if (!(await AppUtils.confirm(window.i18n.t('testCaseSet.crossSet.moveConfirm', { count: testCaseIds.length }), { danger: true }))) {
       return;
     }
 
@@ -346,7 +346,7 @@ class TestCaseCrossSetOps {
       }
 
       bootstrap.Modal.getInstance(document.getElementById('crossSetMoveModal')).hide();
-      alert(window.i18n.t('testCaseSet.crossSet.moveSuccess', { count: testCaseIds.length }));
+      AppUtils.notify(window.i18n.t('testCaseSet.crossSet.moveSuccess', { count: testCaseIds.length }), 'success');
 
       // 刷新表格
       if (typeof loadTestCases === 'function') {
@@ -355,7 +355,7 @@ class TestCaseCrossSetOps {
 
     } catch (error) {
       console.error('Error moving test cases:', error);
-      alert(window.i18n.t('testCaseSet.crossSet.moveFailed', { reason: error.message }));
+      AppUtils.notify(window.i18n.t('testCaseSet.crossSet.moveFailed', { reason: error.message }), 'danger');
     }
   }
 

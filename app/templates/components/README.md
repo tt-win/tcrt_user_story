@@ -11,6 +11,8 @@
 | 表格 | `data_table.html` | `data_table(columns, id, extra_classes, striped)` | 統一表格容器（資料常由 JS 填入） |
 | 操作列 | `toolbar.html` | `toolbar(title, title_i18n, subtitle)`（用 `{% call %}` 注入操作鈕） | 統一頁面標題＋操作列 |
 | 狀態標籤 | `status_badge.html` | `status_badge(text, variant, size, pill, extra_classes)` | 既有狀態徽章 |
+| 載入骨架 | `skeleton.html` | `skeleton(variant, rows, columns, id, extra_classes)` | 表格列／卡片列表 loading |
+| 空／錯誤狀態 | `empty_state.html` | `empty_state(id, title, …)` | 統一 empty／error 呈現 |
 
 ## 用法
 

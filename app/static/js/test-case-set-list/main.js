@@ -55,6 +55,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   setupQuickSearch_TestCaseSets();
   bindAiHelperEntrypoint();
   bindViewToggleEvents();
+  bindDataViewStateActions();
 
   // 若 AuthClient 存在，監聽 authReady 以確保有完整的 user info
   document.addEventListener('authReady', async (e) => {
@@ -87,14 +88,98 @@ document.addEventListener('DOMContentLoaded', async function() {
       await loadTestCaseSets();
     } catch (error) {
       console.error('Error parsing team from localStorage:', error);
+      showSetsViewState('error', {
+        titleKey: 'dataView.loadFailedTitle',
+        titleFallback: '載入失敗',
+        hintKey: 'dataView.teamParseFailedHint',
+        hintFallback: '無法讀取團隊資訊，請重新選擇團隊後再試。'
+      });
       showAlert(window.i18n && window.i18n.isReady() ? window.i18n.t('common.failed') : '讀取團隊資訊失敗', 'danger');
     }
   } else {
     console.warn('No currentTeam found in localStorage');
-    showAlert(window.i18n && window.i18n.isReady() ? window.i18n.t('common.pleaseSelect') : '未選擇團隊', 'warning');
+    currentTeamId = null;
+    showSetsViewState('no-team');
   }
 });
 
+function bindDataViewStateActions() {
+  const retryBtn = document.getElementById('setsErrorRetryBtn');
+  if (retryBtn && retryBtn.dataset.bound !== '1') {
+    retryBtn.dataset.bound = '1';
+    retryBtn.addEventListener('click', () => {
+      loadTestCaseSets();
+    });
+  }
+
+  const createBtn = document.getElementById('emptyStateCreateBtn');
+  if (createBtn && createBtn.dataset.bound !== '1') {
+    createBtn.dataset.bound = '1';
+    createBtn.addEventListener('click', () => {
+      if (typeof showCreateSetModal === 'function') {
+        showCreateSetModal();
+      } else if (typeof openCreateSetModal === 'function') {
+        openCreateSetModal();
+      } else {
+        const compactAdd = document.getElementById('compactAddSetBtn');
+        if (compactAdd) compactAdd.click();
+      }
+    });
+  }
+}
+
+/**
+ * Mutually exclusive view states for the sets data section.
+ * @param {'loading'|'content'|'empty'|'error'|'no-team'} state
+ * @param {{titleKey?: string, titleFallback?: string, hintKey?: string, hintFallback?: string}} [errorCopy]
+ */
+function showSetsViewState(state, errorCopy = {}) {
+  const loadingEl = document.getElementById('setsLoadingState');
+  const container = document.getElementById('testCaseSetsContainer');
+  const compact = document.getElementById('testCaseSetsCompactContainer');
+  const emptyState = document.getElementById('emptyState');
+  const noTeamState = document.getElementById('noTeamState');
+  const errorState = document.getElementById('setsErrorState');
+
+  const setHidden = (el, hidden) => {
+    if (!el) return;
+    el.classList.toggle('d-none', hidden);
+  };
+
+  setHidden(loadingEl, state !== 'loading');
+  setHidden(emptyState, state !== 'empty');
+  setHidden(noTeamState, state !== 'no-team');
+  setHidden(errorState, state !== 'error');
+
+  if (state === 'loading' || state === 'error' || state === 'no-team') {
+    if (container) {
+      container.innerHTML = '';
+      container.classList.add('d-none');
+    }
+    if (compact) {
+      compact.innerHTML = '';
+      compact.classList.add('d-none');
+    }
+  } else if (container) {
+    container.classList.remove('d-none');
+  }
+
+  if (state === 'error' && errorState) {
+    const titleEl = errorState.querySelector('.tcrt-empty-state__title');
+    const descEl = errorState.querySelector('.tcrt-empty-state__description');
+    if (titleEl && errorCopy.titleKey) {
+      titleEl.setAttribute('data-i18n', errorCopy.titleKey);
+      titleEl.textContent = getLocalizedText(errorCopy.titleKey, {}, errorCopy.titleFallback || '載入失敗');
+    }
+    if (descEl && (errorCopy.hintKey || errorCopy.hintFallback)) {
+      if (errorCopy.hintKey) descEl.setAttribute('data-i18n', errorCopy.hintKey);
+      descEl.textContent = getLocalizedText(errorCopy.hintKey || '', {}, errorCopy.hintFallback || '');
+    }
+    if (window.i18n && typeof window.i18n.retranslate === 'function') {
+      window.i18n.retranslate(errorState);
+    }
+  }
+}
 function bindAiHelperEntrypoint() {
   const helperBtn = document.getElementById('openQaAiHelperFromSetListBtn');
   if (!helperBtn || helperBtn.dataset.bound === '1') {
@@ -191,8 +276,11 @@ function setSetDefaultConfirmLoading(isLoading) {
 async function loadTestCaseSets() {
   if (!currentTeamId) {
     console.warn('No currentTeamId set, skipping loadTestCaseSets');
+    showSetsViewState('no-team');
     return;
   }
+
+  showSetsViewState('loading');
 
   try {
     if (!window.AuthClient) {
@@ -217,6 +305,12 @@ async function loadTestCaseSets() {
   } catch (error) {
     console.error('Error loading test case sets:', error);
     const errorMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('common.loadingFailed', {}, i18n.loadingFailed) : (i18n.loadingFailed || 'Failed to load data');
+    showSetsViewState('error', {
+      titleKey: 'dataView.loadFailedTitle',
+      titleFallback: '載入失敗',
+      hintKey: 'dataView.loadFailedHint',
+      hintFallback: errorMsg
+    });
     showAlert(errorMsg, 'danger');
   }
 }
@@ -482,7 +576,6 @@ async function toggleSetPin(setId) {
 // 渲染 Test Case Sets 卡片
 async function renderTestCaseSets() {
   const container = document.getElementById('testCaseSetsContainer');
-  const emptyState = document.getElementById('emptyState');
   const btnTexts = getButtonTexts();
   // 從 AuthClient 獲取使用者角色
   let isAdmin = false;
@@ -499,17 +592,18 @@ async function renderTestCaseSets() {
   }
 
   if (testCaseSets.length === 0) {
+    showSetsViewState('empty');
     container.innerHTML = `
       <div class="col-md-6 col-lg-4 mb-4">
         ${getAddTestCaseSetCardHtml(btnTexts)}
       </div>
     `;
-    emptyState.classList.add('d-none');
+    // emptyState is visible via showSetsViewState('empty') — display path wired.
     renderCompactTestCaseSets(btnTexts, isAdmin);
     return;
   }
 
-  emptyState.classList.add('d-none');
+  showSetsViewState('content');
 
   const orderedSets = orderTestCaseSetsDefaultFirst(testCaseSets);
 
@@ -1757,7 +1851,7 @@ async function confirmSetCaseSelection() {
   
   if (setTestCaseData.selectedCases.size === 0) {
     const selectMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.selectAtLeastOne', {}, '請至少選擇一個測試案例') : '請至少選擇一個測試案例';
-    alert(selectMsg);
+    AppUtils.notify(selectMsg);
     return;
   }
 
@@ -1834,7 +1928,7 @@ async function confirmSetCaseSelection() {
   } catch (error) {
     console.error('[SetCaseSelect] Error creating test run:', error);
     const failMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('common.failed') : '建立失敗';
-    alert(`${failMsg}: ${error.message}`);
+    AppUtils.notify(`${failMsg}: ${error.message}`, 'danger');
   } finally {
     btn.disabled = false;
     btn.innerHTML = originalBtnContent;

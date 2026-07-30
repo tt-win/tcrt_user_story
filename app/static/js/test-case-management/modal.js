@@ -1246,6 +1246,15 @@ function updateBatchToolbar() {
         toolbar.style.setProperty('display', 'none', 'important');
     }
 
+    // Selection-dependent actions must be disabled when nothing is selected.
+    const hasSelection = selectedCount > 0;
+    ['batchModifyBtn', 'batchCopyBtn', 'batchDeleteBtn'].forEach((id) => {
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.disabled = !hasSelection || toolbar.dataset.permissionsEnabled === 'false';
+        }
+    });
+
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
     adjustTestCasesScrollHeight();
 }

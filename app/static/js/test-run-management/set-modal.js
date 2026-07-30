@@ -491,7 +491,7 @@ function renderTestRunSetDetail(setData, filterStatus = 'all') {
         const newDeleteBtn = deleteBtn.cloneNode(true);
         deleteBtn.parentNode.replaceChild(newDeleteBtn, deleteBtn);
 
-        newDeleteBtn.addEventListener('click', () => {
+        newDeleteBtn.addEventListener('click', async () => {
             const deleteModalEl = document.getElementById('deleteTestRunSetModal');
             if (deleteModalEl) {
                 const deleteModal = new bootstrap.Modal(deleteModalEl);
@@ -507,7 +507,7 @@ function renderTestRunSetDetail(setData, filterStatus = 'all') {
                 newConfirmBtn.addEventListener('click', handleConfirm);
                 
                 deleteModal.show();
-            } else if (confirm(window.i18n ? window.i18n.t('testRun.sets.deleteConfirm') : '確定要刪除此 Test Run Set 嗎？此操作將刪除其下所有 Test Run，且無法復原。')) {
+            } else if (await AppUtils.confirm(window.i18n ? window.i18n.t('testRun.sets.deleteConfirm') : '確定要刪除此 Test Run Set 嗎？此操作將刪除其下所有 Test Run，且無法復原。', { danger: true })) {
                 deleteTestRunSet(setData.id);
             }
         });

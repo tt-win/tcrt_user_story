@@ -370,9 +370,9 @@
     if (window.AppUtils) window.AppUtils.showError(message);
   }
 
-  function showConfirm(message) {
-    if (window.AppUtils && window.AppUtils.showConfirm) return window.AppUtils.showConfirm(message);
-    return Promise.resolve(window.confirm(message));
+  async function showConfirm(message) {
+    if (window.AppUtils && window.AppUtils.confirm) return window.AppUtils.confirm(message);
+    return AppUtils.confirm(message);
   }
 
   function t(key, fallback) {

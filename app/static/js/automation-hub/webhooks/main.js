@@ -65,6 +65,9 @@
     const emptyAdd = document.getElementById('emptyStateAddWebhookBtn');
     if (emptyAdd) emptyAdd.addEventListener('click', () => openWebhookModal());
 
+    const webhookRetry = document.getElementById('webhookErrorRetryBtn');
+    if (webhookRetry) webhookRetry.addEventListener('click', loadWebhooks);
+
     const saveWebhookBtn = document.getElementById('saveWebhookBtn');
     if (saveWebhookBtn) saveWebhookBtn.addEventListener('click', saveWebhook);
 
@@ -111,6 +114,7 @@
       renderWebhooks();
     } catch (error) {
       showError(error.message || t('automationHub.webhooks.loadFailed', 'Failed to load webhooks'));
+      showWebhookError();
     } finally {
       setLoading(false);
       refreshTexts();
@@ -120,6 +124,8 @@
   function renderWebhooks() {
     const contentCard = document.getElementById('webhook-content');
     const emptyCard = document.getElementById('webhook-empty');
+    const errorState = document.getElementById('webhook-error-state');
+    if (errorState) errorState.classList.add('d-none');
     const isEmpty = state.webhooks.length === 0;
     emptyCard.classList.toggle('d-none', !isEmpty);
     contentCard.classList.toggle('d-none', isEmpty);
@@ -410,6 +416,8 @@
     const content = document.getElementById('webhook-content');
     if (noTeam) noTeam.classList.remove('d-none');
     if (content) content.classList.add('d-none');
+    const errorState = document.getElementById('webhook-error-state');
+    if (errorState) errorState.classList.add('d-none');
   }
 
   function setLoading(isLoading) {
@@ -418,9 +426,22 @@
     if (isLoading) {
       const empty = document.getElementById('webhook-empty');
       const content = document.getElementById('webhook-content');
+      const errorState = document.getElementById('webhook-error-state');
       if (empty) empty.classList.add('d-none');
       if (content) content.classList.add('d-none');
+      if (errorState) errorState.classList.add('d-none');
     }
+  }
+
+  function showWebhookError() {
+    const loading = document.getElementById('webhook-loading');
+    const empty = document.getElementById('webhook-empty');
+    const content = document.getElementById('webhook-content');
+    const errorState = document.getElementById('webhook-error-state');
+    if (loading) loading.classList.add('d-none');
+    if (empty) empty.classList.add('d-none');
+    if (content) content.classList.add('d-none');
+    if (errorState) errorState.classList.remove('d-none');
   }
 
   async function apiFetch(url, options) {

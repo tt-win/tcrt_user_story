@@ -201,7 +201,7 @@
             return;
         }
 
-        if (!confirm('確定要從文字匯入節點嗎？這會新增節點到現有地圖中。')) {
+        if (!await AppUtils.confirm('確定要從文字匯入節點嗎？這會新增節點到現有地圖中。')) {
             return;
         }
 
@@ -272,7 +272,7 @@
         }
 
         if (!skipConfirm) {
-            if (!confirm('⚠️ 警告：這將會刪除現有的所有節點並以文字內容取代。\n\n確定要繼續嗎？')) {
+            if (!await AppUtils.confirm('⚠️ 警告：這將會刪除現有的所有節點並以文字內容取代。\n\n確定要繼續嗎？', { danger: true })) {
                 return;
             }
         }
@@ -338,7 +338,7 @@
             window.showMessage(message, type);
         } else {
             console.log(`[${type}] ${message}`);
-            alert(message);
+            AppUtils.notify(message);
         }
     }
 

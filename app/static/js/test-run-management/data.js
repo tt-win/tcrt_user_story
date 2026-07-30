@@ -16,7 +16,7 @@ async function loadTestRunConfigs() {
         }
         if (!currentTeamId) {
             console.warn('loadTestRunConfigs: Skip loading due to missing teamId');
-            showNoConfigs();
+            showTrmViewState('no-team');
             return;
         }
 
@@ -28,7 +28,7 @@ async function loadTestRunConfigs() {
             await window.PinStore.load(currentTeamId);
         }
 
-        showLoading();
+        showTrmViewState('loading');
         const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/overview?include_archived=true`);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -37,17 +37,19 @@ async function loadTestRunConfigs() {
         testRunSets = Array.isArray(payload.sets) ? payload.sets : [];
         unassignedTestRuns = Array.isArray(payload.unassigned) ? payload.unassigned : [];
         
-        // Load Ad-hoc Runs
+        // Load Ad-hoc Runs (section-level error; do not fail whole page)
         try {
             const adhocResponse = await window.AuthClient.fetch(`/api/adhoc-runs/team/${currentTeamId}`);
             if (adhocResponse.ok) {
                 const adhocRuns = await adhocResponse.json();
+                setAdhocErrorVisible(false);
                 renderAdHocRuns(adhocRuns);
             } else {
-                renderAdHocRuns([]);
+                throw new Error(`HTTP ${adhocResponse.status}`);
             }
         } catch (e) {
             console.error('Failed to load adhoc runs', e);
+            setAdhocErrorVisible(true);
             renderAdHocRuns([]);
         }
 
@@ -60,7 +62,7 @@ async function loadTestRunConfigs() {
         console.error('Failed to load Test Run configurations:', error);
         const errorMsg = window.i18n ? window.i18n.t('messages.loadConfigsFailed') : '載入失敗';
         AppUtils.showError(errorMsg + '：' + error.message);
-        showNoConfigs();
+        showTrmViewState('error');
     } finally {
         hideLoading();
         

@@ -24,6 +24,8 @@
 {% endblock %}
 
 {% block content %}
+{% from 'components/skeleton.html' import skeleton %}
+{% from 'components/empty_state.html' import empty_state %}
 <div class="container-fluid mt-4">
 
   <!-- 檢視切換 (卡片 / 精簡列表) -->
@@ -41,6 +43,11 @@
     </div>
   </div>
 
+  <!-- Loading skeleton -->
+  <div id="setsLoadingState" class="d-none">
+    {{ skeleton(variant='cards', rows=6) }}
+  </div>
+
   <!-- Test Case Sets 卡片容器 -->
   <div class="row" id="testCaseSetsContainer">
     <!-- 動態生成的卡片會插入這裡 -->
@@ -50,17 +57,45 @@
   <div id="testCaseSetsCompactContainer" class="d-none"></div>
 
   <!-- 空狀態提示 -->
-  <div id="emptyState" class="row d-none">
-    <div class="col-12">
-      <div class="card bg-light">
-        <div class="card-body text-center py-5">
-          <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
-          <h5 class="text-muted" id="emptyStateTitle" data-i18n="testCaseSet.noTestCaseSets">沒有測試案例集合</h5>
-          <p class="text-muted" id="emptyStateText" data-i18n="testCaseSet.createFirstSet">點擊下方卡片建立第一個測試案例集合</p>
-        </div>
-      </div>
-    </div>
-  </div>
+  {{ empty_state(
+    id='emptyState',
+    icon='fas fa-inbox',
+    title='沒有測試案例集合',
+    title_i18n='testCaseSet.noTestCaseSets',
+    description='點擊下方按鈕建立第一個測試案例集合',
+    description_i18n='testCaseSet.createFirstSet',
+    action_id='emptyStateCreateBtn',
+    action_label='新增集合',
+    action_i18n='testCaseSet.addSet',
+    action_icon='fas fa-plus',
+    hidden=True
+  ) }}
+
+  <!-- 前置條件不足（未選團隊） -->
+  {{ empty_state(
+    id='noTeamState',
+    icon='fas fa-users',
+    title='請先選擇團隊',
+    title_i18n='dataView.teamRequiredTitle',
+    description='載入測試案例集合需要團隊脈絡。請先從導覽列選擇團隊。',
+    description_i18n='dataView.teamRequiredHint',
+    hidden=True
+  ) }}
+
+  <!-- 錯誤狀態 -->
+  {{ empty_state(
+    id='setsErrorState',
+    variant='error',
+    icon='fas fa-exclamation-triangle',
+    title='載入失敗',
+    title_i18n='dataView.loadFailedTitle',
+    description='無法載入測試案例集合，請稍後再試。',
+    description_i18n='dataView.loadFailedHint',
+    retry_id='setsErrorRetryBtn',
+    retry_label='重試',
+    retry_i18n='common.retry',
+    hidden=True
+  ) }}
 </div>
 
 <!-- Test Case Set CRUD Modal -->

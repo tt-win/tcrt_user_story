@@ -266,7 +266,7 @@
         if (!teamId) return;
         const name = byId('appTokenName').value.trim();
         if (!name) {
-            alert(translate('appToken.nameRequired', {}, '權杖名稱為必填項'));
+            AppUtils.notify(translate('appToken.nameRequired', {}, '權杖名稱為必填項'));
             return;
         }
         const description = byId('appTokenDescription').value.trim() || null;
@@ -274,7 +274,7 @@
             document.querySelectorAll('#appTokenModal .app-token-scope:checked')
         ).map((checkbox) => checkbox.value);
         if (!scopes.length) {
-            alert(translate('appToken.scopeRequired', {}, '至少需要選擇一個權限範圍'));
+            AppUtils.notify(translate('appToken.scopeRequired', {}, '至少需要選擇一個權限範圍'));
             return;
         }
         const noExpiry = byId('appTokenNoExpiry').checked;
@@ -311,11 +311,11 @@
             setHidden(byId('appTokenRawTokenDisplay'), false);
             await loadTokens();
         } catch (error) {
-            alert(translate(
+            AppUtils.notify(translate(
                 'appToken.createFailedWithReason',
                 { reason: error.message },
                 `建立權杖失敗：${error.message}`
-            ));
+            ), 'danger');
         } finally {
             confirmButton.disabled = false;
         }
@@ -324,7 +324,7 @@
     async function revokeToken(tokenId) {
         const teamId = state.teamId;
         if (!teamId) return;
-        if (!confirm(translate(
+        if (!await AppUtils.confirm(translate(
             'appToken.revokeConfirm',
             {},
             '撤銷此權杖？此操作無法復原。'
@@ -338,18 +338,18 @@
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             await loadTokens();
         } catch (error) {
-            alert(translate(
+            AppUtils.notify(translate(
                 'appToken.revokeFailedWithReason',
                 { reason: error.message },
                 `撤銷權杖失敗：${error.message}`
-            ));
+            ), 'danger');
         }
     }
 
     async function rotateToken(tokenId) {
         const teamId = state.teamId;
         if (!teamId) return;
-        if (!confirm(translate(
+        if (!await AppUtils.confirm(translate(
             'appToken.rotateConfirm',
             {},
             '輪替此權杖？舊權杖將立即失效，沒有寬限期。'
@@ -369,11 +369,11 @@
             setHidden(byId('appTokenRawTokenDisplay'), false);
             await loadTokens();
         } catch (error) {
-            alert(translate(
+            AppUtils.notify(translate(
                 'appToken.rotateFailedWithReason',
                 { reason: error.message },
                 `輪替權杖失敗：${error.message}`
-            ));
+            ), 'danger');
         }
     }
 

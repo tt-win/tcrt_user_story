@@ -67,8 +67,9 @@ function onPageShow(event) {
         }
     } else if (!latestTeamId) {
         teamIdReady = false;
+        currentTeamId = null;
         console.warn('pageshow: Skip loading due to missing teamId');
-        // 可選：顯示需選擇團隊的提示
+        showTrmViewState('no-team');
     } else {
         // teamId 未變更
         refreshStatusTexts();
@@ -93,8 +94,7 @@ function initializePage() {
     } else {
         teamIdReady = false;
         console.warn('initializePage: teamId not ready, skip loading');
-        // 不打 API；可選：顯示需先選擇團隊的 UI 狀態
-        showNoConfigs();
+        showTrmViewState('no-team');
     }
 }
 

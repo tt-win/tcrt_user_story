@@ -320,7 +320,7 @@
   }
 
   async function onSelectUser(userId) {
-    if (state.dirty && !confirm(window.i18n ? window.i18n.t('personnel.unsavedConfirm') : '有未儲存的變更，確定要切換嗎？')) return;
+    if (state.dirty && !(await AppUtils.confirm(window.i18n ? window.i18n.t('personnel.unsavedConfirm') : '有未儲存的變更，確定要切換嗎？'))) return;
     clearDirty();
 
     const u = state.users.find(x => x.id === userId);
@@ -372,6 +372,12 @@
     const prompt = document.getElementById('pm-select-user-prompt');
     if (form) form.style.display = showForm ? '' : 'none';
     if (prompt) prompt.style.display = showForm ? 'none' : 'block';
+    // Selection-dependent actions stay disabled until a user is selected.
+    if (!showForm || !state.selected) {
+      enableEl(document.getElementById('pm-delete'), false);
+      enableEl(document.getElementById('pm-reset'), false);
+      enableEl(document.getElementById('pm-save'), false);
+    }
   }
 
   function buildRoleOptions(selectedRole = null) {
@@ -475,6 +481,9 @@
     state.selected = null;
     clearDirty();
     clearForm({ keepVisible: true });
+    enableEl(document.getElementById('pm-delete'), false);
+    enableEl(document.getElementById('pm-reset'), false);
+    enableEl(document.getElementById('pm-save'), true);
     // 將焦點設定到 username 輸入框
     const usernameInput = document.getElementById('pm-username');
     if(usernameInput) {
@@ -532,7 +541,7 @@
   async function onDelete(e) {
     e.preventDefault();
     if (!hasAuth() || !state.selected) return;
-    if (!confirm(window.i18n ? window.i18n.t('personnel.deleteConfirm') : '確定要停用/刪除此使用者？')) return;
+    if (!(await AppUtils.confirm(window.i18n ? window.i18n.t('personnel.deleteConfirm') : '確定要停用/刪除此使用者？', { danger: true }))) return;
     try {
       const resp = await window.AuthClient.fetch(`/api/users/${state.selected.id}`, { method: 'DELETE' });
       if (!resp.ok) throw await respError(resp);
@@ -549,7 +558,7 @@
   async function onResetPwd(e) {
     e.preventDefault();
     if (!hasAuth() || !state.selected) return;
-    if (!confirm(window.i18n ? window.i18n.t('personnel.resetPwdConfirm') : '確定要重設密碼？')) return;
+    if (!(await AppUtils.confirm(window.i18n ? window.i18n.t('personnel.resetPwdConfirm') : '確定要重設密碼？', { danger: true }))) return;
     try {
       const url = `/api/users/${state.selected.id}/reset-password?generate_new=true`;
       const resp = await window.AuthClient.fetch(url, { method: 'POST' });

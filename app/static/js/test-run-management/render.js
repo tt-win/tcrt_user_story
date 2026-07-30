@@ -738,23 +738,62 @@ function renderCompactUnassignedRunsTable(runs) {
 
 
 function showLoading() {
-    document.getElementById('loading-state').style.display = 'block';
-    document.getElementById('test-run-configs-section').style.display = 'none';
-    document.getElementById('no-configs-section').style.display = 'none';
+    showTrmViewState('loading');
 }
 
 function hideLoading() {
-    document.getElementById('loading-state').style.display = 'none';
+    const loading = document.getElementById('loading-state');
+    if (loading) loading.classList.add('d-none');
 }
 
 function showNoConfigs() {
-    document.getElementById('no-configs-section').style.display = 'block';
-    document.getElementById('test-run-configs-section').style.display = 'none';
+    showTrmViewState('empty');
 }
 
 function showConfigsSection() {
-    document.getElementById('no-configs-section').style.display = 'none';
-    document.getElementById('test-run-configs-section').style.display = 'block';
+    showTrmViewState('content');
+}
+
+/**
+ * Mutually exclusive overview states for TRM list page.
+ * @param {'loading'|'content'|'empty'|'error'|'no-team'} state
+ */
+function showTrmViewState(state) {
+    const setHidden = (id, hidden) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.classList.toggle('d-none', hidden);
+    };
+    setHidden('loading-state', state !== 'loading');
+    setHidden('no-configs-section', state !== 'empty');
+    setHidden('trmErrorState', state !== 'error');
+    setHidden('trmNoTeamState', state !== 'no-team');
+    setHidden('test-run-configs-section', state !== 'content');
+    setHidden('trm-view-toggle', state !== 'content' && state !== 'empty');
+}
+
+function setAdhocErrorVisible(visible) {
+    const el = document.getElementById('adhocErrorState');
+    if (el) el.classList.toggle('d-none', !visible);
+}
+
+function bindTrmDataViewStateActions() {
+    const retryBtn = document.getElementById('trmErrorRetryBtn');
+    if (retryBtn && retryBtn.dataset.bound !== '1') {
+        retryBtn.dataset.bound = '1';
+        retryBtn.addEventListener('click', () => loadTestRunConfigs());
+    }
+    const adhocRetry = document.getElementById('adhocErrorRetryBtn');
+    if (adhocRetry && adhocRetry.dataset.bound !== '1') {
+        adhocRetry.dataset.bound = '1';
+        adhocRetry.addEventListener('click', () => loadTestRunConfigs());
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindTrmDataViewStateActions);
+} else {
+    bindTrmDataViewStateActions();
 }
 
 function createConfigCard(config) {

@@ -889,11 +889,11 @@ class TestCaseSectionList {
 
     // 防止編輯 Unassigned Section
     if (originalName === "Unassigned" || originalName.includes("Unassigned")) {
-      alert(this.translate(
+      AppUtils.notify(this.translate(
         'section.systemSectionEditForbidden',
         { name: 'Unassigned' },
         '無法編輯系統區段 "Unassigned"',
-      ));
+      ), 'danger');
       return;
     }
 
@@ -1268,7 +1268,7 @@ class TestCaseSectionList {
     if (!name) {
       nameInput.classList.add("is-invalid");
       nameInput.focus();
-      alert(this.translate("section.nameRequired", {}, "區段名稱不可空白"));
+      AppUtils.notify(this.translate("section.nameRequired", {}, "區段名稱不可空白"));
       return;
     }
 
@@ -1279,7 +1279,7 @@ class TestCaseSectionList {
       const teamId = urlParams.get("team_id") || this.teamId;
 
       if (!teamId) {
-        alert(this.translate('section.teamIdUnavailable', {}, '無法取得團隊 ID'));
+        AppUtils.notify(this.translate('section.teamIdUnavailable', {}, '無法取得團隊 ID'), 'danger');
         return;
       }
 
@@ -1329,11 +1329,11 @@ class TestCaseSectionList {
       this.refreshParentOptionsInForm();
     } catch (error) {
       console.error("Error creating section:", error);
-      alert(this.translate(
+      AppUtils.notify(this.translate(
         'section.createFailed',
         { reason: error.message },
         `建立區段失敗: ${error.message}`,
-      ));
+      ), 'danger');
     }
   }
 
@@ -1360,11 +1360,11 @@ class TestCaseSectionList {
       await this.loadSections({ reloadTestCases: true });
     } catch (error) {
       console.error("Error updating section:", error);
-      alert(this.translate(
+      AppUtils.notify(this.translate(
         'section.updateFailed',
         { reason: error.message },
         `更新區段失敗: ${error.message}`,
-      ));
+      ), 'danger');
     }
   }
 
@@ -1375,20 +1375,20 @@ class TestCaseSectionList {
     // 防止刪除 Unassigned Section
     const section = this.findSection(sectionId);
     if (section && section.name === "Unassigned") {
-      alert(this.translate(
+      AppUtils.notify(this.translate(
         'section.systemSectionDeleteForbidden',
         { name: 'Unassigned' },
         '無法刪除系統區段 "Unassigned"',
-      ));
+      ), 'danger');
       return;
     }
 
     if (
-      !confirm(this.translate(
+      !await AppUtils.confirm(this.translate(
         'section.deleteConfirmMoveUnassigned',
         {},
         '確定要刪除此區段嗎？該區段下的測試案例將被移到 Unassigned。',
-      ))
+      ), { danger: true })
     ) {
       return;
     }
@@ -1409,11 +1409,11 @@ class TestCaseSectionList {
       await this.loadSections({ reloadTestCases: true });
     } catch (error) {
       console.error("Error deleting section:", error);
-      alert(this.translate(
+      AppUtils.notify(this.translate(
         'section.deleteFailed',
         { reason: error.message },
         `刪除區段失敗: ${error.message}`,
-      ));
+      ), 'danger');
     }
   }
 
@@ -1497,11 +1497,11 @@ class TestCaseSectionList {
 
     // 防止編輯 Unassigned Section
     if (originalName === "Unassigned") {
-      alert(this.translate(
+      AppUtils.notify(this.translate(
         'section.systemSectionEditForbidden',
         { name: 'Unassigned' },
         '無法編輯系統區段 "Unassigned"',
-      ));
+      ), 'danger');
       return;
     }
 
@@ -1518,7 +1518,7 @@ class TestCaseSectionList {
     const trimmedName = newName.trim();
 
     if (!trimmedName) {
-      alert(this.translate('section.nameRequired', {}, '區段名稱不能為空'));
+      AppUtils.notify(this.translate('section.nameRequired', {}, '區段名稱不能為空'));
       return;
     }
 
@@ -1565,11 +1565,11 @@ class TestCaseSectionList {
     // 防止刪除 Unassigned Section
     const section = this.findSection(sectionId);
     if (section && section.name === "Unassigned") {
-      alert(this.translate(
+      AppUtils.notify(this.translate(
         'section.systemSectionDeleteForbidden',
         { name: 'Unassigned' },
         '無法刪除系統區段 "Unassigned"',
-      ));
+      ), 'danger');
       return;
     }
 
@@ -1615,11 +1615,11 @@ class TestCaseSectionList {
       this.refreshParentOptionsInForm();
     } catch (error) {
       console.error("Error loading sections:", error);
-      alert(this.translate(
+      AppUtils.notify(this.translate(
         'section.loadFailed',
         { reason: error.message },
         `載入區段失敗: ${error.message}`,
-      ));
+      ), 'danger');
     }
   }
 
@@ -1845,7 +1845,7 @@ class TestCaseSectionList {
    */
   showReorderModal() {
     if (!this.setId) {
-      alert(this.translate(
+      AppUtils.notify(this.translate(
         'section.selectSetFirst',
         {},
         '請先選擇一個 Test Case Set',
@@ -2322,11 +2322,11 @@ class TestCaseSectionList {
     
     if (!targetParent) {
       console.log('[SectionList] 無法增加層級：找不到可掛接的父節點');
-      alert(this.translate(
+      AppUtils.notify(this.translate(
         'section.increaseLevelNoParent',
         {},
         '無法增加層級：找不到可掛接的父節點',
-      ));
+      ), 'danger');
       return;
     }
     
@@ -2336,11 +2336,11 @@ class TestCaseSectionList {
     // 檢查新層級是否超過限制
     if (newLevel > 5) {
       console.log('[SectionList] 無法增加層級：超過最大層級 5');
-      alert(this.translate(
+      AppUtils.notify(this.translate(
         'section.increaseLevelMaxExceeded',
         { max: 5 },
         '無法增加層級：超過最大層級 5',
-      ));
+      ), 'danger');
       return;
     }
 
@@ -2517,11 +2517,11 @@ class TestCaseSectionList {
       await this.loadSections({ reloadTestCases: true });
     } catch (error) {
       console.error('Error saving section order:', error);
-      alert(this.translate(
+      AppUtils.notify(this.translate(
         'section.saveFailed',
         { reason: error.message },
         `儲存失敗: ${error.message}`,
-      ));
+      ), 'danger');
     }
   }
 }

@@ -1,0 +1,55 @@
+{#
+  資料視圖載入骨架。版面形狀已知的列表用此元件，列數固定為視窗可見範圍，
+  不依實際資料量產生。
+
+  參數：
+    variant   table|cards（預設 table）
+    rows      骨架列數（預設 6；設計契約：視窗可見範圍）
+    columns   table 變體的欄位數（預設 4）
+    id        根元素 id（選填）
+    extra_classes 追加 class
+
+  用法：
+    {% from 'components/skeleton.html' import skeleton %}
+    {{ skeleton(variant='cards', rows=6, id='setsLoadingState') }}
+#}
+{% macro skeleton(variant='table', rows=6, columns=4, id='', extra_classes='') %}
+{%- set row_count = rows if rows and rows > 0 else 6 -%}
+{%- set col_count = columns if columns and columns > 0 else 4 -%}
+<div{% if id %} id="{{ id }}"{% endif %}
+     class="tcrt-skeleton tcrt-skeleton--{{ variant }}{{ ' ' ~ extra_classes if extra_classes }}"
+     role="status"
+     aria-live="polite"
+     aria-busy="true">
+  <span class="visually-hidden" data-i18n="common.loading">載入中...</span>
+  {% if variant == 'cards' %}
+  <div class="row tcrt-skeleton-cards">
+    {% for _ in range(row_count) %}
+    <div class="col-md-6 col-lg-4 mb-4">
+      <div class="tcrt-skeleton-card">
+        <div class="tcrt-skeleton-line tcrt-skeleton-line--title"></div>
+        <div class="tcrt-skeleton-line tcrt-skeleton-line--body"></div>
+        <div class="tcrt-skeleton-line tcrt-skeleton-line--body tcrt-skeleton-line--short"></div>
+        <div class="tcrt-skeleton-line tcrt-skeleton-line--action"></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="tcrt-skeleton-table" aria-hidden="true">
+    <div class="tcrt-skeleton-table-header">
+      {% for _ in range(col_count) %}
+      <div class="tcrt-skeleton-line tcrt-skeleton-line--header"></div>
+      {% endfor %}
+    </div>
+    {% for _ in range(row_count) %}
+    <div class="tcrt-skeleton-table-row">
+      {% for _ in range(col_count) %}
+      <div class="tcrt-skeleton-line"></div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}

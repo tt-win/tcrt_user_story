@@ -73,7 +73,10 @@
     "languageJapanese": "日语",
     "viewToggle": "视图切换",
     "system": "系统",
-    "languageLoadFailed": "无法加载语言文件：{language}"
+    "languageLoadFailed": "无法加载语言文件：{language}",
+    "retry": "重试",
+    "loadingFailed": "加载数据失败",
+    "noData": "暂无数据"
   },
   "dashboard": {
     "pageTitle": "个人工作台",
@@ -4133,5 +4136,14 @@
   },
   "chrome": {
     "moreActions": "更多"
+  },
+  "dataView": {
+    "teamRequiredTitle": "请先选择团队",
+    "teamRequiredHint": "加载此数据需要团队上下文。请先从导航栏选择团队。",
+    "teamParseFailedHint": "无法读取团队信息，请重新选择团队后再试。",
+    "loadFailedTitle": "加载失败",
+    "loadFailedHint": "无法加载数据，请稍后重试。",
+    "permissionDeniedTitle": "权限不足",
+    "permissionDeniedHint": "您没有权限查看此数据。"
   }
 }

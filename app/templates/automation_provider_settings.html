@@ -31,6 +31,8 @@
 {% endblock %}
 
 {% block content %}
+{% from 'components/empty_state.html' import empty_state %}
+{% from 'components/skeleton.html' import skeleton %}
 <div class="container-fluid automation-provider-settings automation-hub-page">
   <div id="no-team-state" class="card automation-state-card d-none">
     <div class="card-body text-center py-5">
@@ -42,13 +44,8 @@
     </div>
   </div>
 
-  <div id="loading-state" class="card automation-state-card d-none">
-    <div class="card-body text-center py-5">
-      <div class="spinner-border text-primary" role="status">
-        <span class="visually-hidden" data-i18n="common.loading">Loading...</span>
-      </div>
-      <div class="mt-3 text-muted" data-i18n="common.loading">Loading...</div>
-    </div>
+  <div id="loading-state" class="d-none">
+    {{ skeleton(variant='table', rows=6, columns=6) }}
   </div>
 
   <div id="empty-state" class="card automation-state-card d-none">
@@ -60,6 +57,20 @@
       </button>
     </div>
   </div>
+
+  {{ empty_state(
+    id='provider-error-state',
+    variant='error',
+    icon='fas fa-exclamation-triangle',
+    title='載入失敗',
+    title_i18n='dataView.loadFailedTitle',
+    description='無法載入 Provider 設定，請稍後再試。',
+    description_i18n='dataView.loadFailedHint',
+    retry_id='providerErrorRetryBtn',
+    retry_label='重試',
+    retry_i18n='common.retry',
+    hidden=True
+  ) }}
 
   <div id="provider-content" class="card d-none">
     <div class="card-header bg-light d-flex align-items-center justify-content-between flex-wrap gap-2">

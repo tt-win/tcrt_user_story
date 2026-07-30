@@ -36,6 +36,8 @@
   function bindEvents() {
     const refreshBtn = document.getElementById('coverageRefreshBtn');
     if (refreshBtn) refreshBtn.addEventListener('click', loadSummary);
+    const coverageRetry = document.getElementById('coverageErrorRetryBtn');
+    if (coverageRetry) coverageRetry.addEventListener('click', loadSummary);
 
     const search = document.getElementById('coverageSearch');
     if (search) {
@@ -104,6 +106,7 @@
 
   async function loadSummary() {
     setLoading(true);
+    hideCoverageError();
     try {
       state.summary = await apiFetch(`/api/teams/${state.teamId}/automation-coverage`);
       resetCaseState();
@@ -111,6 +114,7 @@
       if (mode() === 'flat') fetchFlat(false);
     } catch (error) {
       showError(error.message || t('automationHub.coverage.loadFailed', 'Failed to load coverage'));
+      showCoverageError();
     } finally {
       setLoading(false);
       refreshTexts();
@@ -171,6 +175,7 @@
   // ── render ───────────────────────────────────────────────────────
   function render() {
     if (!state.summary) return;
+    hideCoverageError();
     const hasCases = Number(state.summary.total_test_cases || 0) > 0;
     document.getElementById('coverageContent').classList.toggle('d-none', !hasCases);
     document.getElementById('coverageEmpty').classList.toggle('d-none', hasCases);
@@ -399,6 +404,23 @@
   // ── helpers ──────────────────────────────────────────────────────
   function setLoading(isLoading) {
     document.getElementById('coverageLoading').classList.toggle('d-none', !isLoading);
+    if (isLoading) {
+      hideCoverageError();
+      document.getElementById('coverageContent').classList.add('d-none');
+      document.getElementById('coverageEmpty').classList.add('d-none');
+    }
+  }
+
+  function hideCoverageError() {
+    const el = document.getElementById('coverageError');
+    if (el) el.classList.add('d-none');
+  }
+
+  function showCoverageError() {
+    document.getElementById('coverageContent').classList.add('d-none');
+    document.getElementById('coverageEmpty').classList.add('d-none');
+    const el = document.getElementById('coverageError');
+    if (el) el.classList.remove('d-none');
   }
 
   async function apiFetch(url, options) {

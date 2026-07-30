@@ -22,12 +22,12 @@ async function updateAdHocStatus(id, status) {
             loadTestRunConfigs();
         } else {
             const msg = adhocT('adhoc.updateFailed','Failed to update status');
-            AppUtils.showError ? AppUtils.showError(msg) : alert(msg);
+            AppUtils.notify(msg, 'danger');
         }
     } catch (e) {
         console.error('updateAdHocStatus error', e);
         const msg = adhocT('adhoc.updateFailed','Failed to update status');
-        AppUtils.showError ? AppUtils.showError(msg) : alert(msg);
+        AppUtils.notify(msg, 'danger');
     }
 }
 window.updateAdHocStatus = updateAdHocStatus;
@@ -117,7 +117,7 @@ document.getElementById('saveAdHocRunBtn')?.addEventListener('click', async () =
     const env = document.getElementById('adHocTestEnvironment').value;
     const build = document.getElementById('adHocBuildNumber').value;
     
-    if (!name) return alert(adhocT('common.nameRequired','Name is required'));
+    if (!name) return AppUtils.notify(adhocT('common.nameRequired','Name is required'));
     
     const btn = document.getElementById('saveAdHocRunBtn');
     btn.disabled = true;
@@ -151,11 +151,11 @@ document.getElementById('saveAdHocRunBtn')?.addEventListener('click', async () =
             modal.hide();
             loadTestRunConfigs(); // Reloads everything including adhoc
         } else {
-            alert(adhocT('common.saveFailed','Failed to save'));
+            AppUtils.notify(adhocT('common.saveFailed','Failed to save'), 'danger');
         }
     } catch (e) {
         console.error(e);
-        alert(adhocT('adhoc.errorSave','Error saving Ad-hoc Run'));
+        AppUtils.notify(adhocT('adhoc.errorSave','Error saving Ad-hoc Run'), 'danger');
     } finally {
         btn.disabled = false;
     }
@@ -660,7 +660,7 @@ function deleteAdHocRun(id) {
                 await window.AuthClient.fetch(`/api/adhoc-runs/${id}`, { method: 'DELETE' });
                 loadTestRunConfigs();
             } catch (e) {
-                alert(adhocT('common.deleteFailed','Failed to delete'));
+                AppUtils.notify(adhocT('common.deleteFailed','Failed to delete'), 'danger');
             }
         }
     });
@@ -679,11 +679,11 @@ function rerunAdHocRun(id) {
                 if (resp.ok) {
                     loadTestRunConfigs();
                 } else {
-                    alert(adhocT('adhoc.rerunFailed','Failed to re-run'));
+                    AppUtils.notify(adhocT('adhoc.rerunFailed','Failed to re-run'), 'danger');
                 }
             } catch (e) {
                 console.error(e);
-                alert(adhocT('adhoc.rerunFailed','Failed to re-run'));
+                AppUtils.notify(adhocT('adhoc.rerunFailed','Failed to re-run'), 'danger');
             }
         }
     });

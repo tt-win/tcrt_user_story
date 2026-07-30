@@ -1,0 +1,70 @@
+{#
+  統一空／錯誤狀態區。結構對齊 /organization-management 使用者詳情區：
+  圖示 + 標題 + 說明 + 可選動作入口。
+
+  參數：
+    id              根元素 id（必填，供 JS 顯示路徑對應）
+    title           標題文字
+    title_i18n      標題 i18n key
+    description     說明文字
+    description_i18n 說明 i18n key
+    icon            Font Awesome class（預設 fa-inbox）
+    variant         empty|error（預設 empty；error 用警告語意色）
+    hidden          True 時加 d-none（預設 True）
+    extra_classes   追加 class
+    retry_id        若提供，渲染重試按鈕（error 常用）
+    retry_label / retry_i18n  重試按鈕文案
+    action_id / action_label / action_i18n / action_icon  可選主動作
+
+  用法：
+    {% from 'components/empty_state.html' import empty_state %}
+    {{ empty_state(id='emptyState', title='沒有資料', title_i18n='common.noData',
+                   description='尚未建立任何項目', description_i18n='common.noDataHint') }}
+#}
+{% macro empty_state(
+  id,
+  title='',
+  title_i18n='',
+  description='',
+  description_i18n='',
+  icon='fas fa-inbox',
+  variant='empty',
+  hidden=True,
+  extra_classes='',
+  retry_id='',
+  retry_label='重試',
+  retry_i18n='common.retry',
+  action_id='',
+  action_label='',
+  action_i18n='',
+  action_icon='fas fa-plus'
+) %}
+<div id="{{ id }}"
+     class="tcrt-empty-state tcrt-empty-state--{{ variant }}{{ ' d-none' if hidden }}{{ ' ' ~ extra_classes if extra_classes }}"
+     role="status"
+     {% if variant == 'error' %}aria-live="assertive"{% else %}aria-live="polite"{% endif %}>
+  <div class="tcrt-empty-state__inner">
+    <i class="{{ icon }} tcrt-empty-state__icon" aria-hidden="true"></i>
+    <h5 class="tcrt-empty-state__title"{% if title_i18n %} data-i18n="{{ title_i18n }}"{% endif %}>{{ title }}</h5>
+    {% if description or description_i18n %}
+    <p class="tcrt-empty-state__description"{% if description_i18n %} data-i18n="{{ description_i18n }}"{% endif %}>{{ description }}</p>
+    {% endif %}
+    {% if action_id or retry_id %}
+    <div class="tcrt-empty-state__actions">
+      {% if action_id %}
+      <button type="button" class="btn btn-primary btn-sm" id="{{ action_id }}">
+        {% if action_icon %}<i class="{{ action_icon }} me-1" aria-hidden="true"></i>{% endif %}
+        <span{% if action_i18n %} data-i18n="{{ action_i18n }}"{% endif %}>{{ action_label }}</span>
+      </button>
+      {% endif %}
+      {% if retry_id %}
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="{{ retry_id }}">
+        <i class="fas fa-redo me-1" aria-hidden="true"></i>
+        <span{% if retry_i18n %} data-i18n="{{ retry_i18n }}"{% endif %}>{{ retry_label }}</span>
+      </button>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}

@@ -358,7 +358,7 @@ class BaseAuthManager {
         console.error(message);
         
         // 簡單的 alert，之後可以改用更優雅的方式
-        alert(message);
+        AppUtils.notify(message, 'danger');
     }
 
     /**
@@ -446,7 +446,7 @@ class BaseAuthManager {
         } else {
             // 回退到原生 confirm
             const message = this.getI18nText('user.menu.confirmLogoutMessage', '您確定要登出嗎？');
-            return confirm(message);
+            return await AppUtils.confirm(message);
         }
     }
     
@@ -498,7 +498,7 @@ class BaseAuthManager {
         }
         
         // 回退到 alert
-        alert(message);
+        AppUtils.notify(message, 'danger');
     }
     
     /**
@@ -550,7 +550,7 @@ class BaseAuthManager {
         } catch (error) {
             console.error('Failed to show Bootstrap toast:', error);
             // 回退到 alert
-            alert(message);
+            AppUtils.notify(message, 'danger');
         }
     }
 

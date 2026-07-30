@@ -153,12 +153,10 @@
 
   async function restoreOverwrite() {
     if (
-      !window.confirm(
-        t(
+      !await AppUtils.confirm(t(
           'assistantAdmin.confirmOverwrite',
           'Overwrite system prompt and all builtin skill bodies from factory? is_enabled flags are kept. Custom skills are not deleted.'
-        )
-      )
+        ), { danger: true })
     ) {
       return;
     }
@@ -481,20 +479,16 @@
   async function deleteSkill() {
     if (!state.editingId) return;
     const isBuiltin = !!state.isBuiltin;
-    const firstConfirm = window.confirm(
-      t('assistantAdmin.confirmDelete', 'Delete skill') + ' ' + state.editingId + '?'
-    );
+    const firstConfirm = await AppUtils.confirm(t('assistantAdmin.confirmDelete', 'Delete skill') + ' ' + state.editingId + '?', { danger: true });
     if (!firstConfirm) return;
     // Builtin skills can be re-inserted by the "Restore factory
     // (overwrite builtins)" action, but the user must acknowledge the
     // distinction before we send the request.
     if (isBuiltin) {
-      const secondConfirm = window.confirm(
-        t(
+      const secondConfirm = await AppUtils.confirm(t(
           'assistantAdmin.confirmDeleteBuiltin',
           'This is a builtin skill. It will be removed from the database until the next "Restore factory (overwrite builtins)" re-inserts it. Continue?'
-        )
-      );
+        ), { danger: true });
       if (!secondConfirm) return;
     }
     try {
@@ -522,12 +516,10 @@
   async function resetSkill() {
     if (!state.editingId || !state.isBuiltin) return;
     if (
-      !window.confirm(
-        t('assistantAdmin.confirmReset', 'Reset body from factory? is_enabled is kept.') +
+      !await AppUtils.confirm(t('assistantAdmin.confirmReset', 'Reset body from factory? is_enabled is kept.') +
           ' (' +
           state.editingId +
-          ')'
-      )
+          ')', { danger: true })
     ) {
       return;
     }

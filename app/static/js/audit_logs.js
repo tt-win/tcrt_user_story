@@ -80,6 +80,9 @@ class AuditLogsPage {
             tableBody: document.getElementById('auditTableBody'),
             emptyState: document.getElementById('auditEmptyState'),
             loadingState: document.getElementById('auditLoadingState'),
+            errorState: document.getElementById('auditErrorState'),
+            errorMessage: document.getElementById('auditErrorMessage'),
+            errorRetry: document.getElementById('auditErrorRetryBtn'),
             tableWrapper: document.getElementById('auditTableWrapper'),
             totalBadge: document.getElementById('auditTotalBadge'),
             summary: document.getElementById('auditSummary'),
@@ -109,7 +112,7 @@ class AuditLogsPage {
         if (window.AppUtils && typeof window.AppUtils.showError === 'function') {
             window.AppUtils.showError(message);
         } else {
-            alert(message);
+            AppUtils.notify(message, 'danger');
         }
         setTimeout(() => {
             window.location.href = '/';
@@ -127,6 +130,10 @@ class AuditLogsPage {
         });
 
         this.elements.refresh?.addEventListener('click', () => {
+            this.fetchLogs({ reset: true });
+        });
+
+        this.elements.errorRetry?.addEventListener('click', () => {
             this.fetchLogs({ reset: true });
         });
 
@@ -274,6 +281,7 @@ class AuditLogsPage {
 
         const nextPage = this.currentPage + 1;
         const isInitialLoad = this.loadedItems === 0;
+        const append = nextPage > 1;
         this.isLoading = true;
         this.showLoading({ initial: isInitialLoad });
 
@@ -290,7 +298,6 @@ class AuditLogsPage {
 
             const data = await response.json();
             const items = Array.isArray(data.items) ? data.items : [];
-            const append = nextPage > 1;
 
             this.renderTable(items, { append });
 
@@ -312,7 +319,10 @@ class AuditLogsPage {
             if (window.AppUtils && typeof window.AppUtils.showError === 'function') {
                 window.AppUtils.showError(message);
             } else {
-                alert(message);
+                AppUtils.notify(message, 'danger');
+            }
+            if (!append) {
+                this.showErrorState(message);
             }
         } finally {
             this.hideLoading();
@@ -335,6 +345,8 @@ class AuditLogsPage {
         const tbody = this.elements.tableBody;
         const emptyState = this.elements.emptyState;
         if (!tbody || !emptyState) return;
+
+        this.hideErrorState();
 
         if (!append) {
             tbody.innerHTML = '';
@@ -397,6 +409,7 @@ class AuditLogsPage {
     }
 
     showLoading({ initial = false } = {}) {
+        this.hideErrorState();
         if (initial) {
             if (this.elements.loadingState) this.elements.loadingState.style.display = 'block';
             if (this.elements.tableWrapper) this.elements.tableWrapper.style.opacity = '0.4';
@@ -409,6 +422,20 @@ class AuditLogsPage {
         if (this.elements.loadingState) this.elements.loadingState.style.display = 'none';
         if (this.elements.tableWrapper) this.elements.tableWrapper.style.opacity = '1';
         if (this.elements.loadMoreIndicator) this.elements.loadMoreIndicator.style.display = 'none';
+    }
+
+    showErrorState(message) {
+        if (this.elements.tableWrapper) this.elements.tableWrapper.classList.add('d-none');
+        if (this.elements.emptyState) this.elements.emptyState.style.display = 'none';
+        if (this.elements.errorMessage && message) {
+            this.elements.errorMessage.textContent = message;
+        }
+        if (this.elements.errorState) this.elements.errorState.classList.remove('d-none');
+    }
+
+    hideErrorState() {
+        if (this.elements.errorState) this.elements.errorState.classList.add('d-none');
+        if (this.elements.tableWrapper) this.elements.tableWrapper.classList.remove('d-none');
     }
 
     showAllLoadedIndicator() {
@@ -536,7 +563,7 @@ class AuditLogsPage {
             if (window.AppUtils && typeof window.AppUtils.showError === 'function') {
                 window.AppUtils.showError(msg);
             } else {
-                alert(msg);
+                AppUtils.notify(msg, 'danger');
             }
         }
     }
