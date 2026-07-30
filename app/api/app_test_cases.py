@@ -605,20 +605,44 @@ async def update_app_test_case(
                 "Cross-Set updates require impact preview and the guarded move endpoint"
             )
 
+        changed = False
+
+        def _comparable_value(value: Any) -> Any:
+            return value.value if hasattr(value, "value") else value
+
+        def _set_if_changed(attribute: str, value: Any) -> None:
+            nonlocal changed
+            if _comparable_value(getattr(tc, attribute)) == _comparable_value(value):
+                return
+            setattr(tc, attribute, value)
+            changed = True
+
+        def _set_json_if_changed(attribute: str, value: List[Any]) -> None:
+            nonlocal changed
+            raw_value = getattr(tc, attribute)
+            try:
+                current_value = json.loads(raw_value) if raw_value else []
+            except (TypeError, json.JSONDecodeError):
+                current_value = None
+            if current_value == value:
+                return
+            setattr(tc, attribute, json.dumps(value))
+            changed = True
+
         if body.test_case_number is not None:
-            tc.test_case_number = body.test_case_number
+            _set_if_changed("test_case_number", body.test_case_number)
         if body.title is not None:
-            tc.title = body.title
+            _set_if_changed("title", body.title)
         if body.priority is not None:
-            tc.priority = body.priority
+            _set_if_changed("priority", body.priority)
         if body.precondition is not None:
-            tc.precondition = body.precondition
+            _set_if_changed("precondition", body.precondition)
         if body.steps is not None:
-            tc.steps = body.steps
+            _set_if_changed("steps", body.steps)
         if body.expected_result is not None:
-            tc.expected_result = body.expected_result
+            _set_if_changed("expected_result", body.expected_result)
         if body.test_result is not None:
-            tc.test_result = body.test_result
+            _set_if_changed("test_result", body.test_result)
         # Validate Set / Section ownership before reassigning (mirror create + JWT update paths)
         if body.test_case_set_id is not None:
             target_set = (
@@ -634,7 +658,7 @@ async def update_app_test_case(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Test Case Set {body.test_case_set_id} 不存在或不屬於此 Team",
                 )
-            tc.test_case_set_id = target_set.id
+            _set_if_changed("test_case_set_id", target_set.id)
         if body.test_case_section_id is not None:
             effective_set_id = tc.test_case_set_id
             target_section = (
@@ -650,14 +674,22 @@ async def update_app_test_case(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Section {body.test_case_section_id} 不存在或不屬於 Test Case Set {effective_set_id}",
                 )
-            tc.test_case_section_id = target_section.id
+            _set_if_changed("test_case_section_id", target_section.id)
         if body.tcg is not None:
             tcg_list = body.tcg if isinstance(body.tcg, list) else [body.tcg]
-            tc.tcg_json = json.dumps(tcg_list)
+            _set_json_if_changed("tcg_json", tcg_list)
         if body.test_data is not None:
-            tc.test_data_json = json.dumps(
-                [item.dict() for item in normalize_test_data_items(body.test_data)]
+            normalized_test_data = [
+                item.model_dump(mode="json")
+                for item in normalize_test_data_items(body.test_data)
+            ]
+            _set_json_if_changed(
+                "test_data_json",
+                normalized_test_data,
             )
+
+        if changed:
+            tc.updated_at = datetime.utcnow()
 
         sync_db.flush()
         sync_db.refresh(tc)
