@@ -3941,10 +3941,10 @@
       "collections": "Collections",
       "sectionQdrant": "Qdrant (vector database)",
       "sectionNeo4j": "Neo4j (graph database)",
-      "sectionBackfill": "Backfill (initial bulk load)",
-      "backfillHint": "Backfill must be triggered via CLI (`python -m app.services.knowledge backfill --entity <type>`). This panel only displays current progress and cannot start a backfill from the browser.",
+      "sectionBackfill": "Qdrant backfill (initial bulk load)",
+      "backfillHint": "This is the initial TCRT → Qdrant backfill progress, not the Neo4j sync count. It refreshes every 5 seconds while this tab is open; completed records remain unchanged until the next backfill.",
       "entityType": "Entity",
-      "processed": "Processed",
+      "processed": "Processed / scanned",
       "lastId": "Last processed id",
       "updatedAt": "Updated at",
       "noProgress": "No backfill progress yet"

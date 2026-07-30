@@ -236,6 +236,58 @@
         };
     }
 
+    // ---- Knowledge Graph 分頁 ----
+
+    /**
+     * Knowledge Graph 可見期間輪詢控制器（DOM-free、timer/fetch 可注入）。
+     * 首次顯示立即載入；其後的背景刷新不顯示 loading，且不允許重疊請求。
+     */
+    function createKnowledgeGraphRefreshController(options) {
+        const refreshSnapshot = options.refreshSnapshot;
+        const intervalMs = Math.max(1000, options.intervalMs || 5000);
+        const schedule = options.setIntervalFn || setInterval;
+        const cancelSchedule = options.clearIntervalFn || clearInterval;
+        let active = false;
+        let timerId = null;
+        let inFlight = null;
+
+        function run(silent) {
+            if (inFlight) return inFlight;
+            inFlight = Promise.resolve()
+                .then(() => refreshSnapshot({ silent }))
+                .finally(() => {
+                    inFlight = null;
+                });
+            return inFlight;
+        }
+
+        return {
+            start() {
+                if (active) return inFlight || Promise.resolve();
+                active = true;
+                const initialLoad = run(false);
+                timerId = schedule(() => {
+                    if (!active) return Promise.resolve();
+                    return run(true).catch(() => undefined);
+                }, intervalMs);
+                return initialLoad;
+            },
+            stop() {
+                active = false;
+                if (timerId !== null) {
+                    cancelSchedule(timerId);
+                    timerId = null;
+                }
+            },
+            refresh() {
+                return run(false);
+            },
+            get isActive() {
+                return active;
+            },
+        };
+    }
+
     /**
      * Worker mismatch 判定（唯一規則）：僅當兩側 instance id 皆為非空字串時比較；
      * 任一缺失 → 'unknown'（不得以 PID 判定）。
@@ -290,6 +342,7 @@
         createLogModel,
         createBoundedQueue,
         createRuntimeSettingsController,
+        createKnowledgeGraphRefreshController,
         workerMismatchState,
         concurrencySourceKey,
         workerCountNoteKey,

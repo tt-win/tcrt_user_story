@@ -3941,10 +3941,10 @@
       "collections": "Collections",
       "sectionQdrant": "Qdrant（向量数据库）",
       "sectionNeo4j": "Neo4j（图数据库）",
-      "sectionBackfill": "Backfill（initial bulk load）",
-      "backfillHint": "Backfill 需要通过 CLI 启动（`python -m app.services.knowledge backfill --entity <type>`）；此面板仅显示当前进度，无法从浏览器端直接触发。",
+      "sectionBackfill": "Qdrant Backfill（initial bulk load）",
+      "backfillHint": "此处显示 TCRT → Qdrant 的初始 backfill 进度，不是 Neo4j 同步数量。分页打开时每 5 秒自动更新；已完成的记录会保持不变，直到下一次 backfill。",
       "entityType": "Entity",
-      "processed": "Processed",
+      "processed": "已处理 / 已扫描",
       "lastId": "Last processed id",
       "updatedAt": "Updated at",
       "noProgress": "暂无 backfill 记录"
