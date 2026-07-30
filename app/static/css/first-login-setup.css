@@ -5,6 +5,7 @@
 
 .app-main {
     height: 100vh !important;
+    height: 100dvh !important;
     padding: 0 !important;
     display: flex !important;
     align-items: center !important;
@@ -108,7 +109,7 @@
     position: fixed;
     top: 20px;
     right: 20px;
-    z-index: 1060;
+    z-index: var(--z-toast);
     min-width: 300px;
     animation: slideInRight 0.3s ease-out;
     border-radius: 6px;

@@ -4,6 +4,7 @@ body {
     font-size: 14px;
     color: var(--tr-text-primary);
     min-height: 100vh;
+    min-height: 100dvh;
     display: flex;
     align-items: center;
     justify-content: center;

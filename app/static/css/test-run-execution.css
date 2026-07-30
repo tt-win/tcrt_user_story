@@ -117,6 +117,7 @@
     flex-direction: column;
     min-height: 0; /* Allow flex item to shrink below content size */
     height: calc(100vh - var(--header-height) - var(--footer-height) - 16px);
+    height: calc(100dvh - var(--header-height) - var(--footer-height) - 16px);
     overflow: hidden;
 }
 
@@ -322,7 +323,7 @@
         0 2px 8px rgba(15, 23, 42, 0.08),
         inset 0 1px 0 rgba(255, 255, 255, 0.6);
     display: none;
-    z-index: 1050;
+    z-index: var(--z-modal);
     box-sizing: border-box;
 }
 
@@ -725,12 +726,15 @@
     max-width: 95vw;
     width: 95vw;
     max-height: 92vh;
+    max-height: 92dvh;
     margin: 2vh auto;
 }
 #testCaseDetailModal .modal-content {
     display: flex;
     height: 92vh;
+    height: 92dvh;
     max-height: 92vh;
+    max-height: 92dvh;
 }
 #testCaseDetailModal .modal-body {
     display: flex;
@@ -744,6 +748,7 @@
 #bugTicketsSummaryModal .modal-dialog {
     max-width: 800px;
     max-height: 90vh;
+    max-height: 90dvh;
 }
 
 #bugTicketsSummaryModal .modal-content {
@@ -921,6 +926,7 @@
     
     #bugTicketsSummaryModal .modal-content {
         height: 85vh;
+        height: 85dvh;
     }
     
     .bug-ticket-card-body {
@@ -1070,7 +1076,7 @@
 }
 
 #testCaseDetailModal .assignee-selector-dropdown {
-    z-index: 1060; /* 高於 Modal 的 z-index */
+    z-index: var(--z-toast); /* 高於 Modal 的 z-index */
     left: 0;
     right: auto;
     text-align: left;
@@ -1285,5 +1291,5 @@
 /* ===== Test Data 複製 dropdown 不被外層 overflow 裁切 ===== */
 .section-test-data .dropdown-menu.show {
     position: fixed !important;
-    z-index: 1080 !important;
+    z-index: var(--z-assistant);
 }

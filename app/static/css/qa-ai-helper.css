@@ -4,6 +4,7 @@
   --qa-helper-surface-strong: #eef3fa;
   --qa-helper-step-offset: 12rem;
   --qa-helper-step-height: calc(100vh - var(--qa-helper-step-offset));
+  --qa-helper-step-height: calc(100dvh - var(--qa-helper-step-offset));
 }
 
 .qa-ai-helper-page > .row {
@@ -613,12 +614,14 @@
   width: 44%;
   max-width: 28rem;
   height: calc(100vh - 2rem);
+  height: calc(100dvh - 2rem);
   max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
   background: #fff;
   border: 1px solid var(--qa-helper-border);
   border-radius: 0.85rem;
   box-shadow: -4px 0 20px rgba(15, 23, 42, 0.10);
-  z-index: 1060;
+  z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
   overscroll-behavior: contain;
@@ -1156,7 +1159,7 @@
   top: calc(var(--header-height, 64px) + 12px);
   left: 50%;
   transform: translateX(-50%);
-  z-index: 1080;
+  z-index: var(--z-assistant);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1224,7 +1227,7 @@
 .council-overlay {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: var(--z-assistant);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1390,7 +1393,7 @@
 .ai-thinking-overlay {
   position: fixed;
   inset: 0;
-  z-index: 9998;
+  z-index: var(--z-assistant);
   display: flex;
   align-items: center;
   justify-content: center;

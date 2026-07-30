@@ -148,31 +148,32 @@
     /* Ensure modals are visible and on top */
     #relationSettingsModal,
     #fullRelationGraphModal {
-        z-index: 1060 !important;
+        z-index: var(--z-toast);
     }
 
     #relationSettingsModal.show,
     #fullRelationGraphModal.show {
         display: block !important;
-        z-index: 1060 !important;
+        z-index: var(--z-toast);
     }
 
     /* Add Node modal above others */
-    #addNodeModal { z-index: 1062 !important; }
-    #addNodeModal.show { display: block !important; z-index: 1062 !important; }
-    #addNodeModal ~ .modal-backdrop { z-index: 1061 !important; }
+    #addNodeModal { z-index: var(--z-toast); }
+    #addNodeModal.show { display: block !important; z-index: var(--z-toast); }
+    #addNodeModal ~ .modal-backdrop { z-index: var(--z-modal); }
 
 
 
     /* Backdrop should be just below modal */
     #relationSettingsModal ~ .modal-backdrop,
     #fullRelationGraphModal ~ .modal-backdrop {
-        z-index: 1059 !important;
+        z-index: var(--z-modal);
     }
 
     /* Relation Settings Modal Layout */
     .relation-modal-content {
         height: 90vh;
+        height: 90dvh;
         display: flex;
         flex-direction: column;
     }
@@ -235,6 +236,7 @@
     /* 搜尋節點 Modal - 固定結果區高度，內部捲動 */
     #searchResults {
         max-height: 55vh;
+        max-height: 55dvh;
         overflow-y: auto;
         border: 1px solid #e9ecef;
         border-radius: 6px;
@@ -357,7 +359,8 @@
 
     .usm-main-area {
         display: flex;
-        height: calc(100vh - var(--header-height) - var(--footer-height) - 16px); /* account for app-main padding (8px top & bottom) */
+        height: calc(100vh - var(--header-height) - var(--footer-height) - 16px); height: calc(100dvh - var(--header-height) - var(--footer-height) - 16px); /* account for app-main padding (8px top & bottom) */
+        height: calc(100dvh - var(--header-height) - var(--footer-height) - 16px); /* account for app-main padding (8px top & bottom) */
         min-height: 0;
     }
 
@@ -392,7 +395,7 @@
         left: calc(16px + 8px);
         width: min(320px, calc(100vw - 32px));
         max-width: 320px;
-        z-index: 1040;
+        z-index: var(--z-assistant);
         margin: 0;
         border-left: 4px solid #ffc107;
     }
@@ -401,7 +404,7 @@
         position: absolute;
         bottom: 16px;
         left: 16px;
-        z-index: 9999;
+        z-index: var(--z-assistant);
     }
 
 .usm-map-btn {

@@ -13,6 +13,9 @@ The SPECs verified here mirror the table in AGENTS.md "前端測試需求".
 
 from __future__ import annotations
 
+import json
+import re
+from pathlib import Path
 
 import pytest
 from bs4 import BeautifulSoup
@@ -404,3 +407,216 @@ def test_no_hidden_i18n_string_stores(page_name, route, client):
             count = len(node.find_all(attrs={"data-i18n": True}))
             offenders.append(f"<{node.name} id='{node_id}'> ({count} data-i18n descendants)")
     assert not offenders, f"{page_name}: hidden i18n string-store containers:\n  " + "\n  ".join(offenders)
+
+
+# --------------------------------------------------------------------------- #
+# App chrome layout — reachable toolbar, z-index tokens, dvh fallbacks
+# --------------------------------------------------------------------------- #
+
+_Z_TOKEN_RE = re.compile(r"z-index\s*:\s*var\(--z-[a-z-]+\)\s*;")
+_Z_NUMERIC_RE = re.compile(r"z-index\s*:\s*(-?\d+)\s*(!important)?\s*;")
+_Z_IMPORTANT_RE = re.compile(r"z-index\s*:[^;]*!important")
+_HEIGHT_PROP_RE = re.compile(
+    r"(?P<prop>(?:min-|max-)?height)\s*:\s*(?P<val>[^;{}]+);",
+    re.I,
+)
+_VH_RE = re.compile(r"\d*\.?\d+vh\b")
+
+
+def _css_files() -> list[Path]:
+    root = Path(__file__).resolve().parents[1] / "static" / "css"
+    return sorted(root.glob("*.css"))
+
+
+def _load_z_index_baseline() -> set[tuple[str, int]]:
+    baseline_path = Path(__file__).resolve().parents[2] / "scripts" / "z-index-baseline.json"
+    data = json.loads(baseline_path.read_text(encoding="utf-8"))
+    allowed: set[tuple[str, int]] = set()
+    for entry in data.get("numericLocalZIndex", []):
+        allowed.add((entry["file"].replace("\\", "/"), int(entry["value"])))
+    return allowed
+
+
+@pytest.mark.parametrize("page_name, route", all_page_routes())
+def test_header_toolbar_has_overflow_and_pin_structure(page_name, route, client):
+    """App chrome: toolbar exposes overflow + pin zones; user menu stays pinned."""
+    soup = render_page(client, route)
+    # Pages that deliberately omit the shared chrome toolbar skip this.
+    if not soup.find(class_="app-header"):
+        return
+    toolbar = soup.find(class_="header-toolbar")
+    if toolbar is None:
+        # e.g. first_login_setup empties {% block page_actions %}
+        return
+    assert soup.find(id="headerToolbarScroll"), f"{page_name}: missing #headerToolbarScroll"
+    assert soup.find(id="headerToolbarItems"), f"{page_name}: missing #headerToolbarItems"
+    assert soup.find(id="headerToolbarOverflow"), f"{page_name}: missing overflow menu"
+    pin = soup.find(id="headerToolbarPin")
+    assert pin, f"{page_name}: missing #headerToolbarPin"
+    assert pin.find(class_="header-toolbar-user") or pin.find(id="user-info-container") or pin.find(
+        id="userDropdown"
+    ), f"{page_name}: user menu not in pin zone"
+    # Overflow starts collapsed (d-none) until ResizeObserver folds items.
+    overflow = soup.find(id="headerToolbarOverflow")
+    assert "d-none" in _classes(overflow), f"{page_name}: overflow should start hidden"
+
+
+def test_style_css_defines_z_index_token_scale():
+    """ui-design-system: :root declares the six --z-* tokens."""
+    style = (Path(__file__).resolve().parents[1] / "static" / "css" / "style.css").read_text(
+        encoding="utf-8"
+    )
+    for token in (
+        "--z-dropdown",
+        "--z-sticky",
+        "--z-chrome",
+        "--z-modal",
+        "--z-toast",
+        "--z-assistant",
+    ):
+        assert f"{token}:" in style, f"missing {token} in style.css :root"
+
+
+def test_fixed_layer_z_index_uses_tokens_without_important():
+    """App chrome: window-level z-index values resolve from --z-* with no !important."""
+    allowed = _load_z_index_baseline()
+    offenders: list[str] = []
+    for path in _css_files():
+        rel = str(path.relative_to(path.parents[2])).replace("\\", "/")
+        # path is app/static/css/x.css — parents[2] is repo root? 
+        # Path: .../app/static/css/file.css → parents[0]=css, [1]=static, [2]=app
+        rel = f"app/static/css/{path.name}"
+        text = path.read_text(encoding="utf-8")
+        for i, line in enumerate(text.splitlines(), 1):
+            if _Z_IMPORTANT_RE.search(line):
+                offenders.append(f"{rel}:{i}: !important on z-index: {line.strip()}")
+            for m in _Z_NUMERIC_RE.finditer(line):
+                value = int(m.group(1))
+                if value >= 1000:
+                    offenders.append(f"{rel}:{i}: hardcoded window z-index {value}")
+                elif (rel, value) not in allowed:
+                    offenders.append(
+                        f"{rel}:{i}: numeric z-index {value} not in scripts/z-index-baseline.json"
+                    )
+    assert not offenders, "z-index contract failures:\n  " + "\n  ".join(offenders)
+
+
+def test_viewport_height_declarations_have_dvh_fallback():
+    """App chrome: height/min-height/max-height vh units are paired with dvh overrides."""
+    offenders: list[str] = []
+    for path in _css_files():
+        rel = f"app/static/css/{path.name}"
+        text = path.read_text(encoding="utf-8")
+        for m in _HEIGHT_PROP_RE.finditer(text):
+            val = m.group("val")
+            if not _VH_RE.search(val) or "dvh" in val:
+                continue
+            # Custom properties named *height* are allowed as long as a dvh twin follows.
+            rest = text[m.end() :].lstrip()
+            prop = m.group("prop")
+            twin_ok = bool(re.match(re.escape(prop) + r"\s*:\s*[^;]*dvh", rest, re.I))
+            # Also accept --foo-height: vh; --foo-height: dvh;
+            if not twin_ok and prop.startswith("-"):
+                twin_ok = bool(re.match(re.escape(prop) + r"\s*:\s*[^;]*dvh", rest, re.I))
+            if not twin_ok:
+                # For custom props ending in height matched by prop incorrectly — skip
+                # if the match was a suffix of a custom property name.
+                start = m.start()
+                prefix = text[max(0, start - 40) : start]
+                if re.search(r"--[A-Za-z0-9_-]*$", prefix):
+                    continue
+                line = text[: m.start()].count("\n") + 1
+                offenders.append(f"{rel}:{line}: {m.group(0).strip()[:100]}")
+        # Custom property values with vh
+        for m in re.finditer(
+            r"(--[A-Za-z0-9_-]*height[A-Za-z0-9_-]*)\s*:\s*([^;{}]+);", text, re.I
+        ):
+            prop, val = m.group(1), m.group(2)
+            if not _VH_RE.search(val) or "dvh" in val:
+                continue
+            rest = text[m.end() :].lstrip()
+            if not re.match(re.escape(prop) + r"\s*:\s*[^;]*dvh", rest, re.I):
+                line = text[: m.start()].count("\n") + 1
+                offenders.append(f"{rel}:{line}: {prop}: {val.strip()[:60]}")
+    assert not offenders, "vh without dvh fallback:\n  " + "\n  ".join(offenders)
+
+
+def test_dead_fixed_pagination_chrome_removed():
+    """App chrome: fixed-pagination-bar dead CSS must stay gone."""
+    style = (Path(__file__).resolve().parents[1] / "static" / "css" / "style.css").read_text(
+        encoding="utf-8"
+    )
+    assert ".fixed-pagination-bar" not in style
+    # And no templates/js references
+    repo = Path(__file__).resolve().parents[2]
+    hay = ""
+    for base in (repo / "app" / "templates", repo / "app" / "static" / "js"):
+        for path in base.rglob("*"):
+            if path.suffix in {".html", ".js"}:
+                hay += path.read_text(encoding="utf-8", errors="ignore")
+    assert "fixed-pagination-bar" not in hay
+
+
+def test_header_height_token_is_fixed_px():
+    """App chrome: --header-height stays a fixed px value (overflow must not grow header)."""
+    style = (Path(__file__).resolve().parents[1] / "static" / "css" / "style.css").read_text(
+        encoding="utf-8"
+    )
+    m = re.search(r"--header-height:\s*([^;]+);", style)
+    assert m, "missing --header-height"
+    assert m.group(1).strip().endswith("px"), f"--header-height must be px, got {m.group(1)!r}"
+
+
+def test_app_header_does_not_clip_dropdowns():
+    """App chrome reachability: header chrome must not clip dropdown menus."""
+    style = (Path(__file__).resolve().parents[1] / "static" / "css" / "style.css").read_text(
+        encoding="utf-8"
+    )
+    header = re.search(r"\.app-header\s*\{([^}]+)\}", style)
+    assert header, "missing .app-header rule"
+    assert "overflow: hidden" not in header.group(1), (
+        ".app-header { overflow: hidden } clips pinned user-menu dropdowns"
+    )
+
+    title = re.search(r"\.app-header-title\s*\{([^}]+)\}", style)
+    assert title, "missing .app-header-title rule"
+    assert "overflow: hidden" not in title.group(1), (
+        ".app-header-title { overflow: hidden } clips team-nav dropdown (ART badge)"
+    )
+    assert "overflow: visible" in title.group(1)
+
+
+def test_chrome_dropdown_toggles_use_fixed_popper(client):
+    """Every chrome dropdown toggle uses Popper fixed strategy (title + toolbar + footer)."""
+    soup = render_page(client, "/team-management")
+    header = soup.find(class_="app-header")
+    assert header is not None
+    offenders: list[str] = []
+    for toggle in header.select('[data-bs-toggle="dropdown"]'):
+        config = toggle.get("data-bs-popper-config") or ""
+        if "fixed" not in config:
+            tid = toggle.get("id") or " ".join(_classes(toggle))[:40]
+            offenders.append(tid)
+    assert not offenders, "header dropdowns missing Popper fixed strategy: " + ", ".join(offenders)
+
+    lang = soup.find(id="languageDropdown")
+    assert lang is not None
+    assert "fixed" in (lang.get("data-bs-popper-config") or "")
+
+    team = soup.find(id="team-name-badge")
+    assert team is not None
+    assert "fixed" in (team.get("data-bs-popper-config") or "")
+
+
+def test_language_switcher_clears_assistant_fab():
+    """Floating utilities: language switcher reserves clearance beside the Assistant FAB."""
+    style = (Path(__file__).resolve().parents[1] / "static" / "css" / "style.css").read_text(
+        encoding="utf-8"
+    )
+    assert "body:not([data-assistant-widget=\"off\"]) #language-switcher" in style
+    assert "margin-right" in style
+    assistant = (
+        Path(__file__).resolve().parents[1] / "static" / "css" / "assistant-widget.css"
+    ).read_text(encoding="utf-8")
+    assert "var(--z-assistant)" in assistant
+    assert "var(--footer-height)" in assistant

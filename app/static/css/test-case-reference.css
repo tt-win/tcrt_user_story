@@ -11,21 +11,25 @@ body.popup-minimal .app-main {
     padding: 0 !important; /* 移除 main 的內邊距 */
     margin: 0 !important;
     height: 100vh !important;
+    height: 100dvh !important;
 }
 
 body.popup-minimal .container-fluid {
     padding: 0 !important; /* 移除 container-fluid 的內邊距 */
     height: 100vh !important;
+    height: 100dvh !important;
 }
 
 #referencePageRoot {
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
     padding: 0 !important;
 }
 
 .reference-results-container {
     height: calc(100vh - var(--header-height, 64px) - var(--footer-height, 60px) - 2rem);
+    height: calc(100dvh - var(--header-height, 64px) - var(--footer-height, 60px) - 2rem);
     overflow-y: auto;
 }
 

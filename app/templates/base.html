@@ -27,13 +27,13 @@
     <!-- App Header (fixed) -->
     <header class="app-header border-bottom bg-white">
         <div class="container-fluid d-flex justify-content-between align-items-center h-100 px-3">
-            <div class="py-2">
+            <div class="py-2 app-header-title">
                 {% block page_title %}
                 <div class="d-flex align-items-center gap-2">
                     <h1 class="h5 mb-0">{% block page_title_text %}<span data-i18n="navigation.title">Test Case Repository</span>{% endblock %}</h1>
                     <!-- 團隊名稱標籤（可點擊，展開 team-scoped 頁面導覽） -->
                     <div id="team-nav-badge-wrapper" class="dropdown d-none">
-                        <span id="team-name-badge" class="badge bg-primary dropdown-toggle" style="font-size: 0.75rem; cursor: pointer;" data-bs-toggle="dropdown" aria-expanded="false">
+                        <span id="team-name-badge" class="badge bg-primary dropdown-toggle" style="font-size: 0.75rem; cursor: pointer;" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false">
                             <i class="fas fa-users me-1"></i>
                             <span id="team-name-text"></span>
                         </span>
@@ -42,61 +42,83 @@
                 </div>
                 {% endblock %}
                 {% block page_subtitle %}
-                <small class="text-muted">{% block page_subtitle_text %}<span data-i18n="navigation.subtitle">選擇團隊開始管理測試案例</span>{% endblock %}</small>
+                <small class="text-muted page-subtitle">{% block page_subtitle_text %}<span data-i18n="navigation.subtitle">選擇團隊開始管理測試案例</span>{% endblock %}</small>
                 {% endblock %}
             </div>
             {% block page_actions %}
             <div class="d-flex gap-2 py-2 header-toolbar align-items-center">
-                <!-- 全域工具按鈕區域 -->
-                <!-- 版本更新按鈕將動態插入到這裡 -->
+                <div class="header-toolbar-scroll" id="headerToolbarScroll">
+                    <div class="header-toolbar-items" id="headerToolbarItems">
+                        <!-- 全域工具按鈕區域 -->
+                        <!-- 版本更新按鈕將動態插入到這裡 -->
 
-                <!-- 「管理」dropdown（SPEC-NAV-001：admin 及以上可見，由 base-auth.js 控制） -->
-                <div class="btn-group d-none" id="adminDropdownGroup" role="group">
-                    <button type="button" class="btn btn-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="fas fa-cog me-1"></i><span data-i18n="adminMenu.title">管理</span>
-                    </button>
-                    <ul class="dropdown-menu">
-                        <li><span class="dropdown-header"><span data-i18n="adminMenu.sectionOrg">組織</span></span></li>
-                        <li>
-                            <a class="dropdown-item" href="/organization-management">
-                                <i class="fas fa-users-cog me-2"></i><span data-i18n="adminMenu.orgSettings">組織與系統設定</span>
-                            </a>
-                        </li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><span class="dropdown-header"><span data-i18n="adminMenu.sectionSystem">系統</span></span></li>
-                        <li>
-                            <a class="dropdown-item" href="/audit-logs">
-                                <i class="fas fa-clipboard-list me-2"></i><span data-i18n="adminMenu.auditLogs">稽核日誌</span>
-                            </a>
-                        </li>
-                        <li class="d-none" id="adminMenuSystemLogs">
-                            <a class="dropdown-item" href="/system-logs">
-                                <i class="fas fa-terminal me-2"></i><span data-i18n="adminMenu.systemLogs">系統日誌</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a class="dropdown-item" href="/team-statistics" id="adminMenuTeamStats">
-                                <i class="fas fa-chart-line me-2"></i><span data-i18n="adminMenu.teamStatistics">統計分析</span>
-                            </a>
-                        </li>
-                    </ul>
+                        <!-- 「管理」dropdown（SPEC-NAV-001：admin 及以上可見，由 base-auth.js 控制） -->
+                        <div class="btn-group d-none" id="adminDropdownGroup" role="group">
+                            <button type="button" class="btn btn-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false">
+                                <i class="fas fa-cog me-1"></i><span data-i18n="adminMenu.title">管理</span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><span class="dropdown-header"><span data-i18n="adminMenu.sectionOrg">組織</span></span></li>
+                                <li>
+                                    <a class="dropdown-item" href="/organization-management">
+                                        <i class="fas fa-users-cog me-2"></i><span data-i18n="adminMenu.orgSettings">組織與系統設定</span>
+                                    </a>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><span class="dropdown-header"><span data-i18n="adminMenu.sectionSystem">系統</span></span></li>
+                                <li>
+                                    <a class="dropdown-item" href="/audit-logs">
+                                        <i class="fas fa-clipboard-list me-2"></i><span data-i18n="adminMenu.auditLogs">稽核日誌</span>
+                                    </a>
+                                </li>
+                                <li class="d-none" id="adminMenuSystemLogs">
+                                    <a class="dropdown-item" href="/system-logs">
+                                        <i class="fas fa-terminal me-2"></i><span data-i18n="adminMenu.systemLogs">系統日誌</span>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="/team-statistics" id="adminMenuTeamStats">
+                                        <i class="fas fa-chart-line me-2"></i><span data-i18n="adminMenu.teamStatistics">統計分析</span>
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <!-- 頁面特定工具按鈕 -->
+                        {% block page_specific_actions %}{% endblock %}
+                    </div>
+                    <div class="dropdown header-toolbar-overflow d-none" id="headerToolbarOverflow">
+                        <button
+                            type="button"
+                            class="btn btn-secondary btn-sm dropdown-toggle"
+                            id="headerToolbarOverflowBtn"
+                            data-bs-toggle="dropdown"
+                            data-bs-auto-close="outside"
+                            data-bs-popper-config='{"strategy":"fixed"}'
+                            aria-expanded="false"
+                            aria-haspopup="true"
+                            data-i18n-title="chrome.moreActions"
+                            title="更多"
+                        >
+                            <i class="fas fa-ellipsis-h" aria-hidden="true"></i>
+                            <span class="visually-hidden" data-i18n="chrome.moreActions">更多</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" id="headerToolbarOverflowMenu" aria-labelledby="headerToolbarOverflowBtn"></ul>
+                    </div>
                 </div>
-
-                <!-- 頁面特定工具按鈕 -->
-                {% block page_specific_actions %}{% endblock %}
-
-                <!-- 使用者資訊區域（放在最右邊） -->
-                <div class="ms-auto">
-                    {% include '_partials/user_menu.html' %}
+                <div class="header-toolbar-pin d-flex gap-2 align-items-center" id="headerToolbarPin">
+                    <!-- Home / back entry moved here by header-toolbar.js -->
+                    <div class="header-toolbar-user">
+                        {% include '_partials/user_menu.html' %}
+                    </div>
                 </div>
-
             </div>
             {% endblock %}
         </div>
     </header>
 
     <!-- Flash Messages (top-right, below fixed header) -->
-    <div id="flash-messages" class="position-fixed" style="z-index: 2050; top: calc(var(--header-height) + 8px); right: 12px;"></div>
+    <div id="flash-messages" class="position-fixed flash-messages"></div>
 
     <!-- Main Content Area (scrollable) -->
     <main class="app-main container-fluid">
@@ -108,7 +130,7 @@
         <div class="container-fluid d-flex justify-content-end align-items-center h-100 px-3">
             <div id="language-switcher" class="">
                 <div class="dropdown">
-                    <button class="btn btn-secondary btn-sm dropdown-toggle" type="button" id="languageDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                    <button class="btn btn-secondary btn-sm dropdown-toggle" type="button" id="languageDropdown" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false">
                         <i class="fas fa-globe me-1"></i>
                         <span id="current-language" data-i18n="language.current">English</span>
                     </button>
@@ -173,6 +195,7 @@
     <script src="{{ asset_url('js/version-checker.js') }}"></script>
     <script src="{{ asset_url('js/team-nav-config.js') }}"></script>
     <script src="{{ asset_url('js/team-nav.js') }}"></script>
+    <script src="{{ asset_url('js/header-toolbar.js') }}"></script>
     <script src="{{ asset_url('js/assistant-widget.js') }}"></script>
     {% block scripts %}{% endblock %}
 

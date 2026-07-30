@@ -1,6 +1,7 @@
 /* 專門針對團隊活動區域的樣式 */
 #team-activity-pane .card {
-    height: calc(100vh - 300px); /* 固定高度為視窗高度扣除頂部區域，避免超出 */
+    height: calc(100vh - 300px); height: calc(100dvh - 300px); /* 固定高度為視窗高度扣除頂部區域，避免超出 */
+    height: calc(100dvh - 300px); /* 固定高度為視窗高度扣除頂部區域，避免超出 */
     min-height: 500px; /* 保持基本高度 */
 }
 

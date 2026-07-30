@@ -209,6 +209,7 @@
 
 #caseSelectModal .modal-content {
     max-height: calc(100vh - 2rem);
+    max-height: calc(100dvh - 2rem);
 }
 
 #caseSelectModal .modal-dialog-scrollable .modal-body.case-select-modal-body {
@@ -252,7 +253,7 @@
 /* 浮動下拉選單 - fixed positioning 解決巢狀 dropdown 層級問題（SPEC-DRP-001：使用 Bootstrap dropdown-menu 類別 + fixed 修飾） */
 .tr-dropdown-menu {
     position: fixed !important;
-    z-index: 999999 !important;
+    z-index: var(--z-assistant);
     background: var(--tr-bg-content);
     border: 1px solid var(--tr-border-light);
     border-radius: 0.375rem;
@@ -272,7 +273,8 @@
     left: 0;
     width: 100vw;
     height: 100vh;
-    z-index: 999998;
+    height: 100dvh;
+    z-index: var(--z-assistant);
     display: none;
 }
 
@@ -712,6 +714,7 @@
 /* 列上的「⋯」選單：項目多時可捲動（含搬移目標清單） */
 .test-run-row-menu {
     max-height: min(70vh, 32rem);
+    max-height: min(70dvh, 32rem);
     overflow-y: auto;
 }
 

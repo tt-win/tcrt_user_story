@@ -4,6 +4,7 @@ body.dashboard-page {
 
 body.dashboard-page .app-main {
     height: 100vh;
+    height: 100dvh;
     min-height: 0;
     overflow: hidden;
 }
@@ -352,6 +353,7 @@ body.dashboard-page .app-main {
 
 .dashboard-activity-detail-table-wrap {
     max-height: 65vh;
+    max-height: 65dvh;
     overflow: auto;
     overscroll-behavior: contain;
 }
