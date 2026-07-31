@@ -13,10 +13,10 @@ __pycache__/
 *$py.class
 
 # Environments
-.env
-.env.docker
-.venv
+.env*
+!.env.example
 !.env.docker.example
+.venv
 
 # OS
 .DS_Store
@@ -171,8 +171,7 @@ i18n_test.html
 /generated_report/
 
 # Local AI helper debug runner artifacts
-.tmp/helper-debug-runs/
-.tmp/db-cutover/
+.tmp/
 
 # Design and documentation files
 *.md
@@ -222,7 +221,7 @@ openspec/.vector-search.db
 openspec/.vector-search.db*
 db_cross_migrate.yaml
 
-# Local tool/agent scratch dirs (not project source)
+# Local tool/agent scratch dirs & generated skills (not project source)
 .antigravitycli/
 .opencode/
 .playwright-mcp/
@@ -232,10 +231,18 @@ db_cross_migrate.yaml
 !.opencode/
 .opencode/*
 !.opencode/AGENTS.md
+.claude/skills/
+.qwen/commands/
+skills-lock.json
+
 # Allure Docker Service host bind-mount data (runtime, large)
 allure-projects/
 # Local config variants / backups that carry real secrets
 config.mysql.yaml
-config.yaml.backup_*
-# Generated inspection/dry-run output
+config.yaml.backup*
+
+# Generated inspection/dry-run output, graphify caches, data runtime files
 scripts/output/
+graphify-out/
+**/graphify-out/
+data/
