@@ -19,7 +19,6 @@ from app.main import app
 from app.models.database_models import Team
 from app.services.assistant import content_store as store
 from app.services.assistant.capability_context import (
-    NO_TEAM_CONTEXT,
     OTHER_WRITE,
     ROLE_INSUFFICIENT,
     append_capability_context,
@@ -46,7 +45,7 @@ _CONTEXT_HEADING = "## 本回合能力事實"
 
 def _facts(role: UserRole, scope_type: str, team_id=None, team_name=None) -> dict:
     registry = get_tool_registry()
-    allowed = tools_for_turn(registry, team_id=team_id, role=role)
+    allowed = tools_for_turn(registry, scope_type=scope_type, team_id=team_id, role=role)
     return build_capability_facts(
         role=role,
         scope_type=scope_type,
@@ -106,7 +105,7 @@ def test_viewer_in_team_scope_gets_role_attribution():
     assert ROLE_INSUFFICIENT in text
     assert "團隊管理員" in text
     # 錯誤歸因的具體反例（本次修正的來源）必須被明文禁止
-    assert "不得聲稱系統沒有這個功能" in text
+    assert "不得聲稱系統沒有此功能" in text
     assert "網頁介面" in text
 
 
@@ -116,7 +115,7 @@ def test_user_in_team_scope_has_no_restriction_narrative():
     assert facts["reasons"] == []
 
     text = build_capability_context(facts)
-    assert "未受限" in text
+    assert "未受角色限制" in text
     assert ROLE_INSUFFICIENT not in text
     assert "移除" not in text
 
@@ -128,59 +127,55 @@ def test_admin_in_team_scope_has_no_restriction_narrative():
     assert facts["allowed_permissions"] == ["read", "write", "admin"]
 
 
-def test_global_turn_with_context_team_behaves_like_team_scope():
-    """全域對話帶入工作區 team 後，寫入能力必須恢復（本 change 的核心行為）。"""
+def test_global_turn_is_explicitly_targeted_and_never_page_bound():
     facts = _facts(UserRole.USER, "global", team_id=1, team_name="ART")
     assert facts["scope"] == "global"
-    assert facts["team_id"] == 1
+    assert facts["team_id"] is None
+    assert facts["team_name"] is None
+    assert facts["targeting_mode"] == "explicit_per_tool"
     assert facts["withheld_capabilities"] == []
     assert facts["reasons"] == []
+    assert facts["remediation"] == []
 
     text = build_capability_context(facts)
-    assert "`ART`" in text and "context team" in text
-    assert "未受限" in text
-    assert "目標 team 消歧" in text, "有目標 team 時必須帶消歧規則"
+    assert "沒有目前／預設 team" in text
+    assert "target_team={id,name}" in text
+    assert "list_teams" in text
+    assert "頁面所在 team 不參與 routing" in text
+    assert "不得要求使用者切換 workspace" in text
+    assert "no_team_context" not in text
 
 
-def test_global_turn_without_context_team_reports_no_team_context():
-    facts = _facts(UserRole.USER, "global")
-    assert facts["scope"] == "global"
-    assert facts["team_id"] is None
-    assert facts["reasons"] == [NO_TEAM_CONTEXT]
-    assert any("工作區" in item for item in facts["remediation"])
-
-    text = build_capability_context(facts)
-    assert NO_TEAM_CONTEXT in text
-    assert "本回合目標 team：無" in text
-    assert ROLE_INSUFFICIENT not in text
-
-
-def test_no_team_context_never_suggests_switching_to_a_team_conversation():
-    """前端只建立全域對話；要切換的是工作區，不是「team 對話」。"""
-    for role in (UserRole.VIEWER, UserRole.USER, UserRole.ADMIN):
-        facts = _facts(role, "global")
-        assert not [item for item in facts["remediation"] if "對話" in item and "切換" in item]
-        text = build_capability_context(facts)
-        assert "不得叫使用者「切換到某個 team 的對話」" in text
-        assert "要切換的是工作區" in text
-
-
-def test_no_team_context_with_viewer_reports_both_reasons():
+def test_global_viewer_reports_only_role_restriction():
     facts = _facts(UserRole.VIEWER, "global")
-    assert facts["reasons"] == [NO_TEAM_CONTEXT, ROLE_INSUFFICIENT]
-    assert len(facts["remediation"]) == 2
+    assert facts["reasons"] == [ROLE_INSUFFICIENT]
+    assert len(facts["remediation"]) == 1
+    assert facts["withheld_capabilities"]
 
     text = build_capability_context(facts)
-    assert NO_TEAM_CONTEXT in text and ROLE_INSUFFICIENT in text
-    # 兩個限制彼此獨立；角色不足時網頁介面不是解法
-    assert "仍需要 write 權限" in text
-    assert "同一權限限制在網頁介面同樣成立" in text
+    assert ROLE_INSUFFICIENT in text
+    assert "no_team_context" not in text
+    assert "不得要求切換 team 頁面" in text
 
 
-def test_viewer_with_context_team_is_role_insufficient_not_no_team_context():
-    facts = _facts(UserRole.VIEWER, "global", team_id=1, team_name="ART")
-    assert facts["reasons"] == [ROLE_INSUFFICIENT]
-    assert NO_TEAM_CONTEXT not in build_capability_context(facts)
+def test_global_catalog_is_role_based_without_team_context():
+    registry = get_tool_registry()
+    user_names = {
+        tool.name
+        for tool in tools_for_turn(
+            registry, scope_type="global", team_id=None, role=UserRole.USER
+        )
+    }
+    viewer_names = {
+        tool.name
+        for tool in tools_for_turn(
+            registry, scope_type="global", team_id=None, role=UserRole.VIEWER
+        )
+    }
+    assert "create_test_case_set" in user_names
+    assert "list_test_cases" in user_names
+    assert "list_test_cases" in viewer_names
+    assert "create_test_case_set" not in viewer_names
 
 
 def test_team_scope_falls_back_to_team_id_when_name_missing():
@@ -205,7 +200,11 @@ def test_context_block_stays_compact(role, scope, team_id):
     assert len(lines) <= 12, f"capability context 行數過多: {len(lines)}"
     assert len(text) <= 1500, f"capability context 過長: {len(text)} chars"
     tool_names = [t.name for t in get_tool_registry().all()]
-    assert not [name for name in tool_names if name != "describe_capabilities" and name in text], (
+    assert not [
+        name
+        for name in tool_names
+        if name not in {"describe_capabilities", "list_teams"} and name in text
+    ], (
         "capability context 不應列舉工具名（只描述能力類別）"
     )
 
@@ -367,5 +366,5 @@ async def test_describe_capabilities_available_in_global_scope(prompt_db):
     assert status == 200
     assert payload["scope"] == "global"
     assert payload["team_id"] is None
-    assert NO_TEAM_CONTEXT in payload["reasons"]
-    assert payload["withheld_capabilities"], "全域對話應回報寫入能力被移除"
+    assert payload["reasons"] == []
+    assert payload["withheld_capabilities"] == []

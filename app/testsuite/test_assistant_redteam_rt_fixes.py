@@ -81,6 +81,7 @@ async def _seed_pending(conv_svc: ConversationService, *, user_id: int = 1, team
         "path_params": {},
         "query_params": {},
         "body_params": {"name": "RT Run", "test_case_set_ids": [1]},
+        "target_team_id": team_id,
     }
     pending = await conv_svc.create_pending_action_and_complete_turn(
         conversation_id=conv.id,
@@ -94,6 +95,9 @@ async def _seed_pending(conv_svc: ConversationService, *, user_id: int = 1, team
         execution_payload_encrypted=False,
         confirmation_summary={"action": "create", "target_label": "RT Run"},
         confirmation_fingerprint="fp-stable-001",
+        target_team_id=team_id,
+        target_team_name="ART",
+        target_selector_json=None,
         pending_ttl_seconds=600,
         execution_key=execution_key,
     )

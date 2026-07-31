@@ -475,14 +475,8 @@ class ConversationService:
         client_message_id: str,
         text: str,
         attachment_digests: list[str],
-        context_team_id: Optional[int] = None,
     ) -> TurnStartResult:
-        """實作 design D9 的 TurnStart Tx：冪等檢查 → quota/admission 原子保留 → lease → turn_seq → turn 建立。
-
-        `context_team_id`：全域對話的目標 team 快照（呼叫端 MUST 先驗證使用者可存取該 team）。
-        建立後不可變，是該 turn 及其 confirm continuation 唯一的 team 來源（spec
-        assistant-conversations「turn 的 context team 快照」）。
-        """
+        """Implement TurnStart Tx without using the frontend page as routing input."""
         fingerprint = ids.compute_request_fingerprint(text, attachment_digests)
         user_id = conversation.user_id
         cfg = self.config
@@ -561,7 +555,6 @@ class ConversationService:
                 request_fingerprint=fingerprint,
                 status="running",
                 started_at=now,
-                context_team_id=context_team_id if conversation.scope_type != "team" else None,
             )
             session.add(turn)
             await session.flush()
@@ -1077,6 +1070,7 @@ class ConversationService:
         turn: AssistantTurn,
         user_id: int,
         team_id: int | None,
+        target_selector_json: str | None = None,
         llm_tool_call_id: str,
         tool_name: str,
         risk_level: str,
@@ -1097,6 +1091,7 @@ class ConversationService:
                 execution_key=ids.generate_execution_key(),
                 user_id=user_id,
                 team_id=team_id,
+                target_selector_json=target_selector_json,
                 llm_tool_call_id=llm_tool_call_id,
                 tool_name=tool_name,
                 risk_level=risk_level,
@@ -1140,6 +1135,9 @@ class ConversationService:
         execution_payload_encrypted: bool,
         confirmation_summary: dict[str, Any],
         confirmation_fingerprint: str,
+        target_team_id: int,
+        target_team_name: str,
+        target_selector_json: str | None,
         pending_ttl_seconds: int,
         execution_key: str,
     ) -> AssistantPendingAction:
@@ -1174,6 +1172,9 @@ class ConversationService:
                 execution_payload_encrypted=execution_payload_encrypted,
                 confirmation_summary_json=json.dumps(confirmation_summary, ensure_ascii=False),
                 confirmation_fingerprint=confirmation_fingerprint,
+                target_team_id=target_team_id,
+                target_team_name_snapshot=target_team_name,
+                target_selector_json=target_selector_json,
                 status="pending",
                 created_at=now,
                 expires_at=now + timedelta(seconds=pending_ttl_seconds),
@@ -1379,6 +1380,8 @@ class ConversationService:
         recomputed_fingerprint: str,
         tool_timeout_seconds: int,
         live_fingerprint_recheck: Optional[Callable[[], Awaitable[tuple[str, dict[str, Any]]]]] = None,
+        risk_level: str = "write",
+        target_summary: dict[str, Any] | None = None,
     ) -> AssistantTurn:
         """Confirm Tx A：admission + lease + continuation turn + turn_seq + pending CAS
         （含 TTL/fingerprint、清 payload、rebind turn_id）+ journal started。
@@ -1424,6 +1427,8 @@ class ConversationService:
                 or action_row.status != "pending"
                 or action_row.expires_at is None
                 or action_row.expires_at <= now
+                or action_row.target_team_id is None
+                or not action_row.target_team_name_snapshot
             ):
                 raise PendingActionNotClaimableError()
             if action_row.confirmation_fingerprint != recomputed_fingerprint:
@@ -1440,9 +1445,6 @@ class ConversationService:
 
             turn_seq = conv_row.next_turn_seq
             conv_row.next_turn_seq = turn_seq + 1
-            # pending.turn_id 稍後會 rebind 到 continuation，因此 continuation MUST 繼承
-            # source turn 的 context team 快照——否則 confirm 後就再也解析不出目標 team。
-            source_turn = await session.get(AssistantTurn, action_row.turn_id)
             continuation = AssistantTurn(
                 conversation_id=conv_row.id,
                 turn_seq=turn_seq,
@@ -1451,7 +1453,6 @@ class ConversationService:
                 request_fingerprint=recomputed_fingerprint,
                 status="running",
                 started_at=now,
-                context_team_id=getattr(source_turn, "context_team_id", None),
             )
             session.add(continuation)
             await session.flush()
@@ -1495,13 +1496,18 @@ class ConversationService:
                 source_turn_key=turn_key,
                 execution_key=action.execution_key,
                 user_id=conv_row.user_id,
-                # 稽核必須記實際生效的 team：全域對話沒有 conv_row.team_id，目標來自 turn 快照。
-                team_id=conv_row.team_id if conv_row.scope_type == "team" else continuation.context_team_id,
+                team_id=action_row.target_team_id,
+                target_selector_json=action_row.target_selector_json,
                 llm_tool_call_id=action.llm_tool_call_id,
                 provider_tool_call_id=action.provider_tool_call_id,
                 tool_name=action.tool_name,
-                risk_level="write",
+                risk_level=risk_level,
                 arguments_json=action.arguments_redacted_json,
+                target_summary=(
+                    json.dumps(target_summary, ensure_ascii=False)
+                    if target_summary is not None
+                    else action_row.confirmation_summary_json
+                ),
                 status="started",
             )
             session.add(journal)
@@ -1579,6 +1585,12 @@ class ConversationService:
             )
             if deep_links and isinstance(payload, dict):
                 payload = {**payload, "_deep_links": deep_links}
+            if journal is not None:
+                journal.result_payload_json = json.dumps(payload, ensure_ascii=False)
+                if outcome_status != "succeeded":
+                    safe_error = payload.get("detail") or payload.get("message")
+                    if safe_error is not None:
+                        journal.error_message = str(safe_error)[:2000]
             session.add(
                 AssistantMessage(
                     turn_id=turn.id,

@@ -11,8 +11,9 @@ from app.auth.dependencies import (
     require_admin,
 )
 from app.auth.models import PermissionType
+from app.auth.permission_service import permission_service
 from app.models.database_models import User
-from app.models.team import TeamCreate, TeamUpdate
+from app.models.team import TeamCreate, TeamStatus, TeamUpdate
 from app.models.lark_types import Priority
 from app.models.database_models import (
     Team as TeamDB,
@@ -111,8 +112,19 @@ async def get_teams(
     - ADMIN/USER: 只能查看有權限的團隊
     """
     try:
+        allowed_team_ids = await permission_service.get_user_accessible_teams(
+            current_user.id
+        )
+        if not allowed_team_ids:
+            return []
+
         async def _load_teams(session):
-            result = await session.execute(select(TeamDB))
+            result = await session.execute(
+                select(TeamDB).where(
+                    TeamDB.id.in_(allowed_team_ids),
+                    TeamDB.status == TeamStatus.ACTIVE,
+                )
+            )
             teams_db = result.scalars().all()
             if not teams_db:
                 return []

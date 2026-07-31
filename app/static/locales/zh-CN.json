@@ -4021,7 +4021,14 @@
       "upload_test_case_attachment": "上传附件到此 test case",
       "list_test_run_item_refs": "列出 Test Run Item 精简清单",
       "list_test_case_refs": "列出 Test Case 精简清单",
-      "batch_update_test_run_items_by_filter": "按条件批量更新 Test Run Items"
+      "batch_update_test_run_items_by_filter": "按条件批量更新 Test Run Items",
+      "analyze_knowledge_impact": "分析知识影响范围",
+      "describe_capabilities": "说明可用的助手能力",
+      "generate_chunk_actions": "产生此批次区块的操作",
+      "get_test_case_global": "跨团队取得 test case 详细信息",
+      "plan_batch": "规划批次操作",
+      "search_knowledge": "搜索测试知识",
+      "search_test_cases_global": "跨团队搜索 test case"
     },
     "warning": {
       "confirm_write": "此操作需要你确认后才会执行。",

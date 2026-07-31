@@ -1,55 +1,53 @@
 ## ADDED Requirements
 
-### Requirement: turn 的 context team 快照
+### Requirement: Global conversation 不依賴 workspace team
 
-送出訊息時，前端 MAY 附帶目前工作區 team 作為 `context_team_id`。伺服器 MUST 於建立 turn 的同一交易將其**快照**在 `assistant_turns.context_team_id`（nullable）；該快照於 turn 存續期間 MUST NOT 可變更，且 MUST 為該 turn 及其 confirm continuation 唯一的 context team 來源。
+Global Assistant conversation 與 turn SHALL NOT 接受、保存或推導目前頁面的 team 作為 routing 或 authorization input。送出訊息 API MUST NOT 接受 `context_team_id`；切換 workspace team MUST NOT 切換 active global conversation，也 MUST NOT 改變進行中回合的工具目錄。
 
-`context_team_id` 非空時，伺服器 MUST 以使用者可存取 team 清單驗證；不在清單內 MUST 以 422 拒絕建立 turn（MUST NOT 忽略該值、MUST NOT 降級為無 context team）。缺值 MUST 視為「無 context team」，屬正常的 fail-closed 路徑。
+#### Scenario: 從無 team 的頁面查詢指定 team
 
-`context_team_id` MUST NOT 出現在任何 LLM 可控的參數 schema 中；LLM MUST NOT 能變更本回合的 context team。
+- **GIVEN** 使用者可存取 ART
+- **WHEN** 使用者在不具 workspace team context 的頁面要求查詢 ART 的 test cases
+- **THEN** global conversation 維持同一 session，且可透過明確 target selector 執行查詢
+- **AND** 系統不得要求使用者先導覽至 ART 頁面
 
-#### Scenario: 訊息帶入工作區 team
+#### Scenario: 頁面切換不改變 active conversation
 
-- **WHEN** 使用者在工作區 team `ART`（id=1）的頁面向全域對話送出訊息
-- **THEN** 該 turn 的 `context_team_id` 快照為 1，該回合的 team-scoped 工具以此 team 執行
+- **WHEN** 使用者在 ART 與 CID 頁面間切換後重新開啟 Assistant
+- **THEN** 前端載入同一個 global active conversation key
+- **AND** 不建立或切換為按 workspace team 分流的 conversation
 
-#### Scenario: 不可存取的 team 被拒
+### Requirement: Pending action 持久化 authoritative target team
 
-- **WHEN** 送出訊息時帶入使用者無權存取的 `context_team_id`
-- **THEN** 伺服器回 422 且不建立 turn
+每個 team-scoped pending mutation MUST 在建立 pending 的同一交易寫入 `assistant_pending_actions.target_team_id`、`target_team_name_snapshot` 與 `target_selector_json`。這些欄位 MUST 取自 executor 已完成 selector identity、角色 permission 與 resource ownership equality 驗證的 resolved team；MUST NOT 取自前端頁面、confirm request 或未驗證參數。Sensitive execution payload MUST 內含同一 target id，confirm 時必須與 pending target 相等。
 
-#### Scenario: 未帶 context team 時維持唯讀
+欄位為 nullable 以容納歷史終態資料，但 runtime MUST 拒絕任何 target id/name 為 NULL 的 pending/executing action。`target_team_id` 不使用刪除時會改寫值的 FK；team 刪除後保留原 id供稽核，confirm 以 server lookup 不存在而 fail-closed。
 
-- **WHEN** 前端未附帶 `context_team_id`（舊版前端或未選定工作區）
-- **THEN** 該 turn 視為無 context team，只提供 discovery 類工具，MUST NOT 以任何預設 team 執行寫入
+#### Scenario: 建立 pending 時快照目標
 
-#### Scenario: 快照不受後續工作區切換影響
+- **WHEN** global conversation 對 ART 建立 write pending
+- **THEN** pending 的 target id/name snapshot 為 ART identity，並保存 LLM 原始 selector
+- **AND** confirmation summary 顯示由伺服器 lookup 的 `ART (#id)`
 
-- **WHEN** 使用者在 turn 進行中或確認卡出現後切換工作區 team
-- **THEN** 該 turn 與其 confirm continuation 仍使用建立時的 `context_team_id` 快照
+#### Scenario: team 刪除使 pending 失效
+
+- **WHEN** pending target team 在 confirm 前被刪除
+- **THEN** pending 仍保留原 target id，但 confirm lookup 不到 team，原子 expire action、清除 payload、寫 synthetic result，且不 dispatch
 
 ## MODIFIED Requirements
 
-### Requirement: 對話綁定單一團隊
+### Requirement: 對話 scope 與 team 綁定
 
-每個對話 SHALL 於建立時設定不可變 `scope_type`（`global` 或 `team`）並綁定至多一個 team_id；`scope_type=team` 時建立當下 team_id MUST 非空，且存不可變 `source_team_id` 供刪除後辨識。mutation 類工具的 team_id MUST 由 executor 注入，來源為**有效 team**：`scope_type=team` 的對話取對話綁定 team；`scope_type=global` 的對話取該 turn 的 context team 快照（見「turn 的 context team 快照」）。`scope_type=global` 且該 turn 無 context team 時，SHALL 僅提供 discovery 類工具，MUST NOT 提供任何 mutation。scope/team 綁定於對話存續期間 MUST NOT 可變更。已知限制（明文接受）：現行 `check_team_permission` 由全域角色決定、team_id 僅為快取鍵；本綁定縮小預設操作面，不構成 team 粒度授權。
+每個對話 SHALL 有不可變 `scope_type`（`global` 或 `team`）。`scope_type=team` 的 historical conversation 繼續固定使用 conversation `team_id`；`scope_type=global` SHALL 不綁定 team，每個 team-scoped tool call 必須使用伺服器驗證的明確 selector。Global tool catalog MUST NOT 因缺少 workspace team 而降級為 discovery-only。
 
-#### Scenario: 全域對話具 context team 時可執行 mutation
+#### Scenario: Global 回合提供角色允許的 mutation 工具
 
-- **WHEN** 使用者在工作區 team `ART` 向全域對話要求建立 test case set
-- **THEN** 助手可提出該 write 工具呼叫，executor 以 turn 的 context team（ART）檢權並注入 team_id
+- **WHEN** USER 或 ADMIN 在 global conversation 開始回合且頁面沒有 team context
+- **THEN** tool catalog 仍包含其角色允許的 team-scoped write 工具
+- **AND** 每個 team-scoped schema 要求明確 `target_team`
 
-#### Scenario: 全域對話無 context team 時無 mutation 工具
+#### Scenario: Team-bound historical conversation 維持固定 team
 
-- **WHEN** 使用者在無 context team 的全域對話中要求建立 test case
-- **THEN** 目錄中沒有 mutation 工具可用，助手說明需先在介面選定目標 team 的工作區
-
-#### Scenario: 團隊被刪除後對話轉唯讀
-
-- **WHEN** 對話綁定的 team 被刪除（team_id 轉為 NULL）
-- **THEN** 該對話因 `scope_type=team AND team_id IS NULL` 自動視為唯讀歷史，不得建立新 turn、呼叫 discovery 或 mutation；它不會被誤認為 `scope_type=global`，歷史仍可依 source_team_id 顯示原 scope
-
-#### Scenario: 團隊刪除使既有 pending 失效
-
-- **WHEN** 對話已有 pending action，而其有效 team 在 confirm 前被刪除
-- **THEN** confirm 的 Tx A 前 scope 驗證將 action 原子標記 expired、清除 payload 並寫 synthetic tool result，不發出 loopback
+- **WHEN** historical team conversation 執行 team-scoped tool
+- **THEN** executor 使用 conversation 綁定 team
+- **AND** LLM schema 不接受 global `target_team` selector

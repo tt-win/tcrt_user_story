@@ -28,6 +28,22 @@ _WRITE_RISK_LEVELS = {IDEMPOTENT_WRITE, REVERSIBLE_WRITE, HIGH_IMPACT, IRREVERSI
 DELETE_RISK_EXEMPTIONS = frozenset({"unpin_entity", "remove_item_bug_ticket"})
 
 
+TARGET_TEAM_ARGUMENT = "target_team"
+TARGET_TEAM_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "description": (
+        "Exact target team identity copied from list_teams. Never guess either field. "
+        "The server validates the id/name pair and resource ownership before execution."
+    ),
+    "properties": {
+        "id": {"type": "integer", "minimum": 1},
+        "name": {"type": "string", "minLength": 1, "maxLength": 100},
+    },
+    "required": ["id", "name"],
+    "additionalProperties": False,
+}
+
+
 @dataclass(frozen=True)
 class AssistantTool:
     name: str
@@ -78,10 +94,19 @@ class AssistantTool:
             return "warning"
         return "light"
 
-    def to_llm_schema(self) -> dict[str, Any]:
-        """OpenRouter `tools=` 陣列的單一 tool 定義。"""
+    def to_llm_schema(self, *, require_target_team: bool = False) -> dict[str, Any]:
+        """OpenRouter ``tools=`` 陣列的單一 tool 定義。
+
+        Global conversation 的 team-scoped call 由 agent loop 設定
+        ``require_target_team``；selector 只存在 Assistant envelope，不屬於既有 API schema。
+        """
         properties: dict[str, Any] = {}
         required: list[str] = []
+        if require_target_team:
+            if self.team_check == "none":
+                raise ToolRegistryError(f"{self.name}: discovery tool cannot require target_team")
+            properties[TARGET_TEAM_ARGUMENT] = TARGET_TEAM_SCHEMA
+            required.append(TARGET_TEAM_ARGUMENT)
         for name in self.path_params:
             properties[name] = self.path_param_schemas.get(name, {"type": "integer"})
             required.append(name)

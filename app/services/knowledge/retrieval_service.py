@@ -363,6 +363,7 @@ class KnowledgeRetrievalService:
         team_id: int | None = None,
         depth: int = 2,
         *,
+        allowed_team_ids: Optional[list[int]] = None,
         context: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         """Perform team-scoped impact analysis via graph traversal.
@@ -389,6 +390,19 @@ class KnowledgeRetrievalService:
                 return result
 
             safe_team_id = int(team_id) if team_id is not None else None
+            allowed_team_set = (
+                {int(value) for value in allowed_team_ids}
+                if allowed_team_ids is not None
+                else None
+            )
+            if allowed_team_set is not None and not allowed_team_set:
+                result = {
+                    "status": "success",
+                    "results": [],
+                    "fallback_recommended": False,
+                }
+                return result
+
 
             try:
                 results = await asyncio.wait_for(
@@ -399,12 +413,15 @@ class KnowledgeRetrievalService:
                     ),
                     timeout=_SEARCH_TIMEOUT_SECONDS,
                 )
-                # Filter results by team_id if team_id is specified
                 filtered_results = []
                 for item in results:
-                    if safe_team_id is not None and "team_id" in item.get("metadata", {}):
-                        if item["metadata"]["team_id"] != safe_team_id:
+                    metadata = item.get("metadata", {})
+                    item_team_id = metadata.get("team_id")
+                    if allowed_team_set is not None:
+                        if item_team_id not in allowed_team_set:
                             continue
+                    elif safe_team_id is not None and item_team_id != safe_team_id:
+                        continue
                     filtered_results.append(item)
 
                 result = {

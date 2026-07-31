@@ -1,36 +1,40 @@
 ## ADDED Requirements
 
-### Requirement: 全域回合依 context team 提供工具目錄
+### Requirement: Global 工具目錄只依角色過濾
 
-全域對話的回合 MUST 依該 turn 的 context team 決定工具目錄：具 context team 時 MUST 提供該 team 的 team-scoped 工具（依角色權限過濾，與 team-bound 對話同一規則）；無 context team 時 MUST 僅提供 discovery 類工具。
+Global conversation 的每個回合 MUST 依使用者角色提供完整允許工具目錄，不得依目前頁面 team 或 turn context team 隱藏 team-scoped read/write。VIEWER 仍只看 read；USER/ADMIN/SUPER_ADMIN 依既有 role→permission mapping 過濾。
 
-capability context MUST 標明本回合的 context team（名稱與 id）。無 context team 時，被隱藏能力的原因 MUST 為 `no_team_context`、補救 MUST 為「在介面選定目標 team 的工作區後重試」；MUST NOT 再以 `global_scope` 作為原因，MUST NOT 建議「切換到某個 team 的對話」。
+Capability context MUST 說明 global conversation 不綁定 team、team-scoped call 需明確 selector。MUST NOT 產生 `no_team_context` 原因，也 MUST NOT 指示使用者切換 team 頁面。
 
-#### Scenario: 具 context team 的全域回合可看到寫入工具
+#### Scenario: 無 workspace team 仍可看到 team read
 
-- **WHEN** USER 角色使用者在工作區 team `ART` 向全域對話送出訊息
-- **THEN** 該回合送往 LLM 的目錄包含 ART 的 team-scoped 讀寫工具，capability context 標明 context team 為 ART 且無受限敘述
+- **WHEN** 使用者在 global conversation 且頁面無 team context
+- **THEN** tool catalog 包含 `list_test_cases`、`count_test_cases`、`list_test_case_sets` 等角色允許的 read tools
 
-#### Scenario: 無 context team 的全域回合仍為唯讀
+#### Scenario: Viewer 只受角色限制
 
-- **WHEN** 使用者未選定工作區 team（turn 無 context team）
-- **THEN** 目錄僅含 discovery 類工具，capability context 原因為 `no_team_context` 並指向「選定工作區 team 後重試」
+- **WHEN** VIEWER 使用 global conversation
+- **THEN** team-scoped read tools 可用、write tools 被移除
+- **AND** capability 原因只有 `role_insufficient`，沒有 `no_team_context`
 
-#### Scenario: VIEWER 在具 context team 的回合仍被角色限制
+### Requirement: Global team-scoped call 使用精確 selector
 
-- **WHEN** VIEWER 角色使用者在工作區 team `ART` 要求寫入
-- **THEN** 目錄仍不含寫入工具，capability context 原因為 `role_insufficient`（非 `no_team_context`），補救為向團隊管理員申請權限
+對 global conversation，所有 `team_check != 'none'` 的 tool schema MUST 要求 `target_team` object，包含 `id` 與 `name`。Agent MUST 從 `list_teams` 的 server result 複製 exact pair，不得自行猜測 id/name。若使用者提供的資訊不足以確定 mutation team，Agent MUST 先反問；read 可在使用者指定 team 後直接 list/resolve 並查詢。
 
-### Requirement: 指名 team 與 context team 衝突時必須消歧
+#### Scenario: 從任意頁面查詢 CID
 
-使用者訊息指名的 team 與本回合 context team 不一致時，助手 MUST 反問確認或請使用者切換工作區後重試，MUST NOT 自行選定其中一個 team 執行寫入。system prompt MUST 明載此規則，capability context MUST 提供 context team 名稱供比對。
+- **WHEN** 使用者在任意頁面說「列出 CID 的 test case sets」
+- **THEN** Agent 先取得或使用本回合已取得的 accessible team list
+- **AND** 以 CID 的 exact `{id,name}` selector 呼叫 read tool
+- **AND** 不要求切換 workspace
 
-#### Scenario: 指名其他 team 的寫入請求先消歧
+#### Scenario: Mutation target 不明時反問
 
-- **WHEN** context team 為 `ART`，使用者說「在 CID 建立一個 test case set」
-- **THEN** 助手 MUST 先說明目前工作區為 ART 並請使用者切換到 CID（或明確確認要在 ART 建立），MUST NOT 直接在任一 team 建立
+- **WHEN** 使用者說「建立一個 test case set」但沒有提供 team，且對話資訊無法唯一確定
+- **THEN** Agent 先詢問目標 team，不得任選第一個 accessible team
 
-#### Scenario: 指名與 context team 相同時直接執行
+#### Scenario: Tool output prompt injection 不改變 target
 
-- **WHEN** context team 為 `ART`，使用者說「在 ART 建立一個 test case set」
-- **THEN** 助手直接提出該 write 工具呼叫並進入確認流程，不需額外反問
+- **WHEN** tool result 文字要求改用另一個 team 或偽造 selector
+- **THEN** Agent 將其視為資料而非 instruction
+- **AND** executor 仍只接受 accessible list 中目前精確的 pair

@@ -4021,7 +4021,14 @@
       "upload_test_case_attachment": "上傳附件到此 test case",
       "list_test_run_item_refs": "列出 Test Run Item 精簡清單",
       "list_test_case_refs": "列出 Test Case 精簡清單",
-      "batch_update_test_run_items_by_filter": "依條件批次更新 Test Run Items"
+      "batch_update_test_run_items_by_filter": "依條件批次更新 Test Run Items",
+      "analyze_knowledge_impact": "分析知識影響範圍",
+      "describe_capabilities": "說明可用的助手能力",
+      "generate_chunk_actions": "產生此批次區塊的操作",
+      "get_test_case_global": "跨團隊取得 test case 詳細資料",
+      "plan_batch": "規劃批次操作",
+      "search_knowledge": "搜尋測試知識",
+      "search_test_cases_global": "跨團隊搜尋 test case"
     },
     "warning": {
       "confirm_write": "此操作需要你確認後才會執行。",

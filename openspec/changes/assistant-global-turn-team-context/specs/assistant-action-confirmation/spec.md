@@ -1,34 +1,55 @@
 ## ADDED Requirements
 
-### Requirement: confirm 的有效 team 取自 turn 快照
+### Requirement: Confirm 只使用 pending target snapshot
 
-confirm 端點 MUST 由 pending action 所屬 turn 取得有效 team（`scope_type=team` 取對話綁定 team；`scope_type=global` 取該 turn 的 `context_team_id` 快照），並以該 team 重新執行權限驗證與 team_id 注入。confirm request MUST NOT 接受任何 team 參數，MUST NOT 採用「confirm 當下前端工作區」作為 team 來源——否則使用者在確認卡出現後切換工作區，動作會落到非預期 team。
+Team-scoped mutation pending MUST 保存 target id、server name snapshot 與 raw selector。Confirm endpoint MUST 只從 pending action 取得 authoritative target；confirm request、目前頁面 team、conversation history 與 LLM text 都不得覆蓋它。Execution payload 內的 target id也必須與 pending 相等。
 
-`scope_type=global` 的對話 MUST NOT 僅因 scope 為 global 而被拒絕 confirm；只有在有效 team 為空、team 已被刪除或該 team 上權限已失效時，才 MUST 原子 expire action、清 payload 並寫 synthetic tool result。
+Confirm 在 claim 前 MUST 重新驗證 target id/name 非 NULL、team 仍存在、角色 permission、resource ownership equality 與 confirmation fingerprint。任一安全條件不成立時 MUST 原子 expire action、清除 execution payload、寫 synthetic result，且不 dispatch。
 
-確認卡的 canonical summary MUST 含目標 team 名稱（伺服器 lookup、經 projection/redaction），且 MUST 納入 `confirmation_fingerprint` 的計算輸入；LLM 文字 MUST NOT 作為 team 標示來源。
+#### Scenario: 頁面切換不影響確認
 
-#### Scenario: 全域對話的 confirm 可成功執行
+- **WHEN** ART mutation pending 建立後，使用者切換至 CID 頁面再 confirm
+- **THEN** action 仍只以 pending `target_team_id=ART` 執行
 
-- **WHEN** 全域對話的 turn 具 context team `ART`，使用者確認該 turn 建立的 write pending
-- **THEN** confirm 以 ART 檢權並注入 team_id 後執行，不再因 scope 為 global 而回 409
+#### Scenario: Confirm request 偽造 team 參數無效
 
-#### Scenario: 確認前切換工作區不改變目標 team
+- **WHEN** confirm request 夾帶任意 team query/body parameter
+- **THEN** endpoint 不讀取該值，執行 target 仍為 pending snapshot
 
-- **WHEN** 使用者在確認卡出現後把工作區切到另一個 team，然後按下確認
-- **THEN** 執行仍以 pending 所屬 turn 的 context team 快照為目標 team
+#### Scenario: Pending target 不完整或 team 不存在
 
-#### Scenario: 確認卡標示目標 team
+- **WHEN** legacy pending 無法安全回填 target，或 target team 已刪除
+- **THEN** confirm 將 action expire 且不 dispatch
 
-- **WHEN** 任一 write 的確認卡產生
-- **THEN** 卡片 MUST 顯示該動作將作用的 team 名稱，且該值來自伺服器 lookup 並計入 fingerprint
+### Requirement: Team metadata 與 fingerprint 綁定
 
-#### Scenario: 有效 team 為空時 expire
+Confirmation summary MUST 以 pending target id 由伺服器 lookup team name，並顯示 `team_name` 與 `team_id`；兩者納入 canonical summary/fingerprint。LLM selector name 不得直接成為卡片顯示來源。Team lookup 發生暫時性錯誤時 MUST 回可重試錯誤，禁止使用 `Team-{id}` placeholder 造成假性 stale；權威 name/id 任一缺失時伺服器不得產生可確認卡，前端亦必須停用確認。
 
-- **WHEN** pending 所屬 turn 無 context team（或其 team 已被刪除）而使用者按下確認
-- **THEN** 系統原子將 action 標記 expired、清除 payload、寫入 synthetic tool result，不發出 loopback
+#### Scenario: Team rename 要求重新確認
 
-#### Scenario: 目標 team 權限失效時 expire
+- **WHEN** pending 建立後 target team 改名
+- **THEN** confirm 重算 summary 產生新 fingerprint並回 `CONFIRMATION_STALE`
+- **AND** 使用者必須查看更新後 team name 再次確認
 
-- **WHEN** pending 建立後，使用者在該 team 的權限被降級為唯讀，之後才按下確認
-- **THEN** confirm 的認領前驗證失敗，action 原子 expire，不執行工具
+### Requirement: Confirm-time authorization 與 ownership 重驗證
+
+Pending 建立後若角色 permission 被撤銷、resource 被移至其他 team、resource 被刪除或 target team 不存在，confirm MUST fail-closed。
+
+#### Scenario: Permission revoked
+
+- **WHEN** 使用者建立 pending 後角色不再具該 write permission
+- **THEN** confirm expire action，不執行 loopback
+
+#### Scenario: Resource team 改變
+
+- **WHEN** pending payload 指向的 resource 在 confirm 前不再屬 pending target
+- **THEN** confirm expire 或 stale，不得在新 team 執行
+
+### Requirement: Audit 使用 pending target
+
+Confirm claim 建立的 `AssistantToolExecution.team_id` MUST 直接取 pending `target_team_id`，`target_selector_json` MUST 保存原始 selector。Journal resolved team MUST 與實際 loopback routing team 相同。
+
+#### Scenario: Global mutation journal
+
+- **WHEN** global conversation 對 CID mutation 成功
+- **THEN** journal `team_id` 為 CID，不得記錄前一個 read target或頁面 team

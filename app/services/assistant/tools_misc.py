@@ -40,12 +40,13 @@ LOCAL_TOOLS = [
 TOOLS = [
     AssistantTool(
         name="list_teams",
-        method="GET",
-        path_template="/api/teams/",
+        method="LOCAL",
+        path_template="",
         summary="List teams the current user can access.",
         permission=PermissionType.READ,
         risk_level=READ,
         team_check="none",
+        execution_mode="local",
         projection=("id", "name", "description", "test_case_count"),
     ),
     AssistantTool(

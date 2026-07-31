@@ -27,7 +27,6 @@ from app.services.assistant.capability_context import (
     tools_for_turn,
 )
 from app.services.assistant.locale_context import append_reply_language_context
-from app.services.assistant.team_context import effective_team_id
 from app.services.assistant.assistant_llm_service import (
     AssistantLLMContextLengthError,
     AssistantLLMError,
@@ -210,11 +209,19 @@ async def _run_llm_loop(
     conversation_id = conversation.id
     turn_key = turn.turn_key
 
-    # 有效 team：team 對話取對話綁定，全域對話取本 turn 的 context team 快照（前端工作區）。
-    effective_team = effective_team_id(conversation, turn)
-    tools = tools_for_turn(registry, team_id=effective_team, role=role)
+    # Global conversations are page-independent. Historical team conversations keep their fixed team;
+    # every global team-scoped tool receives a strict explicit target selector in its LLM schema.
+    bound_team = conversation.team_id if conversation.scope_type == "team" else None
+    tools = tools_for_turn(
+        registry, scope_type=conversation.scope_type, team_id=bound_team, role=role
+    )
     tools_by_name = {t.name: t for t in tools}
-    llm_tools_schema = [t.to_llm_schema() for t in tools]
+    llm_tools_schema = [
+        t.to_llm_schema(
+            require_target_team=conversation.scope_type == "global" and t.team_check != "none"
+        )
+        for t in tools
+    ]
     # System prompt + skill catalog from DB (factory seed fallback inside content_store).
     system_prompt = await assemble_system_prompt_for_agent(conversation_service.main_boundary)
     # 目錄剛被 scope／角色預過濾；capability context 讓模型知道「被移除」而非「不存在」，
@@ -224,8 +231,8 @@ async def _run_llm_loop(
     capability_facts = build_capability_facts(
         role=role,
         scope_type=conversation.scope_type,
-        team_id=effective_team,
-        team_name=await executor.resolve_team_name(effective_team),
+        team_id=bound_team,
+        team_name=await executor.resolve_team_name(bound_team),
         all_tools=registry.all(),
         allowed_tool_names=tools_by_name.keys(),
     )
@@ -242,7 +249,7 @@ async def _run_llm_loop(
     # 若本 turn 有附件且 LLM 打算用 create_test_case，先把這些暫存檔複製到 test-case
     # staging 並產生 temp_upload_id，稍後自動注入 create_test_case 的 body。
     create_case_temp_upload_id: Optional[str] = None
-    if turn_attachments and conversation.scope_type == "team":
+    if turn_attachments:
         create_case_temp_upload_id = ids.generate_llm_tool_call_id()[:32]
         try:
             attachment_storage.stage_assistant_attachments(
@@ -582,6 +589,9 @@ async def _run_llm_loop(
             execution_payload_encrypted=prepared.execution_payload_encrypted,
             confirmation_summary=prepared.confirmation_summary,
             confirmation_fingerprint=prepared.confirmation_fingerprint,
+            target_team_id=prepared.target_team_id,
+            target_team_name=prepared.target_team_name,
+            target_selector_json=prepared.target_selector_json,
             pending_ttl_seconds=config.pending_action_ttl_seconds,
             execution_key=execution_key,
         )
@@ -748,16 +758,76 @@ async def run_confirm_turn(
             },
         )
 
+        confirm_team_id = pending_action.target_team_id
+        try:
+            target_identity = (
+                await executor.resolve_team_identity(confirm_team_id)
+                if isinstance(confirm_team_id, int)
+                and not isinstance(confirm_team_id, bool)
+                else None
+            )
+            target_allowed = bool(target_identity) and await executor.check_permission(
+                tool, user_id=user_id, team_id=confirm_team_id, role=role
+            )
+        except Exception:  # noqa: BLE001 - confirmation target checks must fail closed
+            target_identity = None
+            target_allowed = False
+        if (
+            target_identity is None
+            or target_identity[1] != pending_action.target_team_name_snapshot
+            or not target_allowed
+        ):
+            await _finalize_confirm_as_failed(
+                conversation_service,
+                conversation=conversation,
+                turn=turn,
+                pending_action=pending_action,
+                user_id=user_id,
+                http_status=409,
+                detail="The confirmed target is no longer available or authorized.",
+            )
+            return
+
+        try:
+            target_state = await executor.revalidate_confirmation_target(
+                tool,
+                conversation=conversation,
+                team_id=confirm_team_id,
+                user_id=user_id,
+                role=role,
+                path_params=execution_payload.get("path_params") or {},
+                body_params=execution_payload.get("body_params") or {},
+            )
+        except Exception:  # noqa: BLE001 - last-moment ownership checks must fail closed
+            logger.exception(
+                "assistant confirm target revalidation failed turn_key=%s",
+                turn.turn_key,
+            )
+            target_state = RejectionResult(
+                "target_revalidation_failed",
+                "The confirmed target could not be revalidated.",
+            )
+        if (
+            isinstance(target_state, RejectionResult)
+            or target_state.fingerprint != pending_action.confirmation_fingerprint
+        ):
+            detail = (
+                target_state.message
+                if isinstance(target_state, RejectionResult)
+                else "The confirmed target changed before execution."
+            )
+            await _finalize_confirm_as_failed(
+                conversation_service,
+                conversation=conversation,
+                turn=turn,
+                pending_action=pending_action,
+                user_id=user_id,
+                http_status=409,
+                detail=detail,
+            )
+            return
+
         write_dispatched = True
-        # 目標 team：team 對話取對話綁定，全域對話取 continuation turn 繼承的 context team 快照；
-        # `resolve` 類工具再由資源反解（其 path 多半含 {team_id}，注入 context team 會打錯路徑）。
-        confirm_team_id = await executor.resolve_target_team(
-            tool,
-            conversation=conversation,
-            turn=turn,
-            path_params=execution_payload.get("path_params") or {},
-            body_params=execution_payload.get("body_params") or {},
-        )
         exec_result = await executor.execute_confirmed_write(
             tool, team_id=confirm_team_id, execution_payload=execution_payload, jwt=jwt,
             conversation_key=conversation.conversation_key, multipart_file=multipart_file,

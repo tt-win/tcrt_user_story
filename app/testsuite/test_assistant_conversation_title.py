@@ -12,7 +12,7 @@ from app.config import AssistantConfig
 from app.database import get_db
 from app.db_access.main import get_main_access_boundary
 from app.main import app
-from app.models.database_models import AssistantConversation, AssistantTurn
+from app.models.database_models import AssistantConversation, AssistantTurn, Team
 from app.services.assistant import conversation_service as conversation_service_module
 from app.services.assistant.conversation_service import ConversationService
 from app.testsuite.db_test_helpers import (
@@ -32,6 +32,17 @@ def title_db(tmp_path, monkeypatch):
         async_engine=bundle["async_engine"],
         async_session_factory=bundle["async_session_factory"],
     )
+    with bundle["sync_session_factory"]() as session:
+        session.add(
+            Team(
+                id=1,
+                name="ART",
+                description="",
+                wiki_token="wt",
+                test_case_table_id="tbl",
+            )
+        )
+        session.commit()
     yield bundle
     dispose_managed_test_database(bundle)
 
@@ -315,6 +326,9 @@ def test_create_pending_action_and_complete_turn_preserves_return_contract_and_f
             execution_payload_encrypted=False,
             confirmation_summary={"action": "create", "target_label": "Run"},
             confirmation_fingerprint="fp-1",
+            target_team_id=1,
+            target_team_name="ART",
+            target_selector_json='{"id":1,"name":"ART"}',
             pending_ttl_seconds=600,
             execution_key=execution_key,
         )
@@ -437,6 +451,9 @@ def test_recover_orphan_executing_pending_does_not_refire_for_rebound_continuati
             execution_payload_encrypted=False,
             confirmation_summary={"action": "create", "target_label": "Run"},
             confirmation_fingerprint="fp-1",
+            target_team_id=1,
+            target_team_name="ART",
+            target_selector_json='{"id":1,"name":"ART"}',
             pending_ttl_seconds=600,
             execution_key=ids.generate_execution_key(),
         )

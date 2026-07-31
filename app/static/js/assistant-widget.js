@@ -114,13 +114,15 @@ function confirmTier(riskLevel) {
 
 /**
  * 確認卡的「目標 team」行：全域對話沒有綁定 team，使用者必須能從卡片看出動作會落在哪個
- * team（spec assistant-action-confirmation）。team_name 由伺服器 lookup 提供，仍先 escape。
+ * team。team 名稱可能重複，因此伺服器有提供正整數 id 時一併顯示；整段仍先 escape。
  */
 function formatConfirmTeamLine(summary, t) {
   if (!summary || typeof summary !== 'object') return '';
   const name = String(summary.team_name || '').trim();
-  if (!name) return '';
-  return t('assistant.confirmTargetTeam', { team: _assistantEscapeHtml(name) }, 'Team: {team}');
+  const id = summary.team_id;
+  if (!name || !Number.isSafeInteger(id) || id <= 0) return '';
+  const label = `${name} (#${id})`;
+  return t('assistant.confirmTargetTeam', { team: _assistantEscapeHtml(label) }, 'Team: {team}');
 }
 
 /**
@@ -386,6 +388,19 @@ function assistantUiLocaleFrom(i18nApi, storage, documentLang) {
   return found ? found.trim() : null;
 }
 
+/** 全域助手跨 workspace 共用同一個 active conversation 記憶鍵。 */
+function assistantConversationStorageKey() {
+  return 'tcrt_assistant_conv_global';
+}
+
+/** 記憶中的歷史對話可延續；沒有記憶時只選 global，絕不把 team history 當預設新 session。 */
+function selectAssistantConversation(conversations, recalledId) {
+  const list = Array.isArray(conversations) ? conversations : [];
+  return list.find((candidate) => candidate.id === recalledId)
+    || list.find((candidate) => candidate.scope_type === 'global')
+    || null;
+}
+
 /* ======================================================================
  * IIFE 模組本體
  * ==================================================================== */
@@ -395,7 +410,6 @@ const AssistantWidget = (() => {
   const AVAILABILITY_CACHE_TTL_MS = 5 * 60 * 1000;
   const PANEL_OPEN_KEY = 'tcrt_assistant_panel_open';
   const PANEL_SIZE_KEY = 'tcrt_assistant_panel_size';
-  const CONV_KEY_PREFIX = 'tcrt_assistant_conv_';
   const INFLIGHT_KEY_PREFIX = 'tcrt_assistant_inflight_';
   const MARKED_URL = 'https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js';
   const DOMPURIFY_URL = 'https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js';
@@ -778,7 +792,7 @@ const AssistantWidget = (() => {
     localStorage.setItem(PANEL_OPEN_KEY, '1');
     setUnread(false);
     inputEl.focus();
-    if (!currentConversation) void switchToTeamConversation();
+    if (!currentConversation) void switchGlobalConversation();
   }
 
   function closePanel() {
@@ -1131,7 +1145,8 @@ const AssistantWidget = (() => {
     const teamLine = teamLineText ? `<div class="tcrt-assistant-cc-team">${teamLineText}</div>` : '';
     const batchTargetList = summary.target_type === 'batch_actions'
       ? formatConfirmTargetList(summary, t) : formatConfirmBatchTargetList(summary);
-    const batchInvalid = (summary.target_type === 'batch_actions' || summary.target_type === 'batch') && !batchTargetList;
+    const cardInvalid = !teamLineText
+      || ((summary.target_type === 'batch_actions' || summary.target_type === 'batch') && !batchTargetList);
     if (tier === 'warning') {
       // confirmation_summary 不攜帶 warning_key（那是 registry 端工具定義的屬性，不在送往前端的
       // summary payload 內）；risk_level 本身已能區分 high_impact/irreversible，故直接由它決定文案。
@@ -1149,7 +1164,7 @@ const AssistantWidget = (() => {
           ${teamLine}
           <div class="tcrt-assistant-cc-target">${targetLine}${warningText ? ' — ' + warningText : ''}${batchTargetList}</div>
           <div class="tcrt-assistant-acts">
-            ${batchInvalid ? '' : `<button class="tcrt-assistant-btn tcrt-assistant-btn-sm tcrt-assistant-btn-danger" type="button" data-act="confirm" data-i18n="${confirmKey}">${_assistantEscapeHtml(t(confirmKey, {}, confirmText))}</button>`}
+            ${cardInvalid ? '' : `<button class="tcrt-assistant-btn tcrt-assistant-btn-sm tcrt-assistant-btn-danger" type="button" data-act="confirm" data-i18n="${confirmKey}">${_assistantEscapeHtml(t(confirmKey, {}, confirmText))}</button>`}
             <button class="tcrt-assistant-btn tcrt-assistant-btn-sm tcrt-assistant-btn-outline" type="button" data-act="cancel" data-i18n="assistant.cancel">${_assistantEscapeHtml(t('assistant.cancel', {}, 'Cancel'))}</button>
           </div>
         </div>
@@ -1161,7 +1176,7 @@ const AssistantWidget = (() => {
         ${teamLine}
         <div class="tcrt-assistant-cc-target">${targetLine}${batchTargetList}</div>
         <div class="tcrt-assistant-acts">
-          ${batchInvalid ? '' : `<button class="tcrt-assistant-btn tcrt-assistant-btn-sm tcrt-assistant-btn-primary" type="button" data-act="confirm" data-i18n="assistant.confirm">${_assistantEscapeHtml(t('assistant.confirm', {}, 'Confirm'))}</button>`}
+          ${cardInvalid ? '' : `<button class="tcrt-assistant-btn tcrt-assistant-btn-sm tcrt-assistant-btn-primary" type="button" data-act="confirm" data-i18n="assistant.confirm">${_assistantEscapeHtml(t('assistant.confirm', {}, 'Confirm'))}</button>`}
           <button class="tcrt-assistant-btn-text" type="button" data-act="cancel" data-i18n="assistant.cancel">${_assistantEscapeHtml(t('assistant.cancel', {}, 'Cancel'))}</button>
         </div>
       </div>
@@ -1627,12 +1642,6 @@ const AssistantWidget = (() => {
     const form = new FormData();
     form.append('text', text);
     form.append('client_message_id', clientMessageId);
-    // 全域對話沒有綁定 team：本回合的目標 team 取自目前工作區，由伺服器驗證可存取性後
-    // 快照在 turn 上（spec assistant-conversations「turn 的 context team 快照」）。
-    // 未選定工作區時不送，該回合即為唯讀（fail-closed）。
-    const contextTeamIdRaw = getCurrentTeamId();
-    const contextTeamId = contextTeamIdRaw ? parseInt(contextTeamIdRaw, 10) : null;
-    if (contextTeamId) form.append('context_team_id', String(contextTeamId));
     // 助手回覆語言跟隨介面語言：伺服器端的 system prompt 是共用快取，語系必須逐回合帶上。
     const uiLocale = getUiLocale();
     if (uiLocale) form.append('ui_locale', uiLocale);
@@ -1732,16 +1741,12 @@ const AssistantWidget = (() => {
 
   /* ---------------- 對話管理 ---------------- */
 
-  function conversationStorageKey(teamId) {
-    return CONV_KEY_PREFIX + (teamId != null ? 'team_' + teamId : 'global');
+  function rememberConversation(conversationId) {
+    localStorage.setItem(assistantConversationStorageKey(), String(conversationId));
   }
 
-  function rememberConversation(teamId, conversationId) {
-    localStorage.setItem(conversationStorageKey(teamId), String(conversationId));
-  }
-
-  function recalledConversationId(teamId) {
-    const raw = localStorage.getItem(conversationStorageKey(teamId));
+  function recalledConversationId() {
+    const raw = localStorage.getItem(assistantConversationStorageKey());
     return raw ? parseInt(raw, 10) : null;
   }
 
@@ -1752,12 +1757,12 @@ const AssistantWidget = (() => {
     return resp.json();
   }
 
-  async function createConversation(teamId) {
+  async function createConversation() {
     const body = { scope_type: 'global' };
     return fetchJson('/api/assistant/conversations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   }
 
-  async function listRelevantConversations(teamId) {
+  async function listRelevantConversations() {
     const data = await fetchJson('/api/assistant/conversations?limit=20');
     if (!data) return [];
     return data;
@@ -1808,7 +1813,7 @@ const AssistantWidget = (() => {
     }
 
     list.innerHTML = '';
-    const allConvs = await listRelevantConversations(null);
+    const allConvs = await listRelevantConversations();
     const conversations = allConvs.filter((c) => {
       if (currentConversation && c.id === currentConversation.id) return false;
       if (!historySearchQuery) return true;
@@ -1863,7 +1868,7 @@ const AssistantWidget = (() => {
           return;
         }
         closeHistoryMenu();
-        void loadConversation(c, null);
+        void loadConversation(c);
       });
 
       const delBtn = row.querySelector('.tcrt-assistant-hm-delete');
@@ -2013,7 +2018,7 @@ const AssistantWidget = (() => {
     }
   }
 
-  async function loadConversation(conversation, teamId) {
+  async function loadConversation(conversation) {
     if (activeAbortController) activeAbortController.abort();
     streamGeneration += 1;
     currentConversation = conversation;
@@ -2021,7 +2026,7 @@ const AssistantWidget = (() => {
     currentEventSeq = -1;
     turnState = 'idle';
     hasUnresolvedConfirm = false;
-    rememberConversation(teamId, conversation.id);
+    rememberConversation(conversation.id);
     const data = await fetchJson(`/api/assistant/conversations/${conversation.id}/messages`);
     let inflightKey = localStorage.getItem(INFLIGHT_KEY_PREFIX + conversation.id);
     const activeTurn = data && data.active_turn ? data.active_turn : null;
@@ -2039,31 +2044,23 @@ const AssistantWidget = (() => {
     }
   }
 
-  async function switchToTeamConversation(forceNew) {
-    const teamIdRaw = getCurrentTeamId();
-    const teamId = teamIdRaw ? parseInt(teamIdRaw, 10) : null;
+  async function switchGlobalConversation(forceNew) {
     renderTeamBadge();
     let conversation = null;
     if (!forceNew) {
-      const recalledId = recalledConversationId(teamId) || recalledConversationId(null);
-      if (recalledId) {
-        const list = await listRelevantConversations(teamId);
-        conversation = list.find((c) => c.id === recalledId) || null;
-      }
-      if (!conversation) {
-        const list = await listRelevantConversations(teamId);
-        if (list.length > 0) conversation = list[0];
-      }
+      const list = await listRelevantConversations();
+      const recalledId = recalledConversationId();
+      conversation = selectAssistantConversation(list, recalledId);
     }
-    if (!conversation) conversation = await createConversation(teamId);
-    if (conversation) await loadConversation(conversation, teamId);
+    if (!conversation) conversation = await createConversation();
+    if (conversation) await loadConversation(conversation);
   }
 
   async function newConversation() {
     if (currentConversation && currentTurnKey && (turnState === 'streaming' || turnState === 'stopping')) {
       await stopCurrentTurn();
     }
-    await switchToTeamConversation(true);
+    await switchGlobalConversation(true);
   }
 
   async function onTeamChanged() {
@@ -2117,7 +2114,7 @@ const AssistantWidget = (() => {
     }
     if (selectAllCb) {
       selectAllCb.addEventListener('change', async () => {
-        const conversations = await listRelevantConversations(null);
+        const conversations = await listRelevantConversations();
         if (selectAllCb.checked) {
           conversations.forEach((c) => {
             if (!currentConversation || c.id !== currentConversation.id) historySelectedIds.add(c.id);
@@ -2154,7 +2151,7 @@ const AssistantWidget = (() => {
         historySelectedIds.clear();
         if (resp.ok) {
           if (currentConversation && ids.includes(currentConversation.id)) {
-            await switchToTeamConversation(true);
+            await switchGlobalConversation(true);
           }
           await refreshHistoryMenu();
         } else {

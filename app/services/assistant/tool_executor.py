@@ -16,28 +16,37 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.applications import Starlette
 
-from app.auth.models import PermissionType, UserRole
+from app.auth.models import UserRole
 from app.auth.permission_service import permission_service
 from app.config import AssistantConfig
 from app.db_access.main import MainAccessBoundary
-from app.models.database_models import TestCaseLocal
+from app.models.database_models import Team, TestCaseLocal
 from app.models.test_case import TestDataCategory
+from app.models.team import TeamStatus
 from app.services.assistant import resolvers
-from app.services.assistant.capability_context import build_capability_facts, tools_for_turn
+from app.services.assistant.capability_context import (
+    allowed_permissions_for_role,
+    build_capability_facts,
+    tools_for_turn,
+)
 from app.services.assistant.crypto import (
     AssistantPayloadEncryptionError,
     encrypt_sensitive_payload,
 )
 from app.services.assistant.ids import compute_confirmation_fingerprint
+from app.services.assistant.errors import ConfirmationMetadataUnavailableError
 from app.services.assistant.param_validation import validate_arguments
 from app.services.assistant.projection import project_and_redact, project_error
-from app.services.assistant.team_context import effective_team_id
 from app.services.assistant.content_store import get_skill_enabled, list_enabled_skills
-from app.services.assistant.tool_registry import AssistantTool, ToolRegistry
+from app.services.assistant.tool_registry import (
+    TARGET_TEAM_ARGUMENT,
+    AssistantTool,
+    ToolRegistry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +103,19 @@ class RejectionResult:
     fixable: bool = False  # 僅 schema 可修正錯誤允許迴圈續跑，其餘終止回合
 
 
+@dataclass(frozen=True)
+class ResolvedTeamTarget:
+    team_id: Optional[int]
+    team_name: Optional[str]
+    selector_json: Optional[str]
+
+
+@dataclass(frozen=True)
+class ConfirmationTargetState:
+    summary: dict[str, Any]
+    stable_identity: Any
+    fingerprint: str
+
 @dataclass
 class ReadToolResult:
     ok: bool
@@ -112,6 +134,9 @@ class PendingCreationRequest:
     execution_payload_encrypted: bool
     confirmation_summary: dict[str, Any]
     confirmation_fingerprint: str
+    target_team_id: int
+    target_team_name: str
+    target_selector_json: Optional[str]
 
 
 @dataclass
@@ -128,9 +153,13 @@ _PATH_TEAM_PLACEHOLDER = "{team_id}"
 _ROUTE_CONVERTER_RE = re.compile(r"\{(\w+):\w+\}")
 
 
-def combined_schema(tool: AssistantTool) -> dict[str, Any]:
-    """path + query + body（+file_ref）合併成單一 object schema，供整體 arguments 驗證用。"""
-    return tool.to_llm_schema()["function"]["parameters"]
+def combined_schema(
+    tool: AssistantTool, *, require_target_team: bool = False
+) -> dict[str, Any]:
+    """Combine path/query/body/file fields plus the global-only target selector."""
+    return tool.to_llm_schema(
+        require_target_team=require_target_team
+    )["function"]["parameters"]
 
 
 def _apply_assistant_list_limits(tool: AssistantTool, query_params: dict[str, Any]) -> dict[str, Any]:
@@ -193,6 +222,14 @@ def _find_credential_hits(value: Any) -> bool:
     return False
 
 
+def _without_target_selector(
+    arguments: dict[str, Any],
+) -> tuple[dict[str, Any], Optional[dict[str, Any]]]:
+    clean = dict(arguments)
+    selector = clean.pop(TARGET_TEAM_ARGUMENT, None)
+    return clean, selector if isinstance(selector, dict) else None
+
+
 class ToolExecutor:
     def __init__(self, *, app: Starlette, main_boundary: MainAccessBoundary, config: AssistantConfig, registry: ToolRegistry):
         self.app = app
@@ -204,28 +241,114 @@ class ToolExecutor:
     # 權限 / team / credential 檢查
     # ------------------------------------------------------------------ #
 
-    async def check_permission(self, tool: AssistantTool, *, user_id: int, team_id: Optional[int], role: UserRole) -> bool:
+    async def check_permission(
+        self, tool: AssistantTool, *, user_id: int, team_id: Optional[int], role: UserRole
+    ) -> bool:
         if role == UserRole.SUPER_ADMIN:
             return True
         if team_id is None:
-            return tool.permission == PermissionType.READ  # 全域對話僅允許 discovery
-        check = await permission_service.check_team_permission(user_id, team_id, tool.permission, role)
+            return tool.permission in allowed_permissions_for_role(role)
+        check = await permission_service.check_team_permission(
+            user_id, team_id, tool.permission, role
+        )
         return check.has_permission
 
-    async def resolve_target_team(
-        self, tool: AssistantTool, *, conversation, turn, path_params: dict, body_params: dict
-    ) -> Optional[int]:
-        """本次執行實際要注入 path／檢權的 team。
+    async def resolve_call_target(
+        self,
+        tool: AssistantTool,
+        *,
+        conversation,
+        user_id: int,
+        selector: Optional[dict[str, Any]],
+    ) -> ResolvedTeamTarget | RejectionResult:
+        """Resolve the authoritative team before permission/resource checks.
 
-        41/48 個 `team_check=resolve` 工具的 path 仍含 `{team_id}`，因此注入值 MUST 是「資源實際
-        所屬的 team」而非 context team——全域對話允許操作其他可存取 team 的資源（見
-        `verify_target_team`），若注入 context team 會打到錯誤路徑。
+        The global selector is untrusted LLM output. The id/name pair must match a current DB row
+        and the current user's team list. Existing authorization is role-based, but retaining the
+        list check keeps the resolver fail-closed if membership semantics are introduced later.
         """
-        effective = effective_team_id(conversation, turn)
         if tool.team_check == "none":
-            return effective
-        return await self.resolve_team(
-            tool, conversation_team_id=effective, path_params=path_params, body_params=body_params
+            return ResolvedTeamTarget(None, None, None)
+
+        if getattr(conversation, "scope_type", None) == "team":
+            team_id = getattr(conversation, "team_id", None)
+            if team_id is None:
+                return RejectionResult(
+                    "team_selector_unresolved",
+                    "The target team could not be resolved.",
+                    fixable=False,
+                )
+            try:
+                identity = await self.resolve_team_identity(team_id)
+            except Exception:  # noqa: BLE001 - authorization/routing lookup must fail closed
+                logger.exception(
+                    "assistant bound team lookup failed user_id=%s team_id=%s",
+                    user_id,
+                    team_id,
+                )
+                return RejectionResult(
+                    "team_selector_unresolved",
+                    "The target team could not be resolved.",
+                    fixable=False,
+                )
+            if identity is None:
+                return RejectionResult(
+                    "team_selector_unresolved",
+                    "The target team could not be resolved.",
+                    fixable=False,
+                )
+            return ResolvedTeamTarget(identity[0], identity[1], None)
+
+        if not isinstance(selector, dict):
+            return RejectionResult(
+                "team_selector_unresolved",
+                "Select an exact target from list_teams and retry.",
+                fixable=True,
+            )
+        team_id = selector.get("id")
+        team_name = selector.get("name")
+        if (
+            set(selector) != {"id", "name"}
+            or not isinstance(team_id, int)
+            or isinstance(team_id, bool)
+            or team_id <= 0
+            or not isinstance(team_name, str)
+            or not team_name.strip()
+        ):
+            return RejectionResult(
+                "team_selector_unresolved",
+                "Select an exact target from list_teams and retry.",
+                fixable=True,
+            )
+        try:
+            allowed_ids = await permission_service.get_user_accessible_teams(user_id)
+            identity = await self.resolve_team_identity(team_id)
+        except Exception:  # noqa: BLE001 - target lookup failure must not fall back or leak existence
+            logger.exception(
+                "assistant target selector lookup failed user_id=%s team_id=%s",
+                user_id,
+                team_id,
+            )
+            return RejectionResult(
+                "team_selector_unresolved",
+                "The target team could not be resolved.",
+                fixable=False,
+            )
+        if team_id not in (allowed_ids or []) or identity is None or identity[1] != team_name:
+            return RejectionResult(
+                "team_selector_unresolved",
+                "Select an exact target from list_teams and retry.",
+                fixable=True,
+            )
+        return ResolvedTeamTarget(
+            team_id=team_id,
+            team_name=identity[1],
+            selector_json=json.dumps(
+                {"id": team_id, "name": team_name},
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
         )
 
     async def verify_target_team(
@@ -238,28 +361,33 @@ class ToolExecutor:
         user_id: int,
         role: UserRole,
     ) -> bool:
-        """驗證工具實際作用的 team 是否可被本回合操作（spec assistant-tool-execution
-        「sub-resource team 歸屬驗證」）。
+        """Require the resource owner to equal the authoritative bound/selected team.
 
-        - team-bound 對話：MUST 等於對話綁定 team（原有語意不變）。
-        - 全域對話：MUST 屬於使用者可存取的 team，且該 team 上的權限涵蓋工具宣告的
-          `PermissionType`。允許不等於 context team——使用者常以全域搜尋找到其他 team
-          的資源再要求操作；代價是確認卡 MUST 標示目標 team（見 build_confirmation_summary）。
+        Global scope also re-checks accessible-team membership so the resolver
+        stays fail-closed if membership semantics are introduced later.  Team-bound
+        scope relies on the conversation's bound team (established at creation time)
+        plus RBAC ``check_permission``; adding a membership query here would break
+        historical compatibility without a User row in every test fixture.
         """
         if tool.team_check == "none":
             return True
-        if resolved_team is None:
+        if resolved_team is None or effective_team is None or resolved_team != effective_team:
             return False
-        if getattr(conversation, "scope_type", None) == "team":
-            return resolved_team == effective_team
-        try:
-            accessible = await permission_service.get_user_accessible_teams(user_id)
-        except Exception:  # noqa: BLE001 - fail-closed：無法確認可存取性即拒絕
-            logger.exception("assistant verify_target_team: accessible teams lookup failed user_id=%s", user_id)
-            return False
-        if resolved_team not in (accessible or []):
-            return False
-        return await self.check_permission(tool, user_id=user_id, team_id=resolved_team, role=role)
+        if getattr(conversation, "scope_type", None) == "global":
+            try:
+                allowed_ids = await permission_service.get_user_accessible_teams(user_id)
+            except Exception:  # noqa: BLE001 - routing lookup must fail closed
+                logger.exception(
+                    "assistant target verification failed user_id=%s team_id=%s",
+                    user_id,
+                    effective_team,
+                )
+                return False
+            if effective_team not in (allowed_ids or []):
+                return False
+        return await self.check_permission(
+            tool, user_id=user_id, team_id=effective_team, role=role
+        )
 
     async def resolve_team(self, tool: AssistantTool, *, conversation_team_id: Optional[int], path_params: dict, body_params: dict) -> Optional[int]:
         """回傳工具實際作用資源的 team_id；有 resolver 時即使 path 注入 team 仍必須核對資源。"""
@@ -491,11 +619,9 @@ class ToolExecutor:
         user_id: int,
         role: UserRole,
     ) -> Optional[RejectionResult]:
-        """`conversation_team_id` 為本回合的有效 team（見 `team_context.effective_team_id`）。
+        """Require every child resource to belong to the outer authoritative target.
 
-        批次子動作一律要求落在同一個有效 team——單筆 `resolve` 工具在全域對話可作用於其他
-        可存取 team（見 `verify_target_team`），但批次不放寬：一張確認卡只標示一個 team，
-        混入其他 team 會讓使用者無法從卡片判斷影響範圍。
+        A confirmation card has exactly one team target; mixed-team batches fail before pending.
         """
         if not 2 <= len(actions) <= 50:
             return RejectionResult("schema_invalid", "batch requires 2-50 actions", fixable=True)
@@ -538,23 +664,44 @@ class ToolExecutor:
     # ------------------------------------------------------------------ #
 
     async def build_confirmation_summary(
-        self, tool: AssistantTool, *, path_params: dict, body_params: dict, team_id: Optional[int] = None
+        self,
+        tool: AssistantTool,
+        *,
+        path_params: dict,
+        body_params: dict,
+        team_id: Optional[int] = None,
     ) -> Optional[tuple[dict[str, Any], Any]]:
-        """回傳 (canonical_summary, stable_target_identity)；None 代表無法解析（fail-closed）。
+        """Return canonical summary and stable identity, or None when resolution fails.
 
-        `team_id`（目標 team）非空時，summary MUST 帶伺服器 lookup 出的 team 名稱：全域對話
-        沒有「對話綁定 team」可讓使用者推斷影響範圍，卡片上必須看得到動作會落在哪個 team
-        （spec assistant-action-confirmation「confirm 的有效 team 取自 turn 快照」）。team 進入
-        summary 即自動計入 `confirmation_fingerprint`，因此目標 team 改變會走 stale 路徑。
+        A team-scoped confirmation must use the current authoritative DB identity. Missing team
+        metadata fails closed, while transient lookup failures remain retryable.
         """
         result = await self._build_confirmation_summary_inner(
-            tool, path_params=path_params, body_params=body_params
+            tool,
+            path_params=path_params,
+            body_params=body_params,
         )
         if result is None or team_id is None:
             return result
+        try:
+            target_identity = await self.resolve_team_identity(team_id)
+        except Exception as exc:
+            logger.exception(
+                "assistant confirmation team identity lookup failed team_id=%s",
+                team_id,
+            )
+            raise ConfirmationMetadataUnavailableError(
+                "Authoritative team metadata is temporarily unavailable."
+            ) from exc
+        if target_identity is None:
+            return None
         summary, identity = result
         return (
-            {**summary, "team_id": team_id, "team_name": await self.resolve_team_name(team_id) or f"Team-{team_id}"},
+            {
+                **summary,
+                "team_id": target_identity[0],
+                "team_name": target_identity[1],
+            },
             identity,
         )
 
@@ -817,6 +964,66 @@ class ToolExecutor:
     def compute_fingerprint(self, summary: dict, stable_identity: Any) -> str:
         return compute_confirmation_fingerprint(canonical_summary=summary, stable_target_identity=stable_identity)
 
+    async def revalidate_confirmation_target(
+        self,
+        tool: AssistantTool,
+        *,
+        conversation,
+        team_id: int,
+        user_id: int,
+        role: UserRole,
+        path_params: dict[str, Any],
+        body_params: dict[str, Any],
+    ) -> ConfirmationTargetState | RejectionResult:
+        """Re-resolve resource ownership and canonical impact immediately before dispatch."""
+        if tool.execution_mode == "batch_actions":
+            rejection = await self.validate_batch_actions(
+                body_params.get("actions") or [],
+                conversation_team_id=team_id,
+                user_id=user_id,
+                role=role,
+            )
+            if rejection is not None:
+                return rejection
+
+        resolved_team = await self.resolve_team(
+            tool,
+            conversation_team_id=team_id,
+            path_params=path_params,
+            body_params=body_params,
+        )
+        if not await self.verify_target_team(
+            tool,
+            conversation=conversation,
+            resolved_team=resolved_team,
+            effective_team=team_id,
+            user_id=user_id,
+            role=role,
+        ):
+            return RejectionResult(
+                "team_mismatch",
+                "resource is no longer accessible for this action",
+            )
+
+        summary_team_id = resolved_team if tool.team_check != "none" else team_id
+        summary_result = await self.build_confirmation_summary(
+            tool,
+            path_params=path_params,
+            body_params=body_params,
+            team_id=summary_team_id,
+        )
+        if summary_result is None:
+            return RejectionResult(
+                "confirmation_summary_unresolvable",
+                "cannot resolve a stable target for this action",
+            )
+        summary, stable_identity = summary_result
+        return ConfirmationTargetState(
+            summary=summary,
+            stable_identity=stable_identity,
+            fingerprint=self.compute_fingerprint(summary, stable_identity),
+        )
+
     # ------------------------------------------------------------------ #
     # Loopback 執行
     # ------------------------------------------------------------------ #
@@ -904,6 +1111,24 @@ class ToolExecutor:
                 if isinstance(meta, dict):
                     meta["team_name"] = names[tid]
 
+    async def resolve_team_identity(self, team_id: int) -> Optional[tuple[int, str]]:
+        """Return an authoritative current id/name pair; DB failures propagate to the caller."""
+
+        async def _q(session: AsyncSession) -> Optional[tuple[int, str]]:
+            row = (
+                await session.execute(
+                    select(Team.id, Team.name).where(
+                        Team.id == team_id,
+                        Team.status == TeamStatus.ACTIVE,
+                    )
+                )
+            ).one_or_none()
+            if row is None or not row.name:
+                return None
+            return int(row.id), str(row.name)
+
+        return await self.main_boundary.run_read(_q)
+
     async def resolve_team_name(self, team_id: int | None) -> str | None:
         """capability context／`describe_capabilities` 用的 team 顯示名稱。
 
@@ -912,14 +1137,18 @@ class ToolExecutor:
         if team_id is None:
             return None
         try:
-            from app.models.database_models import Team
-
             async def _q(session):
-                return (await session.execute(select(Team.name).where(Team.id == team_id))).scalar_one_or_none()
+                return (
+                    await session.execute(select(Team.name).where(Team.id == team_id))
+                ).scalar_one_or_none()
 
             return await self.main_boundary.run_read(_q)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("resolve team name for team_id=%s failed: %s", team_id, type(exc).__name__)
+            logger.warning(
+                "resolve team name for team_id=%s failed: %s",
+                team_id,
+                type(exc).__name__,
+            )
             return None
 
     async def _resolve_username(self, user_id: int | None) -> str | None:
@@ -958,13 +1187,53 @@ class ToolExecutor:
         username: str | None = None,
         role: UserRole | None = None,
         scope_type: str | None = None,
-    ) -> tuple[int, dict[str, Any]]:
+    ) -> tuple[int, Any]:
         """In-process skill/catalog/knowledge tools：不打 ASGI。"""
+        if tool.name == "list_teams":
+            if user_id is None:
+                return 403, {"detail": "user identity is required"}
+            allowed_ids = await permission_service.get_user_accessible_teams(user_id)
+            if not allowed_ids:
+                return 200, []
+
+            async def _list_accessible_teams(
+                session: AsyncSession,
+            ) -> list[dict[str, Any]]:
+                rows = (
+                    await session.execute(
+                        select(
+                            Team.id,
+                            Team.name,
+                            Team.description,
+                            func.count(TestCaseLocal.id).label("test_case_count"),
+                        )
+                        .outerjoin(TestCaseLocal, TestCaseLocal.team_id == Team.id)
+                        .where(
+                            Team.id.in_(allowed_ids),
+                            Team.status == TeamStatus.ACTIVE,
+                        )
+                        .group_by(Team.id, Team.name, Team.description)
+                        .order_by(Team.name, Team.id)
+                    )
+                ).all()
+                return [
+                    {
+                        "id": row.id,
+                        "name": row.name,
+                        "description": row.description,
+                        "test_case_count": row.test_case_count,
+                    }
+                    for row in rows
+                ]
+
+            return 200, await self.main_boundary.run_read(_list_accessible_teams)
         if tool.name == "describe_capabilities":
             # 與 agent 迴圈的 capability context 同源（capability_context.tools_for_turn），
             # 否則模型會拿到與實際目錄不一致的「事實」。
             effective_role = role or UserRole.VIEWER
-            allowed = tools_for_turn(self.registry, team_id=team_id, role=effective_role)
+            allowed = tools_for_turn(
+                self.registry, scope_type=scope_type, team_id=team_id, role=effective_role
+            )
             return 200, build_capability_facts(
                 role=effective_role,
                 scope_type=scope_type,
@@ -983,7 +1252,7 @@ class ToolExecutor:
                 return 404, {"detail": f"unknown skill_id: {skill_id}"}
             return 200, skill
         if tool.name == "get_test_case_global":
-            from app.models.database_models import Team, TestCaseLocal, TestCaseSection, TestCaseSet
+            from app.models.database_models import TestCaseSection, TestCaseSet
 
             number = str(arguments.get("test_case_number", "")).strip()
             if not number:
@@ -1094,7 +1363,7 @@ class ToolExecutor:
         if tool.name == "search_test_cases_global":
             from sqlalchemy import or_
 
-            from app.models.database_models import Team, TestCaseLocal, TestCaseSet
+            from app.models.database_models import TestCaseSet
 
             query = str(arguments.get("query", "")).strip()
             if not query:
@@ -1162,12 +1431,16 @@ class ToolExecutor:
 
             entity_type = str(arguments.get("entity_type", ""))
             entity_id = str(arguments.get("entity_id", ""))
-            # Global scope: still resolve accessible teams for defense-in-depth logging;
-            # impact analysis itself remains read-only graph (team filter is best-effort).
+            if user_id is None:
+                return 403, {"detail": "user identity is required"}
+            allowed_team_ids = await permission_service.get_user_accessible_teams(user_id)
+            if team_id is not None and team_id not in (allowed_team_ids or []):
+                return 403, {"detail": "team is not accessible"}
             res = await get_retrieval_service().analyze_impact(
                 entity_type=entity_type,
                 entity_id=entity_id,
                 team_id=team_id,
+                allowed_team_ids=allowed_team_ids or [],
                 context={
                     "source": KnowledgeQuerySource.ASSISTANT.value,
                     "user_id": user_id,
@@ -1194,57 +1467,116 @@ class ToolExecutor:
         jwt: str,
         conversation_service,
     ) -> ReadToolResult:
-        validation = validate_arguments(arguments, combined_schema(tool))
+        require_target = (
+            getattr(conversation, "scope_type", None) == "global"
+            and tool.team_check != "none"
+        )
+        validation = validate_arguments(
+            arguments, combined_schema(tool, require_target_team=require_target)
+        )
         if not validation.ok:
             return ReadToolResult(
                 ok=False,
                 result_payload={},
                 http_status=None,
-                rejection=RejectionResult("schema_invalid", "The tool arguments could not be validated.", fixable=True),
+                rejection=RejectionResult(
+                    "schema_invalid",
+                    "The tool arguments could not be validated.",
+                    fixable=True,
+                ),
             )
 
-        path_params, query_params, body_params = _split_arguments(tool, arguments)
+        clean_arguments, selector = _without_target_selector(arguments)
+        target = await self.resolve_call_target(
+            tool, conversation=conversation, user_id=user_id, selector=selector
+        )
+        if isinstance(target, RejectionResult):
+            return ReadToolResult(
+                ok=False, result_payload={}, http_status=None, rejection=target
+            )
 
-        effective_team = effective_team_id(conversation, turn)
-
-        if not await self.check_permission(tool, user_id=user_id, team_id=effective_team, role=role):
-            return ReadToolResult(ok=False, result_payload={}, http_status=None, rejection=RejectionResult("permission_denied", "insufficient permission", fixable=False))
-
-        resolved_team = await self.resolve_team(tool, conversation_team_id=effective_team, path_params=path_params, body_params=body_params)
-        if not await self.verify_target_team(
-            tool, conversation=conversation, resolved_team=resolved_team, effective_team=effective_team,
-            user_id=user_id, role=role,
+        if not await self.check_permission(
+            tool, user_id=user_id, team_id=target.team_id, role=role
         ):
-            return ReadToolResult(ok=False, result_payload={}, http_status=None, rejection=RejectionResult("team_mismatch", "resource is not accessible from this conversation", fixable=False))
+            return ReadToolResult(
+                ok=False,
+                result_payload={},
+                http_status=None,
+                rejection=RejectionResult(
+                    "permission_denied", "insufficient permission", fixable=False
+                ),
+            )
 
-        journal_args = {**query_params, **body_params} if tool.execution_mode == "local" else body_params
+        path_params, query_params, body_params = _split_arguments(tool, clean_arguments)
+        resolved_team = await self.resolve_team(
+            tool,
+            conversation_team_id=target.team_id,
+            path_params=path_params,
+            body_params=body_params,
+        )
+        if not await self.verify_target_team(
+            tool,
+            conversation=conversation,
+            resolved_team=resolved_team,
+            effective_team=target.team_id,
+            user_id=user_id,
+            role=role,
+        ):
+            return ReadToolResult(
+                ok=False,
+                result_payload={},
+                http_status=None,
+                rejection=RejectionResult(
+                    "target_team_mismatch",
+                    "The selected team does not own the requested resource.",
+                    fixable=True,
+                ),
+            )
+
+        journal_args = clean_arguments
         journal_id = await conversation_service.start_read_tool_journal(
-            conversation=conversation, turn=turn, user_id=user_id, team_id=resolved_team if tool.team_check != "none" else effective_team,
-            llm_tool_call_id=llm_tool_call_id, tool_name=tool.name, risk_level=tool.risk_level,
+            conversation=conversation,
+            turn=turn,
+            user_id=user_id,
+            team_id=resolved_team if tool.team_check != "none" else None,
+            target_selector_json=target.selector_json,
+            llm_tool_call_id=llm_tool_call_id,
+            tool_name=tool.name,
+            risk_level=tool.risk_level,
             arguments_json=json.dumps(journal_args, ensure_ascii=False),
         )
         try:
             if tool.execution_mode == "local":
-                # 觀測性記錄需要 username；conversation 物件沒有 username 欄位，
-                # 從 main DB 依 user_id 解析（_resolve_username 失敗時不影響查詢）。
                 resolved_username = await self._resolve_username(user_id)
                 status_code, payload = await self._run_local_read_tool(
                     tool,
                     {**query_params, **body_params, **path_params},
-                    team_id=effective_team,
+                    team_id=target.team_id,
                     user_id=user_id,
                     llm_tool_call_id=llm_tool_call_id,
-                    conversation_id=str(getattr(conversation, "conversation_key", "") or "") or None,
-                    turn_key=str(getattr(turn, "id", "") or getattr(turn, "turn_key", "") or "") or None,
+                    conversation_id=str(
+                        getattr(conversation, "conversation_key", "") or ""
+                    )
+                    or None,
+                    turn_key=str(
+                        getattr(turn, "id", "")
+                        or getattr(turn, "turn_key", "")
+                        or ""
+                    )
+                    or None,
                     username=resolved_username,
                     role=role,
                     scope_type=getattr(conversation, "scope_type", None),
                 )
-
             else:
                 status_code, payload = await self._loopback(
-                    tool, team_id=resolved_team, path_params=path_params, query_params=query_params,
-                    body_params=body_params, jwt=jwt, conversation_key=conversation.conversation_key,
+                    tool,
+                    team_id=resolved_team,
+                    path_params=path_params,
+                    query_params=query_params,
+                    body_params=body_params,
+                    jwt=jwt,
+                    conversation_key=conversation.conversation_key,
                 )
         except Exception:  # noqa: BLE001
             logger.exception(
@@ -1254,18 +1586,35 @@ class ToolExecutor:
             )
             safe_error = "The service could not be reached."
             await conversation_service.finish_read_tool_journal(
-                journal_id=journal_id, status="unknown", http_status=None, error_message=safe_error
+                journal_id=journal_id,
+                status="unknown",
+                http_status=None,
+                error_message=safe_error,
             )
             return ReadToolResult(
                 ok=False,
                 result_payload=project_error(0, safe_error),
                 http_status=None,
-                rejection=RejectionResult("transport_error", safe_error, fixable=False),
+                rejection=RejectionResult(
+                    "transport_error", safe_error, fixable=False
+                ),
             )
 
         if status_code == 401:
-            await conversation_service.finish_read_tool_journal(journal_id=journal_id, status="failed", http_status=401, error_message="session expired")
-            return ReadToolResult(ok=False, result_payload=project_error(401, "session expired"), http_status=401, rejection=RejectionResult("session_expired", "JWT expired", fixable=False))
+            await conversation_service.finish_read_tool_journal(
+                journal_id=journal_id,
+                status="failed",
+                http_status=401,
+                error_message="session expired",
+            )
+            return ReadToolResult(
+                ok=False,
+                result_payload=project_error(401, "session expired"),
+                http_status=401,
+                rejection=RejectionResult(
+                    "session_expired", "JWT expired", fixable=False
+                ),
+            )
 
         if status_code >= 400:
             detail = payload.get("detail") if isinstance(payload, dict) else str(payload)
@@ -1276,8 +1625,9 @@ class ToolExecutor:
                 http_status=status_code,
                 error_message=safe_result["detail"],
             )
-            # 與 loopback 一致：4xx 進入 tool result 讓 LLM 自行修正，不 terminate turn。
-            return ReadToolResult(ok=False, result_payload=safe_result, http_status=status_code)
+            return ReadToolResult(
+                ok=False, result_payload=safe_result, http_status=status_code
+            )
 
         result = project_and_redact(
             payload,
@@ -1285,8 +1635,15 @@ class ToolExecutor:
             self.config.tool_result_max_chars,
             request_skip=_request_skip_from_query(query_params),
         )
-        await conversation_service.finish_read_tool_journal(journal_id=journal_id, status="succeeded", http_status=status_code, error_message=None)
-        return ReadToolResult(ok=True, result_payload=result, http_status=status_code)
+        await conversation_service.finish_read_tool_journal(
+            journal_id=journal_id,
+            status="succeeded",
+            http_status=status_code,
+            error_message=None,
+        )
+        return ReadToolResult(
+            ok=True, result_payload=result, http_status=status_code
+        )
 
     # ------------------------------------------------------------------ #
     # Write tool：僅能建立 pending（design D3 Pending Tx 的準備階段）
@@ -1305,89 +1662,171 @@ class ToolExecutor:
         resolved_file_ref: Optional[dict[str, int]] = None,
         resolved_file_refs: Optional[dict[int, dict[str, int]]] = None,
     ) -> PendingCreationRequest | RejectionResult:
-        """`execution_key` MUST 由呼叫端（agent_service）預先生成並同時傳給
-        `conversation_service.create_pending_action_and_complete_turn`——sensitive payload
-        的加密 AAD 綁定此 key，兩處必須一致，否則 confirm 階段解密會失敗。
+        """Validate a mutation and return immutable pending-action material.
 
-        `resolved_file_ref`（`multipart_file_param` 工具專用）：呼叫端須先將 LLM 提供的
-        `file_ref` 解析並驗證為屬於本對話、本 turn 的既有暫存附件（`{"turn_id":.., "attachment_index":..}`），
-        此處不重複驗證，只原樣存進 execution_payload 供 confirm 階段重新讀取檔案內容（design：
-        原始 bytes 不落 DB，只存參照，confirm 時才從磁碟重讀）。"""
-        validation = validate_arguments(arguments, combined_schema(tool))
+        Global calls require an exact target selector. The selector is removed before transport,
+        while its raw canonical JSON and server-resolved id/name are persisted for confirmation
+        and audit. Sensitive execution payloads include the resolved target inside the envelope.
+        """
+        require_target = (
+            getattr(conversation, "scope_type", None) == "global"
+            and tool.team_check != "none"
+        )
+        validation = validate_arguments(
+            arguments, combined_schema(tool, require_target_team=require_target)
+        )
         if not validation.ok:
-            return RejectionResult("schema_invalid", "; ".join(validation.errors), fixable=True)
+            return RejectionResult(
+                "schema_invalid", "; ".join(validation.errors), fixable=True
+            )
 
-        path_params, query_params, body_params = _split_arguments(tool, arguments)
+        clean_arguments, selector = _without_target_selector(arguments)
+        target = await self.resolve_call_target(
+            tool, conversation=conversation, user_id=user_id, selector=selector
+        )
+        if isinstance(target, RejectionResult):
+            return target
+        if target.team_id is None or not target.team_name:
+            return RejectionResult(
+                "team_selector_unresolved",
+                "The target team could not be resolved.",
+                fixable=False,
+            )
 
-        effective_team = effective_team_id(conversation, turn)
+        if not await self.check_permission(
+            tool, user_id=user_id, team_id=target.team_id, role=role
+        ):
+            return RejectionResult(
+                "permission_denied", "insufficient permission", fixable=False
+            )
 
-        if not await self.check_permission(tool, user_id=user_id, team_id=effective_team, role=role):
-            return RejectionResult("permission_denied", "insufficient permission", fixable=False)
-
-        if effective_team is None:
-            # team-bound 對話的 team 已刪除，或全域對話的 turn 沒有 context team 快照：
-            # 兩者都無目標 team 可執行，fail-closed（spec assistant-conversations）。
-            return RejectionResult("scope_invalid", "mutation tools require a target team for this turn", fixable=False)
+        path_params, query_params, body_params = _split_arguments(tool, clean_arguments)
 
         if tool.execution_mode == "batch_actions":
             rejection = await self.validate_batch_actions(
-                body_params.get("actions") or [], conversation_team_id=effective_team, user_id=user_id, role=role,
+                body_params.get("actions") or [],
+                conversation_team_id=target.team_id,
+                user_id=user_id,
+                role=role,
             )
             if rejection is not None:
                 return rejection
             for index, action in enumerate(body_params.get("actions") or []):
                 child = self.registry.get(action["tool_name"])
-                if child.multipart_file_param and (resolved_file_refs or {}).get(index) is None:
-                    return RejectionResult("file_ref_invalid", f"action {index + 1}: invalid file_ref", fixable=True)
+                if (
+                    child.multipart_file_param
+                    and (resolved_file_refs or {}).get(index) is None
+                ):
+                    return RejectionResult(
+                        "file_ref_invalid",
+                        f"action {index + 1}: invalid file_ref",
+                        fixable=True,
+                    )
 
-        resolved_team = await self.resolve_team(tool, conversation_team_id=effective_team, path_params=path_params, body_params=body_params)
+        resolved_team = await self.resolve_team(
+            tool,
+            conversation_team_id=target.team_id,
+            path_params=path_params,
+            body_params=body_params,
+        )
         if not await self.verify_target_team(
-            tool, conversation=conversation, resolved_team=resolved_team, effective_team=effective_team,
-            user_id=user_id, role=role,
+            tool,
+            conversation=conversation,
+            resolved_team=resolved_team,
+            effective_team=target.team_id,
+            user_id=user_id,
+            role=role,
         ):
-            return RejectionResult("team_mismatch", "resource is not accessible from this conversation", fixable=False)
+            return RejectionResult(
+                "target_team_mismatch",
+                "The selected team does not own the requested resource.",
+                fixable=True,
+            )
 
         if self.check_credential_write_rejected(tool, body_params):
-            return RejectionResult("credential_write_rejected", "writing credential values via chat is not supported; use the UI", fixable=False)
-        if await self.check_update_overwrites_existing_credential(tool, path_params, body_params):
-            return RejectionResult("credential_write_rejected", "this case has existing credential test_data; edit it in the UI", fixable=False)
+            return RejectionResult(
+                "credential_write_rejected",
+                "writing credential values via chat is not supported; use the UI",
+                fixable=False,
+            )
+        if await self.check_update_overwrites_existing_credential(
+            tool, path_params, body_params
+        ):
+            return RejectionResult(
+                "credential_write_rejected",
+                "this case has existing credential test_data; edit it in the UI",
+                fixable=False,
+            )
 
         summary_result = await self.build_confirmation_summary(
-            tool, path_params=path_params, body_params=body_params,
-            team_id=resolved_team if tool.team_check != "none" else effective_team,
+            tool,
+            path_params=path_params,
+            body_params=body_params,
+            team_id=target.team_id,
         )
         if summary_result is None:
-            return RejectionResult("confirmation_summary_unresolvable", "cannot resolve a stable target for this high-impact action", fixable=False)
+            return RejectionResult(
+                "confirmation_summary_unresolvable",
+                "cannot resolve a stable target for this high-impact action",
+                fixable=False,
+            )
         summary, stable_identity = summary_result
         fingerprint = self.compute_fingerprint(summary, stable_identity)
 
-        execution_payload = {"path_params": path_params, "query_params": query_params, "body_params": body_params}
+        execution_payload = {
+            "path_params": path_params,
+            "query_params": query_params,
+            "body_params": body_params,
+            "target_team_id": target.team_id,
+        }
         if resolved_file_ref is not None:
             execution_payload["file_ref"] = resolved_file_ref
         if resolved_file_refs:
-            execution_payload["file_refs"] = {str(index): value for index, value in resolved_file_refs.items()}
+            execution_payload["file_refs"] = {
+                str(index): value for index, value in resolved_file_refs.items()
+            }
+
+        selector_for_display = (
+            json.loads(target.selector_json) if target.selector_json is not None else None
+        )
         if tool.execution_mode == "batch_actions":
-            redacted_args = {"actions": [
-                {"tool_name": action["tool_name"], "arguments": project_and_redact(
-                    action["arguments"], tuple(action["arguments"].keys()), self.config.tool_result_max_chars
-                )}
-                for action in body_params.get("actions") or []
-            ]}
+            redacted_args = {
+                "actions": [
+                    {
+                        "tool_name": action["tool_name"],
+                        "arguments": project_and_redact(
+                            action["arguments"],
+                            tuple(action["arguments"].keys()),
+                            self.config.tool_result_max_chars,
+                        ),
+                    }
+                    for action in body_params.get("actions") or []
+                ]
+            }
         else:
-            redacted_args = project_and_redact(body_params, tuple(body_params.keys()), self.config.tool_result_max_chars)
+            redacted_args = project_and_redact(
+                clean_arguments,
+                tuple(clean_arguments.keys()),
+                self.config.tool_result_max_chars,
+            )
+        if selector_for_display is not None:
+            redacted_args["target_team"] = selector_for_display
 
         needs_encryption = bool(tool.sensitive_input_paths) or (
-            tool.execution_mode == "batch_actions" and any(
+            tool.execution_mode == "batch_actions"
+            and any(
                 bool(self.registry.get(action["tool_name"]).sensitive_input_paths)
                 for action in body_params.get("actions") or []
             )
         )
         if needs_encryption:
             if not self.config.payload_encryption_key:
-                return RejectionResult("sensitive_payload_encryption_unavailable", "sensitive payload encryption key not configured", fixable=False)
+                return RejectionResult(
+                    "sensitive_payload_encryption_unavailable",
+                    "sensitive payload encryption key not configured",
+                    fixable=False,
+                )
             try:
-                # Store the envelope string directly as execution_payload_json (design D8).
-                # Do NOT wrap as {"_raw": envelope} — decrypt_execution_payload expects the envelope itself.
                 payload_json_str = encrypt_sensitive_payload(
                     raw_key=self.config.payload_encryption_key,
                     execution_key=execution_key,
@@ -1410,6 +1849,9 @@ class ToolExecutor:
             execution_payload_encrypted=needs_encryption,
             confirmation_summary=summary,
             confirmation_fingerprint=fingerprint,
+            target_team_id=target.team_id,
+            target_team_name=target.team_name,
+            target_selector_json=target.selector_json,
         )
 
     # ------------------------------------------------------------------ #
@@ -1445,6 +1887,19 @@ class ToolExecutor:
         """`multipart_file`（`(original_name, content, content_type)`）：`multipart_file_param`
         工具專用，呼叫端（agent_service）需先依 execution_payload 的 `file_ref` 從磁碟重讀內容——
         本函式不接觸資料庫，只負責把已讀出的 bytes 併入 multipart 請求。"""
+        payload_target = execution_payload.get("target_team_id")
+        if (
+            not isinstance(payload_target, int)
+            or isinstance(payload_target, bool)
+            or payload_target != team_id
+        ):
+            return ConfirmExecutionResult(
+                outcome_status=ToolExecutionOutcome.FAILED,
+                result_payload=project_error(
+                    409, "The confirmed target no longer matches the execution payload."
+                ),
+                http_status=409,
+            )
         if tool.execution_mode == "batch_actions":
             return await self._execute_batch_actions(
                 execution_payload.get("body_params", {}).get("actions") or [],

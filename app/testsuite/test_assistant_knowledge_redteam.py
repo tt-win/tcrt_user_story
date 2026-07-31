@@ -162,20 +162,10 @@ async def test_A2_every_role_may_read_knowledge_tools(role):
     assert allowed is True
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="KNOWN PRODUCT-INTENT DRIFT: global assistant authorization should "
-    "depend only on role, but ToolExecutor.check_permission currently rejects "
-    "every non-READ tool when team_id=None (except SUPER_ADMIN). Remove the "
-    "team-dependent global gate, then make this a normal passing assertion.",
-)
 async def test_A3_global_user_role_may_use_write_tool_without_team_context():
-    """A3: under the confirmed global-assistant model, a USER/ADMIN role may
-    invoke its permitted WRITE tools without first choosing a context team.
+    """A3: global catalog authorization is role based before a target is resolved.
 
-    The target resource can still resolve its owning team for routing/audit, but
-    team context must not be an authorization prerequisite. Current code returns
-    False solely because ``team_id is None`` — this is a known contract drift.
+    Actual team-scoped execution separately requires an exact selector and resource-owner match.
     """
     from app.services.assistant.tool_registry import get_tool_registry
 
@@ -191,12 +181,6 @@ async def test_A3_global_user_role_may_use_write_tool_without_team_context():
     ) is True
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="KNOWN PRODUCT-INTENT DRIFT: tools_for_turn(team_id=None) currently "
-    "returns discovery_only READ tools and hides role-authorized WRITE tools. "
-    "For a pure role-based global assistant it must filter by role, not team.",
-)
 async def test_A3b_global_tool_catalog_is_role_based_not_team_based():
     """A3b: the LLM tool catalogue in a global turn must expose the mutation
     tools the caller's role allows; otherwise the model cannot even request a
@@ -208,7 +192,10 @@ async def test_A3b_global_tool_catalog_is_role_based_not_team_based():
     names = {
         tool.name
         for tool in tools_for_turn(
-            get_tool_registry(), team_id=None, role=UserRole.ADMIN
+            get_tool_registry(),
+            scope_type="global",
+            team_id=None,
+            role=UserRole.ADMIN,
         )
     }
     assert "create_test_case" in names

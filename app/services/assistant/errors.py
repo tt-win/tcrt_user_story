@@ -113,6 +113,13 @@ class CredentialWriteRejectedError(AssistantError):
     http_status = 422
 
 
+class ConfirmationMetadataUnavailableError(AssistantError):
+    """Authoritative confirmation metadata could not be read; retry without expiring."""
+
+    error_code = "CONFIRMATION_METADATA_UNAVAILABLE"
+    http_status = 503
+
+
 class ConfirmationSummaryUnresolvableError(AssistantError):
     """high_impact/irreversible 工具無法解析穩定 target identity/version，fail-closed。"""
 

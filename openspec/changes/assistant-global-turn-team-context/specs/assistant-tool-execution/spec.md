@@ -1,41 +1,56 @@
 ## MODIFIED Requirements
 
-### Requirement: in-process loopback 執行與 team_id 注入
+### Requirement: In-process loopback 與 explicit team routing
 
-工具執行 SHALL 透過 in-process ASGI loopback 呼叫既有 web JWT router，轉發啟動該 turn／confirm 請求的 Bearer JWT；`team_id` MUST 由 executor 注入 path template，MUST NOT 出現在 LLM 可控的參數 schema 中。注入值 MUST 取自**有效 team**的單一解析點：`scope_type=team` 的對話取對話綁定 team；`scope_type=global` 的對話取該 turn 的 context team 快照。有效 team 為空時，MUST NOT 執行任何需要 team 的工具。為支援 subscriber 斷線後 detached runner 繼續，JWT MAY 僅以 ephemeral in-memory runner context 保留至 turn 終態；MUST NOT 寫入 DB、queue payload、event、log、exception 或任何可重播資料，runner 終態／失敗時 MUST 立即釋放引用。loopback 請求 MUST 附 `X-TCRT-Assistant: 1` 與含 conversation key 的 User-Agent。
+工具仍 SHALL 透過 in-process ASGI loopback 與既有 JWT router 執行。Global conversation 的 team-scoped tool schema SHALL 接受 `target_team: {id,name}`，但 executor MUST 在組裝 path/query/body 前移除該 selector；既有 endpoint MUST NOT 收到 Assistant selector。
 
-#### Scenario: LLM 無法指定其他 team
+Executor MUST 將 selector 視為未信任資料，依序驗證 JSON shape、目前 DB identity（id+name）、全域角色 permission 與 resource ownership equality。只有全部通過後，才能把 server-resolved id 注入 `{team_id}` 或 dispatch。現行 permission model 不提供 per-team membership isolation；上述控制保證 routing 透明與一致，不得被文件描述成 team isolation。
 
-- **WHEN** LLM 產生的工具參數夾帶 team_id 欄位
-- **THEN** 參數驗證拒絕未知欄位；實際 team_id 一律取自有效 team 解析點（對話綁定或 turn context team 快照）
+#### Scenario: 精確 selector 執行 read
 
-#### Scenario: 全域對話以 context team 注入
+- **WHEN** 使用者可存取 ART，LLM 從 `list_teams` 複製 ART `{id,name}` 呼叫 `count_test_cases`
+- **THEN** executor 驗證 pair 與 read permission後，以 ART id 注入路徑
+- **AND** selector 不出現在 loopback query/body
 
-- **WHEN** 全域對話的 turn 具 context team `ART`(id=1)，LLM 呼叫 `create_test_case_set`
-- **THEN** executor 對 team 1 檢權後將 team_id=1 注入 path，LLM 未提供也無法提供該值
+#### Scenario: 無法解析的 selector 不洩漏資訊
 
-#### Scenario: 無有效 team 時拒絕執行
+- **WHEN** LLM 提供不存在、stale 或 malformed 的 id/name
+- **THEN** executor 一律以 generic `team_selector_unresolved` 拒絕，不 dispatch
+- **AND** 回覆不得以不同錯誤透露 team 是否存在
 
-- **WHEN** 全域對話的 turn 無 context team，而 LLM 仍產生需要 team 的工具呼叫
-- **THEN** executor 拒絕執行且不發出 loopback
+#### Scenario: Stale name 被拒
 
-### Requirement: sub-resource team 歸屬驗證
+- **WHEN** selector id 仍存在但 team 已改名，selector name 與 DB 不一致
+- **THEN** executor 拒絕並要求重新 `list_teams`，不得只信 id
 
-對 path template 不含 `{team_id}` 或操作可能跨 team 之 sub-resource（set_id/config_id/run_id/section_id/pin entity_id 等）的工具，registry MUST 宣告 `resource_team_check`（由參數解析目標資源實際所屬 team 的 resolver）；executor MUST 於 loopback 之前驗證解析出的 team：`scope_type=team` 的對話 MUST 等於對話綁定 team；`scope_type=global` 的對話 MUST 屬於使用者可存取 team 清單，且該 team 上的權限 MUST 涵蓋該工具宣告的 `PermissionType`。不符即拒絕（不發出請求）。此為結構性保證，MUST NOT 假設被呼叫端點會驗證 team 歸屬。
+### Requirement: Resource team 必須等於 explicit target
 
-全域對話允許目標 team 不等於 context team（例如以全域搜尋找到其他 team 的資源後要求更新），因此該工具的確認卡與工具結果 MUST 顯示目標 team 名稱，使用者才能在確認前辨識受影響的 team。
+對 `inject` 加 resource resolver 或 `resolve` 類工具，executor MUST 解析資源實際 team，並要求其等於 global selector id。兩個 team 即使都可存取，也不得靜默跨 team。Team-bound conversation 仍要求等於 conversation team。
 
-#### Scenario: 跨 team 的 set_id 在 team 對話被拒
+#### Scenario: Read resource mismatch 被拒
 
-- **WHEN** 對話綁定 team 3，LLM 對 create_test_case_section 傳入屬於 team 5 的 set_id
-- **THEN** executor 的 resource_team_check 解析出 team 5 ≠ 3，拒絕執行且不發出 loopback
+- **WHEN** selector 是 ART，但 `set_id` 實際屬 CID
+- **THEN** executor 在 transport 前拒絕，journal 不得記為成功
 
-#### Scenario: 全域對話對可存取的其他 team 資源放行並標示 team
+#### Scenario: Write resource mismatch 不建立 pending
 
-- **WHEN** 全域對話 context team 為 team 1，LLM 對屬於 team 5 的 set_id 發動更新，且使用者在 team 5 具 write 權限
-- **THEN** executor 以 team 5 檢權後放行，確認卡顯示目標 team 為 team 5 的名稱
+- **WHEN** selector 是 ART，但 mutation payload 指向 CID resource
+- **THEN** executor 回 `target_team_mismatch`，不建立 pending、不 dispatch
 
-#### Scenario: 全域對話對不可存取的 team 資源被拒
+### Requirement: Permission 在 resolved target 上即時驗證
 
-- **WHEN** 全域對話中 LLM 對使用者無權存取之 team 的資源發動操作
-- **THEN** executor 拒絕執行且不發出 loopback
+Global catalog 的 role filtering 不構成執行授權。每次 read/write prepare MUST 在 resolved selector team 上重新呼叫現行角色 permission check；confirm MUST 再驗一次。Permission lookup 失敗時 MUST fail-closed。此檢查只驗證全域角色能力，並非 per-team membership。
+
+#### Scenario: 角色不允許工具 permission
+
+- **WHEN** selector identity 合法，但使用者角色不具 tool 宣告的 permission
+- **THEN** prepare 拒絕且不建立 pending
+
+### Requirement: Batch 不得跨 team
+
+Global batch 的 parent call MUST 有一個 selector；所有 child action 的 resolved team MUST 等於該 selector。任一 child mismatch 使整批在 pending 前被拒。
+
+#### Scenario: Mixed-team batch 被拒
+
+- **WHEN** batch selector 為 ART，但 child actions 同時包含 ART 與 CID resources
+- **THEN** executor 拒絕整批且不建立確認卡

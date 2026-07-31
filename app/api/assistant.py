@@ -41,12 +41,16 @@ from app.services.assistant import assistant_agent_service as agent_svc
 from app.services.assistant import attachment_storage, ids
 from app.services.assistant.assistant_llm_service import get_assistant_llm_service
 from app.services.assistant.conversation_service import ConversationService
-from app.services.assistant.errors import AdmissionDeniedError, AssistantError, ConfirmationStaleError
+from app.services.assistant.errors import (
+    AdmissionDeniedError,
+    AssistantError,
+    ConfirmationMetadataUnavailableError,
+    ConfirmationStaleError,
+)
 from app.services.assistant.locale_context import normalize_ui_locale
 from app.services.assistant.param_validation import validate_arguments
 from app.services.assistant.runner_supervisor import RunnerSupervisor, get_runner_supervisor
-from app.services.assistant.team_context import effective_team_id
-from app.services.assistant.tool_executor import ToolExecutor, combined_schema
+from app.services.assistant.tool_executor import RejectionResult, ToolExecutor, combined_schema
 from app.services.assistant.tool_registry import get_tool_registry
 
 logger = logging.getLogger(__name__)
@@ -174,6 +178,25 @@ async def create_conversation_endpoint(
     conv_svc: ConversationService = Depends(_get_conversation_service),
 ) -> ConversationResponse:
     _require_enabled(config)
+    if body.scope_type == "team":
+        try:
+            allowed_ids = await permission_service.get_user_accessible_teams(
+                current_user.id
+            )
+        except Exception:
+            logger.exception(
+                "assistant conversation team authorization failed user_id=%s",
+                current_user.id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Unable to verify team access.",
+            )
+        if body.team_id not in (allowed_ids or []):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Team is not accessible.",
+            )
     try:
         conv = await conv_svc.create_conversation(
             user_id=current_user.id, scope_type=body.scope_type, team_id=body.team_id, title=body.title
@@ -310,7 +333,6 @@ async def post_message_endpoint(
     request: Request,
     text: str = Form(""),
     client_message_id: str = Form(...),
-    context_team_id: Optional[int] = Form(None),
     ui_locale: Optional[str] = Form(None),
     after_seq: int = Query(-1),
     attachments: list[UploadFile] = File(default=[]),
@@ -336,17 +358,6 @@ async def post_message_endpoint(
             detail={"code": "TOO_MANY_ATTACHMENTS", "message": f"at most {config.upload_max_files_per_message} attachments"},
         )
 
-    # 全域對話的目標 team 由前端工作區提供，伺服器必須驗證可存取性後才快照到 turn；
-    # 不可存取即 fail-fast，MUST NOT 忽略該值或降級（spec assistant-conversations
-    # 「turn 的 context team 快照」）。team-bound 對話忽略此值，team 一律取對話綁定。
-    if context_team_id is not None and conversation.scope_type != "team":
-        accessible = await permission_service.get_user_accessible_teams(current_user.id)
-        if context_team_id not in (accessible or []):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={"code": "CONTEXT_TEAM_INVALID", "message": "context team is not accessible"},
-            )
-
     # 回覆語言跟隨前端 UI 語系（spec assistant-agent-loop「回覆語言跟隨介面語系」）。無法映射到
     # 支援語系時一律視為未提供：這是呈現層提示，不影響權限與執行結果，MUST NOT 因此拒絕整個請求。
     reply_locale = normalize_ui_locale(ui_locale)
@@ -367,8 +378,10 @@ async def post_message_endpoint(
 
     try:
         result = await conv_svc.start_turn(
-            conversation=conversation, client_message_id=client_message_id, text=text, attachment_digests=digests,
-            context_team_id=context_team_id,
+            conversation=conversation,
+            client_message_id=client_message_id,
+            text=text,
+            attachment_digests=digests,
         )
     except AssistantError:
         await supervisor.release_slot()
@@ -535,57 +548,123 @@ async def confirm_action_endpoint(
         )
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"code": "SCHEMA_INVALID", "message": "; ".join(validation.errors)})
 
-    # 有效 team MUST 取自 pending 所屬 turn 的快照，MUST NOT 取「confirm 當下的前端工作區」——
-    # 否則使用者在確認卡出現後切換工作區，動作會落到非預期 team（spec assistant-action-confirmation
-    # 「confirm 的有效 team 取自 turn 快照」）。continuation turn 於建立時繼承 source turn 的快照。
-    source_turn = await conv_svc.get_turn_by_id(turn_id=action.turn_id)
-    effective_team = effective_team_id(conversation, source_turn)
-
-    # 「無目標 team」必須先判斷：沒有 team 時 per-team 權限檢查沒有意義，且回 SCOPE_INVALID
-    # 才說得清原因（team 已刪除／turn 沒有 context team 快照）。
-    if effective_team is None:
-        await conv_svc.expire_pending_now(action_id=action.id, synthetic_result={"status": "expired", "code": "scope_invalid"})
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"code": "SCOPE_INVALID", "message": "this action has no target team"})
-
-    if not await executor.check_permission(tool, user_id=current_user.id, team_id=effective_team, role=current_user.role):
-        await conv_svc.expire_pending_now(action_id=action.id, synthetic_result={"status": "expired", "code": "permission_denied"})
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={"code": "TOOL_PERMISSION_DENIED", "message": "insufficient permission"})
-
-    if tool.execution_mode == "batch_actions":
-        rejection = await executor.validate_batch_actions(
-            body_params.get("actions") or [], conversation_team_id=effective_team,
-            user_id=current_user.id, role=current_user.role,
+    effective_team = action.target_team_id
+    payload_team = execution_payload.get("target_team_id")
+    try:
+        raw_selector = (
+            json.loads(action.target_selector_json)
+            if action.target_selector_json is not None
+            else None
         )
-        if rejection is not None:
-            await conv_svc.expire_pending_now(
-                action_id=action.id,
-                synthetic_result={"status": "expired", "code": rejection.code, "message": rejection.message},
-            )
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={"code": rejection.code.upper(), "message": rejection.message},
-            )
+    except (TypeError, json.JSONDecodeError):
+        raw_selector = None
 
-    resolved_team = await executor.resolve_team(tool, conversation_team_id=effective_team, path_params=path_params, body_params=body_params)
-    if not await executor.verify_target_team(
-        tool, conversation=conversation, resolved_team=resolved_team, effective_team=effective_team,
-        user_id=current_user.id, role=current_user.role,
-    ):
-        await conv_svc.expire_pending_now(action_id=action.id, synthetic_result={"status": "expired", "code": "team_mismatch"})
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={"code": "TEAM_SCOPE_MISMATCH", "message": "resource is no longer accessible for this action"})
-
-    target_team = resolved_team if tool.team_check != "none" else effective_team
-    summary_result = await executor.build_confirmation_summary(
-        tool, path_params=path_params, body_params=body_params, team_id=target_team
+    target_snapshot_valid = (
+        isinstance(effective_team, int)
+        and not isinstance(effective_team, bool)
+        and effective_team > 0
+        and payload_team == effective_team
+        and bool(action.target_team_name_snapshot)
     )
-    if summary_result is None:
-        await conv_svc.expire_pending_now(action_id=action.id, synthetic_result={"status": "expired", "code": "confirmation_summary_unresolvable"})
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"code": "CONFIRMATION_SUMMARY_UNRESOLVABLE", "message": "cannot resolve a stable target for this action"},
+    if conversation.scope_type == "global":
+        target_snapshot_valid = target_snapshot_valid and raw_selector == {
+            "id": effective_team,
+            "name": action.target_team_name_snapshot,
+        }
+
+    if not target_snapshot_valid:
+        await conv_svc.expire_pending_now(
+            action_id=action.id,
+            synthetic_result={"status": "expired", "code": "target_snapshot_invalid"},
         )
-    summary, stable_identity = summary_result
-    new_fingerprint = executor.compute_fingerprint(summary, stable_identity)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "TARGET_TEAM_UNAVAILABLE",
+                "message": "the confirmed target is no longer available",
+            },
+        )
+    try:
+        target_identity = await executor.resolve_team_identity(effective_team)
+    except Exception:
+        logger.exception(
+            "assistant confirm team identity lookup failed team_id=%s",
+            effective_team,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "CONFIRMATION_METADATA_UNAVAILABLE",
+                "message": "team metadata is temporarily unavailable; retry confirmation",
+            },
+        )
+    if target_identity is None:
+        await conv_svc.expire_pending_now(
+            action_id=action.id,
+            synthetic_result={"status": "expired", "code": "target_team_unavailable"},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "TARGET_TEAM_UNAVAILABLE",
+                "message": "the confirmed target is no longer available",
+            },
+        )
+
+    if not await executor.check_permission(
+        tool, user_id=current_user.id, team_id=effective_team, role=current_user.role
+    ):
+        await conv_svc.expire_pending_now(
+            action_id=action.id,
+            synthetic_result={"status": "expired", "code": "permission_denied"},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "TOOL_PERMISSION_DENIED", "message": "insufficient permission"},
+        )
+
+    try:
+        target_state = await executor.revalidate_confirmation_target(
+            tool,
+            conversation=conversation,
+            team_id=effective_team,
+            user_id=current_user.id,
+            role=current_user.role,
+            path_params=path_params,
+            body_params=body_params,
+        )
+    except ConfirmationMetadataUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": exc.error_code,
+                "message": str(exc),
+            },
+        )
+    if isinstance(target_state, RejectionResult):
+        await conv_svc.expire_pending_now(
+            action_id=action.id,
+            synthetic_result={
+                "status": "expired",
+                "code": target_state.code,
+                "message": target_state.message,
+            },
+        )
+        http_status = (
+            status.HTTP_403_FORBIDDEN
+            if target_state.code == "team_mismatch"
+            else status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+        raise HTTPException(
+            status_code=http_status,
+            detail={
+                "code": target_state.code.upper(),
+                "message": target_state.message,
+            },
+        )
+
+    summary = target_state.summary
+    new_fingerprint = target_state.fingerprint
 
     if new_fingerprint != action.confirmation_fingerprint:
         await conv_svc.update_pending_summary_cas(
@@ -601,22 +680,21 @@ async def confirm_action_endpoint(
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail={"code": "ADMISSION_DENIED", "message": "server busy, please retry"})
 
     async def _live_fingerprint_recheck() -> tuple[str, dict]:
-        # Narrow fingerprint TOCTOU: recompute after lease is taken inside claim Tx A.
-        # Resource lookup still uses a separate read session (residual RT-008 risk).
-        # Returns (fingerprint, summary) so claim can attach them to ConfirmationStaleError
-        # for the API to CAS-update the confirmation card (same as pre-claim path).
-        live_summary = await executor.build_confirmation_summary(
-            tool, path_params=path_params, body_params=body_params, team_id=target_team
+        # Re-resolve ownership and fingerprint after the lease is taken inside claim Tx A.
+        live_state = await executor.revalidate_confirmation_target(
+            tool,
+            conversation=conversation,
+            team_id=effective_team,
+            user_id=current_user.id,
+            role=current_user.role,
+            path_params=path_params,
+            body_params=body_params,
         )
-        if live_summary is None:
-            # Treat unresolvable as stale claim failure; outer AssistantError path releases slot.
+        if isinstance(live_state, RejectionResult):
             from app.services.assistant.errors import ConfirmationSummaryUnresolvableError
 
-            raise ConfirmationSummaryUnresolvableError(
-                "cannot resolve a stable target for this action"
-            )
-        summary2, stable2 = live_summary
-        return executor.compute_fingerprint(summary2, stable2), summary2
+            raise ConfirmationSummaryUnresolvableError(live_state.message)
+        return live_state.fingerprint, live_state.summary
 
     try:
         continuation = await conv_svc.claim_pending_for_confirm(
@@ -625,6 +703,8 @@ async def confirm_action_endpoint(
             recomputed_fingerprint=new_fingerprint,
             tool_timeout_seconds=config.tool_timeout_seconds,
             live_fingerprint_recheck=_live_fingerprint_recheck,
+            risk_level=tool.risk_level,
+            target_summary=summary,
         )
     except ConfirmationStaleError as stale_exc:
         # Live recheck (or claim fingerprint check) detected change. Claim Tx A rolled back;
@@ -655,6 +735,9 @@ async def confirm_action_endpoint(
             return _stream_response(conv_svc, turn_id=retry.id, turn_key=retry.turn_key, after_seq=after_seq)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"code": "PENDING_ACTION_NOT_CLAIMABLE", "message": "concurrent confirm race or admission denied"})
     except AssistantError:
+        await supervisor.release_slot()
+        raise
+    except Exception:
         await supervisor.release_slot()
         raise
 

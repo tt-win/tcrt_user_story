@@ -61,6 +61,8 @@ const {
   nextSizeMode,
   assistantWidgetDisabledForView,
   assistantUiLocaleFrom,
+  assistantConversationStorageKey,
+  selectAssistantConversation,
 } = context;
 
 // ---------------------------------------------------------------------- //
@@ -101,6 +103,20 @@ test('assistantUiLocaleFrom：依 i18n → localStorage → <html lang> 取語�
   assert.equal(assistantUiLocaleFrom({ getCurrentLanguage: () => '' }, { getItem: () => '  ' }, ''), null);
 });
 
+test('assistantConversationStorageKey：workspace 切換仍使用單一 global key', () => {
+  assert.equal(assistantConversationStorageKey(), 'tcrt_assistant_conv_global');
+});
+
+test('selectAssistantConversation：沒有 global 時不把 team history 當預設 session', () => {
+  const conversations = [
+    { id: 2, scope_type: 'team' },
+    { id: 1, scope_type: 'global' },
+  ];
+  assert.equal(selectAssistantConversation(conversations, null).id, 1);
+  assert.equal(selectAssistantConversation(conversations, 2).id, 2, '使用者明確開啟的歷史對話可延續');
+  assert.equal(selectAssistantConversation([{ id: 3, scope_type: 'team' }], null), null);
+});
+
 // ---------------------------------------------------------------------- //
 // escapeHtml
 // ---------------------------------------------------------------------- //
@@ -119,7 +135,7 @@ test('toolActionI18nKey：合法工具使用 action key，異常 identifier 不�
 });
 
 test('所有 registry 工具皆有三語明確動作名稱，且不等於 method identifier', () => {
-  assert.equal(registryToolNames.size, 70, '工具擷取必須覆蓋完整 registry（含 list_skills/get_skill）');
+  assert.equal(registryToolNames.size, 77, '工具擷取必須覆蓋完整 registry（含 global / knowledge 工具）');
   for (const [locale, translations] of Object.entries(localeSources)) {
     const actions = translations.assistant.action;
     for (const toolName of registryToolNames) {
@@ -319,14 +335,13 @@ test('formatConfirmTargetLine：target_label 內的 HTML/腳本字元會被 esca
   assert.ok(line.includes('&lt;img'), 'target_label 應已被 escapeHtml 處理');
 });
 
-test('formatConfirmTeamLine：有 team_name 才輸出，且 escape team 名稱', () => {
-  // 全域對話沒有綁定 team，使用者必須從卡片看出動作會落在哪個 team
-  // （spec assistant-action-confirmation「confirm 的有效 team 取自 turn 快照」）。
-  assert.equal(formatConfirmTeamLine({ team_id: 1, team_name: 'ART' }, fakeT), 'Team: ART');
+test('formatConfirmTeamLine：顯示可區分重名的 team id，且 escape team 名稱', () => {
+  // 全域對話沒有綁定 team；名稱可能重複，因此確認卡同時顯示 server-resolved id。
+  assert.equal(formatConfirmTeamLine({ team_id: 1, team_name: 'ART' }, fakeT), 'Team: ART (#1)');
   assert.equal(formatConfirmTeamLine({ target_type: 'new' }, fakeT), '', '沒有 team_name 時不輸出空行內容');
   assert.equal(formatConfirmTeamLine(null, fakeT), '');
-  const line = formatConfirmTeamLine({ team_name: '<img src=x onerror=alert(1)>' }, fakeT);
-  assert.ok(!line.includes('<img') && line.includes('&lt;img'), 'team_name 必須經 escapeHtml');
+  const line = formatConfirmTeamLine({ team_id: 2, team_name: '<img src=x onerror=alert(1)>' }, fakeT);
+  assert.ok(!line.includes('<img') && line.includes('&lt;img') && line.includes('#2'), 'team_name 必須經 escapeHtml 並保留 id');
 });
 
 test('formatConfirmTargetLine：LLM 文字不得混入摘要（僅吃 summary 欄位）', () => {
@@ -542,11 +557,11 @@ test('done/cancelled/error 會 prune 空 assistant shell（confirm continuation 
   assert.match(source, /evt\.type === 'error'[\s\S]*?pruneEmptyAssistantShell\(assistantNodeRef\.node\)/);
 });
 
-test('refreshHistoryMenu：無 team 時採用 assistant.historyTitleGlobal 避免出現空括號 ()', () => {
+test('refreshHistoryMenu：workspace 切換仍固定使用 global history title', () => {
   assert.match(source, /data-i18n-title="assistant\.historyTitleGlobal"/);
   assert.match(source, /data-i18n="assistant\.historyTitleGlobal"/);
   assert.match(source, /t\('assistant\.historyTitleGlobal', \{\}, 'Recent conversations'\)/);
-  assert.match(source, /t\('assistant\.historyTitle', \{ team: team\.name \}, `Recent conversations \(\${team\.name}\)`\)/);
+  assert.doesNotMatch(source, /t\('assistant\.historyTitle',/);
 });
 
 // ---------------------------------------------------------------------- //

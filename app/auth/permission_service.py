@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.database_models import User, Team
+from app.models.team import TeamStatus
 from app.auth.models import UserRole, PermissionType, PermissionCheck
 from app.config import PROJECT_ROOT, get_settings
 from app.db_access.main import MainAccessBoundary, get_main_access_boundary
@@ -557,7 +558,9 @@ class PermissionService:
                 return []
 
             async def _load_team_ids(session: AsyncSession) -> List[int]:
-                result = await session.execute(select(Team.id))
+                result = await session.execute(
+                    select(Team.id).where(Team.status == TeamStatus.ACTIVE)
+                )
                 return [team_id for team_id, in result.fetchall()]
 
             return await self._run_read(_load_team_ids)

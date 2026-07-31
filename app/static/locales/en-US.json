@@ -4021,7 +4021,14 @@
       "upload_test_case_attachment": "Upload an attachment to this test case",
       "list_test_run_item_refs": "List test run item refs",
       "list_test_case_refs": "List test case refs",
-      "batch_update_test_run_items_by_filter": "Batch-update run items by filter"
+      "batch_update_test_run_items_by_filter": "Batch-update run items by filter",
+      "analyze_knowledge_impact": "Analyze knowledge impact",
+      "describe_capabilities": "Describe available assistant capabilities",
+      "generate_chunk_actions": "Generate actions for this batch chunk",
+      "get_test_case_global": "Get test case details across teams",
+      "plan_batch": "Plan a batch operation",
+      "search_knowledge": "Search test knowledge",
+      "search_test_cases_global": "Search test cases across teams"
     },
     "warning": {
       "confirm_write": "This action requires your confirmation before it runs.",

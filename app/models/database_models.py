@@ -2542,14 +2542,6 @@ class AssistantTurn(Base):
     )
     turn_seq = Column(Integer, nullable=False)  # 由 conversation.next_turn_seq 原子配發
     turn_key = Column(String(64), nullable=False, unique=True)
-    # 全域對話的目標 team 快照（前端工作區 team，伺服器驗證後寫入）；建立後不可變，
-    # confirm continuation 由 source turn 繼承。NULL＝無 context team → 只提供 discovery 工具。
-    context_team_id = Column(
-        Integer,
-        ForeignKey("teams.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
     client_message_id = Column(String(64), nullable=False)
     request_fingerprint = Column(String(64), nullable=False)  # normalized text + ordered attachment digests
     status = Column(
@@ -2646,6 +2638,7 @@ class AssistantPendingAction(Base):
             "status",
             "execution_deadline",
         ),
+        Index("ix_assistant_pending_actions_target_team_id", "target_team_id"),
     )
 
     id = Column(Integer, primary_key=True)
@@ -2661,6 +2654,11 @@ class AssistantPendingAction(Base):
     execution_payload_encrypted = Column(
         Boolean, nullable=False, default=False, server_default=false()
     )
+    # Global mutation 的權威目標。歷史終態資料可為 NULL；pending/executing 在 runtime 必須非空。
+    # 不設 FK：team 刪除後仍保留不可變 id 供確認 fail-closed 與 audit 追查。
+    target_team_id = Column(Integer, nullable=True)
+    target_team_name_snapshot = Column(String(100), nullable=True)
+    target_selector_json = Column(medium_text_type(), nullable=True)
     confirmation_summary_json = Column(medium_text_type(), nullable=False)
     confirmation_fingerprint = Column(String(64), nullable=False)
     status = Column(
@@ -2695,7 +2693,8 @@ class AssistantToolExecution(Base):
     source_turn_key = Column(String(64), nullable=False)  # 不可變副本，追蹤用（每次執行必源自 turn）
     execution_key = Column(String(64), nullable=False, unique=True)  # 伺服器生成，at-most-once 主鍵
     user_id = Column(Integer, nullable=False, index=True)
-    team_id = Column(Integer, nullable=True)
+    team_id = Column(Integer, nullable=True)  # server-resolved target id
+    target_selector_json = Column(medium_text_type(), nullable=True)  # LLM 原始 selector，供取證比對
     llm_tool_call_id = Column(String(64), nullable=False)  # server-normalized assistant/tool 配對鍵
     provider_tool_call_id = Column(String(64), nullable=True)  # provider 原始 call id，僅追蹤用
     tool_name = Column(String(100), nullable=False)

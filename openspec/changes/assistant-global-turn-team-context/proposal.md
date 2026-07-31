@@ -1,37 +1,41 @@
 ## Why
 
-助手目前對**所有角色**都無法執行任何寫入操作。前端唯一的建立對話路徑（`assistant-widget.js` 的 `createConversation`）固定送 `scope_type: 'global'`，而 agent 迴圈對全域對話只提供 `discovery_only()` 的 10 個工具，confirm 端點更會對全域對話直接回 409 `SCOPE_INVALID`——77 個工具中有 67 個（19 個 `team_check=inject`、48 個 `resolve`）在實際產品中永遠不可用。使用者以 admin 角色要求「在 ART team 建立一個 test case set」仍被拒，切換工作區 team 也無效，因為對話 scope 不會改變。
+AI Assistant 的 conversation 已是全域 session，但 2026-07-27 的 context-team 實作把「目前頁面 team」快照到每個 turn，並以該值過濾所有 team-scoped 工具。結果是：在無 team 的頁面只能使用 discovery 工具；在 ART 頁面也不能直接查詢 CID 的 test case sets、計數或 runs。這把全域對話重新綁回頁面導覽狀態，且將原本只應保護 write/delete 目標的限制錯誤套用到 read。
 
-這是 `global-assistant-session` 只完成工件、未實作 runtime 的缺口：對話已全域化，但工具執行仍假設對話綁定單一 team。
+真正的全域 Assistant 應讓使用者在任何頁面查詢任一 team，並能在對話中明確指定 mutation 目標；頁面 team 不得成為 routing 或 authorization input。本專案目前的授權是**全域角色制**：`get_user_accessible_teams()` 對有效使用者回傳全部 team，`check_team_permission()` 只依角色判斷，並不存在 per-team membership isolation。此變更的安全目標因此是防止錯誤 routing、提示注入造成的目標污染與不透明 mutation，不得把既有 API 誤述為 per-team 圍堵。
 
 ## What Changes
 
-- 每個 turn 帶入一個 **context team**：前端隨訊息送出目前工作區 team，伺服器將其**快照**在 turn 上（新增 `assistant_turns.context_team_id`）。context team 由前端工作區狀態決定，**MUST NOT** 成為 LLM 可控參數（維持 `assistant-tool-execution`「team_id 不進 LLM schema」的不變量）。
-- `team_check="inject"` 工具在全域對話改為注入 turn 的 context team（原本注入 `conversation.team_id`）；仍先對該 team 做 `check_team_permission`。
-- `team_check="resolve"` 工具在全域對話改為：由資源 id 反解 team → 驗證該 team 在使用者可存取清單內 → 對該 team 檢權；移除「必須等於 conversation.team_id」的比對。
-- confirm 端點移除全域對話的 `SCOPE_INVALID` 硬拒，改用 pending action 所屬 turn 的 context team 快照（不可變）重新檢權與注入；**BREAKING**（僅對內部 API 語意）：全域對話的 confirm 由必定 409 變為可成功。
-- 確認卡與工具結果 MUST 顯示目標 team 名稱（`snapshot_team_name`），使用者才能確認「動到哪個 team」；跨 team 誤操作的風險靠此可見性 + context team 快照控制。
-- 使用者訊息指名的 team 與 context team 不一致時（例如工作區在 ART 但說「在 CID 建立」），助手 MUST 反問或要求切換工作區，MUST NOT 自行選一個 team 執行。
-- capability context（capability `assistant-agent-loop`）更新：全域對話有 context team 時不再回報 `global_scope`；沒有可用 context team 時原因改為 `no_team_context`，補救為「在介面選擇目標 team 的工作區後重試」。
-- 非目標：不恢復 team-bound 對話入口；不放寬角色→權限映射；不讓 LLM 指定 team_id；不改確認卡的兩級風險分類；助手面板的唯讀 badge 仍不在範圍內。
+- 移除送訊息 API 與前端的 `context_team_id`；global turn 不再快照或依賴目前頁面 team。
+- 全域回合依角色提供完整工具目錄，不因缺少頁面 team 隱藏 team-scoped read/write 工具。
+- 所有 global conversation 的 team-scoped tool schema 新增必填 `target_team: {id, name}`。模型必須先用 `list_teams` 取得伺服器提供的精確 pair；不得自行猜測。
+- executor 將 `target_team` 視為未信任輸入：驗證 shape、team id 存在、目前 team name 一致、角色 permission 與 resource ownership，且不把 selector 轉送到既有 API。這些檢查防止錯誤目標與資源不一致，不宣稱提供目前不存在的 per-team data isolation。
+- resource-resolved 工具必須驗證資源實際 team 與 `target_team` 完全一致；不一致即 fail-closed，不允許模型靠 resource id 靜默改變目標。
+- read 可明確作用於任一 team，結果與 journal 記錄實際 team；不要求切換頁面。
+- write/delete 在 prepare 階段解析出 authoritative target team，建立 pending action 時持久化到 `assistant_pending_actions.target_team_id`。confirm request 不接受 team 參數，且只使用 pending snapshot 重新檢權、重算 summary/fingerprint 與執行。
+- 確認卡必須顯示伺服器 lookup 的 team 名稱與 id，缺任一權威 target 資訊即停用確認；team rename 觸發 stale review、team deletion 或 permission loss 使 action expire。
+- 移除 `assistant_turns.context_team_id` 及 `no_team_context` 能力限制；migration 以既有 confirmation summary 安全回填尚存 pending 的 target，無法回填者 fail-closed expire。
+- 全域對話 localStorage 只保留一個 global active conversation key，不再按目前頁面 team 分流。
+- system prompt 改為：READ 可跨任何可存取 team；WRITE/DELETE 目標不明才反問；不得要求使用者切換 team 頁面。
 
 ## Capabilities
 
 ### New Capabilities
 
-（無新 capability；行為歸屬既有的 assistant 對話／工具執行／確認卡契約。）
+（無；沿用既有 Assistant conversation、agent loop、tool execution 與 confirmation capability。）
 
 ### Modified Capabilities
 
-- `assistant-tool-execution`: `team_id` 注入來源由「對話綁定」擴充為「對話綁定或 turn context team 快照」；`resolve` 類工具的 team 比對由「等於對話 team」改為「屬於使用者可存取 team 且通過該 team 檢權」。
-- `assistant-action-confirmation`: pending action 的執行 team 取自其 turn 的 context team 快照（不可變）；確認卡 MUST 顯示目標 team 名稱；全域對話不再一律 `SCOPE_INVALID`。
-- `assistant-conversations`: 送出訊息時可帶 context team；turn 持久化其快照。
-- `assistant-agent-loop`: 全域對話在具備 context team 時 MUST 提供該 team 的 team-scoped 工具（不再限於 discovery）；capability context 的原因改為 `no_team_context`；指名 team 與 context team 衝突時 MUST 反問。
+- `assistant-conversations`: global session 與 turn 完全脫離頁面 team；pending action 持久化 mutation target。
+- `assistant-agent-loop`: global tool catalog 只依角色過濾；team-scoped 呼叫使用明確 `target_team`。
+- `assistant-tool-execution`: server-resolved selector、可存取性、permission 與 resource-team equality 成為權威 routing boundary。
+- `assistant-action-confirmation`: confirm 的唯一 team 來源改為 pending action 的 immutable `target_team_id`。
+- `assistant-widget-ui`: active global conversation 不再按 workspace team 分流，送訊息不再傳頁面 team。
 
 ## Impact
 
-- 資料庫：`alembic/` 新增 migration 為 `assistant_turns` 加 `context_team_id`（nullable、FK `teams.id` ON DELETE SET NULL）；非破壞性，既有 turn 為 NULL。需檢查 `database_init.py`、bootstrap 與測試 fixture，並確認 SQLite / MySQL 8 / PostgreSQL 16 皆可套用。
-- 後端：`app/api/assistant.py`（送訊息、confirm）、`app/services/assistant/conversation_service.py`（turn 建立與讀取）、`tool_executor.py`（`resolve_team`／`check_permission`／loopback 注入）、`capability_context.py`、`app/services/assistant/projection.py`（team 名稱可見性）。
-- 前端：`app/static/js/assistant-widget.js` 送出訊息時附帶目前工作區 team、確認卡顯示 team 名稱；三語系文案（`app/static/locales/*.json`）。
-- 安全：跨 team 寫入的把關由「對話綁定」換成「turn 快照 + 每次執行對該 team 檢權」；audit（`AssistantToolExecution.team_id`）記錄實際生效 team。
-- 相依：本變更假設 `assistant-permission-aware-capability-context` 已合併（capability context 的 `global_scope` 原因由本變更改寫）。
+- DB：main Alembic migration 新增 `assistant_pending_actions.target_team_id`（nullable historical column、open action 必須非空、無 FK以保留刪除後的權威 id）、`target_team_name_snapshot` 與 `target_selector_json`，並為 journal 加 `target_selector_json`；安全回填後移除 `assistant_turns.context_team_id`。
+- Backend：`assistant.py`、`conversation_service.py`、`assistant_agent_service.py`、`tool_registry.py`、`tool_executor.py`、`capability_context.py` 與 model。
+- Frontend：`assistant-widget.js` 的 send payload、conversation localStorage 與 team-change 行為。
+- Prompt/spec/tests：移除 page-context remediation，加入 selector、duplicate/stale/mismatch/authorization/confirm adversarial coverage。
+- Security：LLM 可提出 target pair，但永遠不是信任來源；server 必須核對 DB identity、角色 permission 與 resource ownership equality。因現行授權模型沒有 per-team isolation，write/delete 的主要防誤操作控制是 immutable pending target、顯示 team name+id 且 fail-closed 的確認卡、fingerprint 與 audit selector→resolved-id 取證。
