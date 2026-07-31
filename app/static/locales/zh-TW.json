@@ -3722,9 +3722,13 @@
   "appToken": {
     "menuLabel": "App Token",
     "modalTitle": "App Token",
-    "selectTeamLabel": "選擇團隊",
-    "selectTeamPlaceholder": "請選擇要管理的團隊",
-    "selectTeamHelp": "選擇團隊後才會載入 App Token。",
+    "allTeams": "所有團隊",
+    "ownerTeam": "所屬團隊",
+    "selectOwnerTeamLabel": "選擇所屬團隊",
+    "selectOwnerTeamPlaceholder": "請選擇所屬團隊",
+    "selectOwnerTeamHelp": "選擇此權杖所屬的團隊。",
+    "teamContextRequired": "請選擇團隊內容以載入 App Token。",
+    "teamFallback": "團隊 #{id}",
     "noTeamsAvailable": "目前沒有可管理的團隊。",
     "loadTeamsFailedWithReason": "載入團隊失敗：{reason}",
     "tokenList": "權杖列表",
@@ -3760,6 +3764,7 @@
     "noTokens": "無 App Token",
     "loading": "載入中...",
     "nameRequired": "權杖名稱為必填項",
+    "ownerTeamRequired": "請選擇所屬團隊",
     "scopeRequired": "至少需要選擇一個權限範圍",
     "statusActive": "啟用中",
     "statusRevoked": "已撤銷",
@@ -3769,7 +3774,8 @@
     "loadFailedWithReason": "載入權杖失敗：{reason}",
     "createFailedWithReason": "建立權杖失敗：{reason}",
     "revokeFailedWithReason": "撤銷權杖失敗：{reason}",
-    "rotateFailedWithReason": "輪替權杖失敗：{reason}"
+    "rotateFailedWithReason": "輪替權杖失敗：{reason}",
+    "operationInProgress": "目前 App Token 操作進行中，請等待操作完成。"
   },
   "login": {
     "pageTitle": "登入 - Test Case Repository Web Tool",

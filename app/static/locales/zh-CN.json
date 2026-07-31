@@ -3722,9 +3722,13 @@
   "appToken": {
     "menuLabel": "应用令牌",
     "modalTitle": "App Token",
-    "selectTeamLabel": "选择团队",
-    "selectTeamPlaceholder": "请选择要管理的团队",
-    "selectTeamHelp": "选择团队后才会加载 App Token。",
+    "allTeams": "所有团队",
+    "ownerTeam": "所属团队",
+    "selectOwnerTeamLabel": "选择所属团队",
+    "selectOwnerTeamPlaceholder": "请选择所属团队",
+    "selectOwnerTeamHelp": "选择此令牌所属的团队。",
+    "teamContextRequired": "请选择团队上下文以加载 App Token。",
+    "teamFallback": "团队 #{id}",
     "noTeamsAvailable": "目前没有可管理的团队。",
     "loadTeamsFailedWithReason": "加载团队失败：{reason}",
     "tokenList": "令牌列表",
@@ -3760,6 +3764,7 @@
     "noTokens": "无应用令牌",
     "loading": "加载中...",
     "nameRequired": "令牌名称为必填项",
+    "ownerTeamRequired": "请选择所属团队",
     "scopeRequired": "至少需要选择一个权限范围",
     "statusActive": "启用中",
     "statusRevoked": "已撤销",
@@ -3769,7 +3774,8 @@
     "loadFailedWithReason": "加载令牌失败：{reason}",
     "createFailedWithReason": "创建令牌失败：{reason}",
     "revokeFailedWithReason": "撤销令牌失败：{reason}",
-    "rotateFailedWithReason": "轮换令牌失败：{reason}"
+    "rotateFailedWithReason": "轮换令牌失败：{reason}",
+    "operationInProgress": "当前 App Token 操作正在进行，请等待操作完成。"
   },
   "login": {
     "pageTitle": "登录 - Test Case Repository Web Tool",

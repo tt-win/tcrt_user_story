@@ -19,6 +19,7 @@ from app.models.database_models import (
     User,
     UserTeamPermission,
 )
+from app.models.team import TeamStatus
 from app.testsuite.db_test_helpers import (
     create_managed_test_database,
     dispose_managed_test_database,
@@ -226,6 +227,56 @@ class TestCreateAppToken:
             assert resp.status_code == 403
 
 
+    def test_team_scoped_admin_cannot_cross_team(self, temp_db):
+        with temp_db() as session:
+            data = _seed_data(session, role=UserRole.ADMIN)
+            foreign_team = Team(
+                name="Foreign Team",
+                description="Foreign",
+                wiki_token="secret-foreign",
+                test_case_table_id="tbl-foreign",
+            )
+            session.add(foreign_team)
+            session.commit()
+            foreign_team_id = foreign_team.id
+        _override_user(data)
+
+        with TestClient(app) as client:
+            own_token = client.post(
+                f"/api/teams/{data['team_id']}/app-tokens",
+                json={"name": "Own Token", "scopes": ["test_case:read"]},
+                headers=_bearer_jwt(),
+            ).json()
+            token_id = own_token["id"]
+            headers = _bearer_jwt()
+            team_list = client.get("/api/teams/", headers=headers)
+            assert team_list.status_code == 200
+            manage_flags = {
+                team["id"]: team["can_manage_app_tokens"]
+                for team in team_list.json()
+            }
+            assert manage_flags[data["team_id"]] is True
+            assert manage_flags[foreign_team_id] is False
+
+            assert client.get(
+                f"/api/teams/{foreign_team_id}/app-tokens",
+                headers=headers,
+            ).status_code == 403
+            assert client.post(
+                f"/api/teams/{foreign_team_id}/app-tokens",
+                json={"name": "Foreign Token", "scopes": ["test_case:read"]},
+                headers=headers,
+            ).status_code == 403
+            assert client.post(
+                f"/api/teams/{foreign_team_id}/app-tokens/{token_id}/rotate",
+                headers=headers,
+            ).status_code == 403
+            assert client.delete(
+                f"/api/teams/{foreign_team_id}/app-tokens/{token_id}",
+                headers=headers,
+            ).status_code == 403
+
+
 class TestListAppTokens:
     def test_list_returns_metadata_only(self, temp_db):
         with temp_db() as session:
@@ -376,8 +427,21 @@ class TestSuperAdminAppTokens:
         _override_user(data)
 
         with TestClient(app) as client:
-            resp = client.get("/api/app-tokens", headers=_bearer_jwt())
+            headers = _bearer_jwt()
+            resp = client.get("/api/app-tokens", headers=headers)
             assert resp.status_code == 403
+            create_resp = client.post(
+                "/api/app-tokens",
+                json={
+                    "owner_team_id": 1,
+                    "name": "Should Be Denied",
+                    "scopes": ["test_case:read"],
+                },
+                headers=headers,
+            )
+            assert create_resp.status_code == 403
+            rotate_resp = client.post("/api/app-tokens/1/rotate", headers=headers)
+            assert rotate_resp.status_code == 403
 
     def test_super_admin_can_revoke_any_token(self, temp_db):
         with temp_db() as session:
@@ -408,3 +472,131 @@ class TestSuperAdminAppTokens:
             resp = client.delete(f"/api/app-tokens/{token_id}", headers=_bearer_jwt())
             assert resp.status_code == 200
             assert resp.json()["status"] == "revoked"
+
+
+    def test_super_admin_global_create_and_rotate(self, temp_db, monkeypatch):
+        from app.api import app_tokens as app_tokens_api
+
+        audit_calls = []
+
+        async def _capture_audit(**kwargs):
+            audit_calls.append(kwargs)
+
+        monkeypatch.setattr(app_tokens_api.audit_service, "log_action", _capture_audit)
+        with temp_db() as session:
+            data = _seed_data(session, role=UserRole.SUPER_ADMIN, team_permission=None)
+            target_team = Team(
+                name="Global Target Team",
+                description="Target",
+                wiki_token="secret-target",
+                test_case_table_id="tbl-target",
+            )
+            session.add(target_team)
+            session.commit()
+            target_team_id = target_team.id
+        _override_user(data)
+
+        with TestClient(app) as client:
+            create_resp = client.post(
+                "/api/app-tokens",
+                json={
+                    "owner_team_id": target_team_id,
+                    "name": "Global Token",
+                    "scopes": ["test_case:read"],
+                },
+                headers=_bearer_jwt(),
+            )
+            assert create_resp.status_code == 201
+            token_id = create_resp.json()["id"]
+            old_prefix = create_resp.json()["token_prefix"]
+
+            rotate_resp = client.post(
+                f"/api/app-tokens/{token_id}/rotate",
+                headers=_bearer_jwt(),
+            )
+            assert rotate_resp.status_code == 200
+            assert rotate_resp.json()["raw_token"].startswith("tcrt_app_")
+            assert rotate_resp.json()["token_prefix"] != old_prefix
+
+            list_resp = client.get("/api/app-tokens", headers=_bearer_jwt())
+            assert list_resp.status_code == 200
+            item = next(item for item in list_resp.json()["items"] if item["id"] == token_id)
+            assert item["owner_team_id"] == target_team_id
+            assert item["owner_team_name"] == "Global Target Team"
+            assert "raw_token" not in item
+            assert "token_hash" not in item
+            assert [call["details"]["management_scope"] for call in audit_calls] == ["global", "global"]
+
+    def test_non_super_admin_cannot_use_global_create(self, temp_db):
+        with temp_db() as session:
+            data = _seed_data(session, role=UserRole.ADMIN)
+        _override_user(data)
+
+        with TestClient(app) as client:
+            resp = client.post(
+                "/api/app-tokens",
+                json={
+                    "owner_team_id": data["team_id"],
+                    "name": "Should Fail",
+                    "scopes": ["test_case:read"],
+                },
+                headers=_bearer_jwt(),
+            )
+            assert resp.status_code == 403
+
+    def test_team_scoped_rotate_rejects_mismatched_owner(self, temp_db):
+        with temp_db() as session:
+            data = _seed_data(session, role=UserRole.SUPER_ADMIN, team_permission=None)
+            foreign_team = Team(
+                name="Foreign Team",
+                description="Foreign",
+                wiki_token="secret-foreign",
+                test_case_table_id="tbl-foreign",
+            )
+            session.add(foreign_team)
+            session.commit()
+            foreign_team_id = foreign_team.id
+        _override_user(data)
+
+        with TestClient(app) as client:
+            create_resp = client.post(
+                f"/api/teams/{data['team_id']}/app-tokens",
+                json={"name": "Owner Bound", "scopes": ["test_case:read"]},
+                headers=_bearer_jwt(),
+            )
+            token_id = create_resp.json()["id"]
+            rotate_resp = client.post(
+                f"/api/teams/{foreign_team_id}/app-tokens/{token_id}/rotate",
+                headers=_bearer_jwt(),
+            )
+            assert rotate_resp.status_code == 404
+
+    def test_global_list_keeps_inactive_owner_visible(self, temp_db):
+        with temp_db() as session:
+            data = _seed_data(session, role=UserRole.SUPER_ADMIN, team_permission=None)
+            inactive_team = Team(
+                name="Inactive Team",
+                description="Inactive",
+                wiki_token="secret-inactive",
+                test_case_table_id="tbl-inactive",
+                status=TeamStatus.INACTIVE,
+            )
+            session.add(inactive_team)
+            session.commit()
+            inactive_team_id = inactive_team.id
+        _override_user(data)
+
+        with TestClient(app) as client:
+            create_resp = client.post(
+                f"/api/teams/{inactive_team_id}/app-tokens",
+                json={"name": "Inactive Owner Token", "scopes": ["test_case:read"]},
+                headers=_bearer_jwt(),
+            )
+            assert create_resp.status_code == 201
+            list_resp = client.get("/api/app-tokens", headers=_bearer_jwt())
+            assert list_resp.status_code == 200
+            item = next(
+                item for item in list_resp.json()["items"]
+                if item["id"] == create_resp.json()["id"]
+            )
+            assert item["owner_team_name"] == "Inactive Team"

@@ -2,7 +2,7 @@
     max-width: min(1140px, calc(100% - 2rem));
 }
 
-#appTokenModal .app-token-team-picker {
+#appTokenModal .app-token-owner-team-picker {
     max-width: 28rem;
     margin-bottom: 1rem;
 }
@@ -19,36 +19,41 @@
 }
 
 #appTokenModal .app-token-table {
-    min-width: 940px;
+    min-width: 1080px;
     table-layout: fixed;
 }
 
 #appTokenModal .app-token-table__name {
-    width: 16%;
+    width: 15%;
+}
+
+#appTokenModal .app-token-table__team {
+    width: 15%;
 }
 
 #appTokenModal .app-token-table__prefix {
-    width: 14%;
+    width: 12%;
 }
 
 #appTokenModal .app-token-table__status {
-    width: 10%;
+    width: 9%;
 }
 
 #appTokenModal .app-token-table__scopes {
-    width: 22%;
+    width: 19%;
 }
 
 #appTokenModal .app-token-table__expires-at {
-    width: 11%;
+    width: 10%;
 }
 
 #appTokenModal .app-token-table__last-used-at {
-    width: 14%;
+    width: 12%;
 }
 
 #appTokenModal .app-token-table__actions {
-    width: 13%;
+    width: 10%;
+    min-width: 7.5rem;
 }
 
 #appTokenModal .app-token-table th {
@@ -58,13 +63,18 @@
 #appTokenModal .app-token-table td:nth-child(1),
 #appTokenModal .app-token-table td:nth-child(2),
 #appTokenModal .app-token-table td:nth-child(3),
-#appTokenModal .app-token-table td:nth-child(7) {
+#appTokenModal .app-token-table td:nth-child(4) {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-#appTokenModal .app-token-table td:nth-child(4) {
+#appTokenModal .app-token-table td:nth-child(8) {
+    overflow: visible;
+    white-space: nowrap;
+}
+
+#appTokenModal .app-token-table td:nth-child(5) {
     overflow-wrap: anywhere;
 }
 
@@ -74,7 +84,7 @@
         margin: 0.5rem auto;
     }
 
-    #appTokenModal .app-token-team-picker {
+    #appTokenModal .app-token-owner-team-picker {
         max-width: none;
     }
 }

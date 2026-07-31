@@ -3722,9 +3722,13 @@
   "appToken": {
     "menuLabel": "App Tokens",
     "modalTitle": "App Token",
-    "selectTeamLabel": "Team",
-    "selectTeamPlaceholder": "Select a team to manage",
-    "selectTeamHelp": "App Tokens are loaded only after you select a team.",
+    "allTeams": "All teams",
+    "ownerTeam": "Owner Team",
+    "selectOwnerTeamLabel": "Owner team",
+    "selectOwnerTeamPlaceholder": "Select an owner team",
+    "selectOwnerTeamHelp": "Choose which team owns this token.",
+    "teamContextRequired": "Select a team context to load App Tokens.",
+    "teamFallback": "Team #{id}",
     "noTeamsAvailable": "There are no teams available to manage.",
     "loadTeamsFailedWithReason": "Failed to load teams: {reason}",
     "tokenList": "Token List",
@@ -3760,6 +3764,7 @@
     "noTokens": "No app tokens",
     "loading": "Loading...",
     "nameRequired": "Token name is required",
+    "ownerTeamRequired": "Please select an owner team",
     "scopeRequired": "At least one scope is required",
     "statusActive": "Active",
     "statusRevoked": "Revoked",
@@ -3769,7 +3774,8 @@
     "loadFailedWithReason": "Failed to load tokens: {reason}",
     "createFailedWithReason": "Failed to create token: {reason}",
     "revokeFailedWithReason": "Failed to revoke token: {reason}",
-    "rotateFailedWithReason": "Failed to rotate token: {reason}"
+    "rotateFailedWithReason": "Failed to rotate token: {reason}",
+    "operationInProgress": "Please wait for the current App Token operation to finish."
   },
   "login": {
     "pageTitle": "Login - Test Case Repository Web Tool",

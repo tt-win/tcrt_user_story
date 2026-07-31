@@ -234,12 +234,12 @@ function renderTeamCards() {
                                             <i class="fas fa-project-diagram me-2"></i>User Story Map
                                         </button>
                                     </li>
-                                    <li><hr class="dropdown-divider"></li>
+                                    ${team.can_manage_app_tokens ? `<li><hr class="dropdown-divider"></li>
                                     <li>
-                                        <button class="dropdown-item" type="button" onclick="openAppTokenModal(${team.id}, '${escapeHtml(team.name)}')">
+                                        <button class="dropdown-item" type="button" data-app-token-team-id="${team.id}" data-app-token-team-name="${escapeHtml(team.name)}">
                                             <i class="fas fa-key me-2"></i><span data-i18n="appToken.menuLabel">App Tokens</span>
                                         </button>
-                                    </li>
+                                    </li>` : ''}
                                 </ul>
                             </div>
                             <button class="btn btn-secondary btn-sm" style="flex: 1;" onclick="editTeam(${team.id})">
@@ -256,6 +256,17 @@ function renderTeamCards() {
     `).join('');
 
     container.innerHTML = teamsHtml;
+    container.querySelectorAll('[data-app-token-team-id]').forEach(button => {
+        button.addEventListener('click', () => {
+            const teamId = Number(button.dataset.appTokenTeamId);
+            if (
+                !Number.isInteger(teamId)
+                || teamId <= 0
+                || typeof window.openAppTokenModal !== 'function'
+            ) return;
+            window.openAppTokenModal(teamId, button.dataset.appTokenTeamName || '');
+        });
+    });
 
     // Retranslate the newly added content only within container
     if (window.i18n && window.i18n.isReady()) {

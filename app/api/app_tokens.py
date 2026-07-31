@@ -17,12 +17,18 @@ from app.auth.app_token_dependencies import (
     generate_app_token,
 )
 from app.auth.dependencies import get_current_user, require_super_admin
-from app.auth.models import PermissionType
-from app.auth.permission_service import permission_service
+from app.auth.models import PermissionType, UserRole
 from app.database import get_db
 from app.db_access.main import create_main_access_boundary_for_session
 from app.models.app_token import ALL_APP_TOKEN_SCOPES, APP_TOKEN_DEFAULT_EXPIRY_DAYS
-from app.models.database_models import TeamAppToken, TeamAppTokenStatus, User
+from app.models.database_models import (
+    Team,
+    TeamAppToken,
+    TeamAppTokenStatus,
+    User,
+    UserTeamPermission,
+)
+from app.models.team import TeamStatus
 from app.services.observability import Impact, Outcome
 
 logger = logging.getLogger(__name__)
@@ -42,11 +48,16 @@ class AppTokenCreateRequest(BaseModel):
     )
 
 
+class SuperAdminAppTokenCreateRequest(AppTokenCreateRequest):
+    owner_team_id: int = Field(..., gt=0)
+
+
 class AppTokenResponse(BaseModel):
     id: int
     name: str
     description: Optional[str] = None
     owner_team_id: int
+    owner_team_name: Optional[str] = None
     token_prefix: str
     status: str
     scopes: List[str] = Field(default_factory=list)
@@ -97,7 +108,10 @@ def _compute_expires_at(expires_in_days: Optional[int]) -> Optional[datetime]:
     return datetime.utcnow() + timedelta(days=expires_in_days)
 
 
-def _to_response(token: TeamAppToken) -> AppTokenResponse:
+def _to_response(
+    token: TeamAppToken,
+    owner_team_name: Optional[str] = None,
+) -> AppTokenResponse:
     scopes = []
     if token.scopes_json:
         try:
@@ -112,6 +126,7 @@ def _to_response(token: TeamAppToken) -> AppTokenResponse:
         name=token.name,
         description=token.description,
         owner_team_id=token.owner_team_id,
+        owner_team_name=owner_team_name,
         token_prefix=token.token_prefix,
         status=status_value,
         scopes=scopes,
@@ -129,16 +144,37 @@ async def _require_team_admin(
     current_user: User,
     db: AsyncSession,
 ) -> User:
-    permission_check = await permission_service.check_team_permission(
-        current_user.id, team_id, PermissionType.ADMIN, current_user.role
+    role = (
+        current_user.role.value
+        if isinstance(current_user.role, UserRole)
+        else str(current_user.role)
     )
-    if not permission_check.has_permission:
+    if role == UserRole.SUPER_ADMIN.value:
+        return current_user
+
+    boundary = create_main_access_boundary_for_session(db)
+
+    async def _load_permission(session: AsyncSession):
+        result = await session.execute(
+            select(UserTeamPermission.permission).where(
+                UserTeamPermission.user_id == current_user.id,
+                UserTeamPermission.team_id == team_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    permission = await boundary.run_read(_load_permission)
+    permission_value = (
+        permission.value
+        if isinstance(permission, PermissionType)
+        else str(permission)
+    )
+    if permission_value != PermissionType.ADMIN.value:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": "INSUFFICIENT_PERMISSION", "message": "Team admin permission required"},
         )
     return current_user
-
 
 async def _audit_token_action(
     request: Request,
@@ -150,6 +186,7 @@ async def _audit_token_action(
     event_code: str = "tcrt.audit.legacy.generic",
     outcome: Outcome = Outcome.SUCCESS,
     impact: Impact = Impact.ROUTINE,
+    global_scope: bool = False,
 ) -> None:
     try:
         await audit_service.log_action(
@@ -166,6 +203,7 @@ async def _audit_token_action(
                 "owner_team_id": token.owner_team_id,
                 "action": action_brief,
                 "token_prefix": token.token_prefix,
+                "management_scope": "global" if global_scope else "team",
             },
             action_brief=action_brief,
             severity=severity,
@@ -179,20 +217,15 @@ async def _audit_token_action(
         logger.warning("App token management audit failed: %s", exc, exc_info=True)
 
 
-@router.post(
-    "/teams/{team_id}/app-tokens",
-    response_model=AppTokenCreateResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_team_app_token(
+async def _create_app_token(
     team_id: int,
     body: AppTokenCreateRequest,
     request: Request,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Create a new team app token. Returns the raw token once."""
-    await _require_team_admin(team_id, current_user, db)
+    current_user: User,
+    db: AsyncSession,
+    *,
+    global_scope: bool = False,
+) -> AppTokenCreateResponse:
     _validate_scopes(body.scopes)
 
     raw_token, token_hash, token_prefix = generate_app_token()
@@ -218,18 +251,24 @@ async def create_team_app_token(
         return token
 
     saved = await boundary.run_write(_save)
+    brief = (
+        f"Super Admin created app token '{body.name}' for team {team_id}"
+        if global_scope
+        else f"Created app token '{body.name}'"
+    )
     await _audit_token_action(
         request,
         current_user,
         ActionType.CREATE,
         saved,
-        f"Created app token '{body.name}'",
+        brief,
         event_code="tcrt.audit.auth.token_create",
         outcome=Outcome.SUCCESS,
         impact=Impact.SENSITIVE,
+        global_scope=global_scope,
     )
 
-    resp = AppTokenCreateResponse(
+    return AppTokenCreateResponse(
         id=saved.id,
         name=saved.name,
         description=saved.description,
@@ -245,7 +284,65 @@ async def create_team_app_token(
         revoked_at=saved.revoked_at,
         raw_token=raw_token,
     )
-    return resp
+
+
+@router.post(
+    "/teams/{team_id}/app-tokens",
+    response_model=AppTokenCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_team_app_token(
+    team_id: int,
+    body: AppTokenCreateRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new team app token. Returns the raw token once."""
+    await _require_team_admin(team_id, current_user, db)
+    return await _create_app_token(team_id, body, request, current_user, db)
+
+
+@router.post(
+    "/app-tokens",
+    response_model=AppTokenCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_any_app_token(
+    body: SuperAdminAppTokenCreateRequest,
+    request: Request,
+    current_user: User = Depends(require_super_admin()),
+    db: AsyncSession = Depends(get_db),
+):
+    """Super Admin: create an app token for an explicit active team."""
+    boundary = create_main_access_boundary_for_session(db)
+
+    async def _load_active_team(session: AsyncSession):
+        result = await session.execute(
+            select(Team.id).where(
+                Team.id == body.owner_team_id,
+                Team.status == TeamStatus.ACTIVE,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    active_team_id = await boundary.run_read(_load_active_team)
+    if active_team_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "APP_TOKEN_RESOURCE_NOT_FOUND",
+                "message": "Active owner team not found",
+            },
+        )
+    return await _create_app_token(
+        body.owner_team_id,
+        body,
+        request,
+        current_user,
+        db,
+        global_scope=True,
+    )
 
 
 @router.get("/teams/{team_id}/app-tokens", response_model=AppTokenListResponse)
@@ -257,15 +354,87 @@ async def list_team_app_tokens(
     """List team app tokens (metadata only)."""
     await _require_team_admin(team_id, current_user, db)
 
-    result = await db.execute(
-        select(TeamAppToken)
-        .where(TeamAppToken.owner_team_id == team_id)
-        .order_by(TeamAppToken.created_at.desc())
-    )
-    tokens = result.scalars().all()
+    boundary = create_main_access_boundary_for_session(db)
+
+    async def _list(session: AsyncSession):
+        result = await session.execute(
+            select(TeamAppToken, Team.name)
+            .outerjoin(Team, Team.id == TeamAppToken.owner_team_id)
+            .where(TeamAppToken.owner_team_id == team_id)
+            .order_by(TeamAppToken.created_at.desc())
+        )
+        return result.all()
+
+    rows = await boundary.run_read(_list)
     return AppTokenListResponse(
-        items=[_to_response(t) for t in tokens],
-        total=len(tokens),
+        items=[_to_response(token, team_name) for token, team_name in rows],
+        total=len(rows),
+    )
+
+
+async def _rotate_app_token(
+    token_id: int,
+    request: Request,
+    current_user: User,
+    db: AsyncSession,
+    *,
+    owner_team_id: Optional[int] = None,
+    global_scope: bool = False,
+) -> AppTokenRotateResponse:
+    raw_token, token_hash, token_prefix = generate_app_token()
+
+    boundary = create_main_access_boundary_for_session(db)
+
+    async def _rotate(session: AsyncSession):
+        conditions = [TeamAppToken.id == token_id]
+        if owner_team_id is not None:
+            conditions.append(TeamAppToken.owner_team_id == owner_team_id)
+        result = await session.execute(select(TeamAppToken).where(*conditions))
+        token = result.scalar_one_or_none()
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "APP_TOKEN_RESOURCE_NOT_FOUND", "message": "App token not found"},
+            )
+        if token.status != TeamAppTokenStatus.ACTIVE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "APP_TOKEN_VALIDATION_ERROR",
+                    "message": "Cannot rotate a non-active token",
+                },
+            )
+        token.token_hash = token_hash
+        token.token_prefix = token_prefix
+        token.updated_at = datetime.utcnow()
+        await session.flush()
+        return token
+
+    token = await boundary.run_write(_rotate)
+    action_brief = (
+        f"Super Admin rotated app token '{token.name}' globally"
+        if global_scope
+        else f"Rotated app token '{token.name}'"
+    )
+    await _audit_token_action(
+        request,
+        current_user,
+        ActionType.UPDATE,
+        token,
+        action_brief,
+        severity=AuditSeverity.WARNING,
+        event_code="tcrt.audit.auth.token_rotate",
+        outcome=Outcome.SUCCESS,
+        impact=Impact.PRIVILEGED,
+        global_scope=global_scope,
+    )
+    return AppTokenRotateResponse(
+        id=token.id,
+        name=token.name,
+        token_prefix=token.token_prefix,
+        status=token.status.value,
+        raw_token=raw_token,
+        updated_at=token.updated_at,
     )
 
 
@@ -328,57 +497,32 @@ async def rotate_team_app_token(
 ):
     """Rotate a team app token. Old raw token is immediately invalidated."""
     await _require_team_admin(team_id, current_user, db)
-
-    raw_token, token_hash, token_prefix = generate_app_token()
-
-    boundary = create_main_access_boundary_for_session(db)
-
-    async def _rotate(session: AsyncSession):
-        result = await session.execute(
-            select(TeamAppToken).where(
-                TeamAppToken.id == token_id,
-                TeamAppToken.owner_team_id == team_id,
-            )
-        )
-        token = result.scalar_one_or_none()
-        if not token:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"code": "APP_TOKEN_RESOURCE_NOT_FOUND", "message": "App token not found"},
-            )
-        if token.status != TeamAppTokenStatus.ACTIVE:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "code": "APP_TOKEN_VALIDATION_ERROR",
-                    "message": "Cannot rotate a non-active token",
-                },
-            )
-        token.token_hash = token_hash
-        token.token_prefix = token_prefix
-        token.updated_at = datetime.utcnow()
-        await session.flush()
-        return token
-
-    token = await boundary.run_write(_rotate)
-    await _audit_token_action(
+    return await _rotate_app_token(
+        token_id,
         request,
         current_user,
-        ActionType.UPDATE,
-        token,
-        f"Rotated app token '{token.name}'",
-        severity=AuditSeverity.WARNING,
-        event_code="tcrt.audit.auth.token_rotate",
-        outcome=Outcome.SUCCESS,
-        impact=Impact.PRIVILEGED,
+        db,
+        owner_team_id=team_id,
     )
-    return AppTokenRotateResponse(
-        id=token.id,
-        name=token.name,
-        token_prefix=token.token_prefix,
-        status=token.status.value,
-        raw_token=raw_token,
-        updated_at=token.updated_at,
+
+
+@router.post(
+    "/app-tokens/{token_id}/rotate",
+    response_model=AppTokenRotateResponse,
+)
+async def rotate_any_app_token(
+    token_id: int,
+    request: Request,
+    current_user: User = Depends(require_super_admin()),
+    db: AsyncSession = Depends(get_db),
+):
+    """Super Admin: rotate any active team app token."""
+    return await _rotate_app_token(
+        token_id,
+        request,
+        current_user,
+        db,
+        global_scope=True,
     )
 
 
@@ -388,13 +532,20 @@ async def list_all_app_tokens(
     db: AsyncSession = Depends(get_db),
 ):
     """Super Admin: list all team app tokens (metadata only)."""
-    result = await db.execute(
-        select(TeamAppToken).order_by(TeamAppToken.created_at.desc())
-    )
-    tokens = result.scalars().all()
+    boundary = create_main_access_boundary_for_session(db)
+
+    async def _list(session: AsyncSession):
+        result = await session.execute(
+            select(TeamAppToken, Team.name)
+            .outerjoin(Team, Team.id == TeamAppToken.owner_team_id)
+            .order_by(TeamAppToken.created_at.desc())
+        )
+        return result.all()
+
+    rows = await boundary.run_read(_list)
     return AppTokenListResponse(
-        items=[_to_response(t) for t in tokens],
-        total=len(tokens),
+        items=[_to_response(token, team_name) for token, team_name in rows],
+        total=len(rows),
     )
 
 
@@ -434,5 +585,6 @@ async def revoke_any_app_token(
         event_code="tcrt.audit.auth.token_revoke",
         outcome=Outcome.SUCCESS,
         impact=Impact.PRIVILEGED,
+        global_scope=True,
     )
     return _to_response(token)

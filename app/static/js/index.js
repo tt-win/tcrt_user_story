@@ -841,7 +841,7 @@
         actions.forEach((action) => {
             const actionLabel = t(action.key, action.key);
             const opensAppTokenModal = action.href === '#app-token';
-            const allowsAppTokenTeamSelection =
+            const allowsAppTokenGlobalManagement =
                 state.dashboard?.dashboard_type === 'system_administration';
             const requiresTeamPath = action.href.includes('{team_id}');
             const actionHref = requiresTeamPath && preferredTeam
@@ -865,7 +865,7 @@
             actionButton.setAttribute('aria-label', actionLabel);
             actionButton.title = actionLabel;
             actionButton.disabled = (requiresTeamPath && !preferredTeam)
-                || (opensAppTokenModal && !preferredTeam && !allowsAppTokenTeamSelection);
+                || (opensAppTokenModal && !preferredTeam && !allowsAppTokenGlobalManagement);
             actionButton.addEventListener('click', () => {
                 if (opensAppTokenModal) {
                     const controller = window.AppTokenModal;
@@ -873,7 +873,7 @@
                     controller.open({
                         teamId: preferredTeam?.id || null,
                         teamName: preferredTeam?.name || '',
-                        allowTeamSelection: allowsAppTokenTeamSelection,
+                        allowAllTeams: allowsAppTokenGlobalManagement,
                     });
                     return;
                 }

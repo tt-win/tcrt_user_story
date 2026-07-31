@@ -205,7 +205,7 @@ def test_dashboard_quick_actions_use_compact_responsive_layout() -> None:
     assert "action.href.replace('{team_id}', encodeURIComponent(String(preferredTeam.id)))" in source
     assert "navigateWithTeam(preferredTeam, actionHref)" in source
     assert "actionButton.disabled = (requiresTeamPath && !preferredTeam)" in source
-    assert "opensAppTokenModal && !preferredTeam && !allowsAppTokenTeamSelection" in source
+    assert "opensAppTokenModal && !preferredTeam && !allowsAppTokenGlobalManagement" in source
     assert (
         "renderQuickActions(side, state.dashboard.quick_actions || [], preferredTeam, true)"
         in source
@@ -247,20 +247,91 @@ def test_dashboard_app_token_action_opens_shared_modal_without_navigation() -> N
         "window.location.href"
     )
     assert "teamId: preferredTeam?.id || null" in click_handler
-    assert "allowTeamSelection: allowsAppTokenTeamSelection" in click_handler
+    assert "allowAllTeams: allowsAppTokenGlobalManagement" in click_handler
     assert "dashboard_type === 'system_administration'" in source
     assert "opensAppTokenModal && !preferredTeam" in source
+    assert "allowTeamSelection" not in source
     assert '{% include "components/app_token_modal.html" %}' in dashboard_template
     assert '{% include "components/app_token_modal.html" %}' in team_template
     assert dashboard_template.count("components/app_token_modal.html") == 1
     assert team_template.count("components/app_token_modal.html") == 1
     assert "window.AppTokenModal = { open };" in controller
-    assert "options.allowTeamSelection === true" in controller
-    assert "await loadAvailableTeams();" in controller
-    assert "await loadTokens();" in controller
+    assert "options.allowAllTeams === true" in controller
+    assert "'/api/app-tokens'" in controller
+    assert "`/api/app-tokens/${tokenId}/rotate`" in controller
+    assert "`/api/app-tokens/${tokenId}`" in controller
+    assert "owner_team_id" in controller
+    assert "data-team-id" in controller
+    assert "appTokenOwnerTeamSelect" in controller
+    assert "appTokenOwnerTeamSelect" in component
+    assert "appToken.ownerTeam" in component
+    assert "token.raw_token" not in controller
     assert "onclick=" not in component
     assert "onchange=" not in component
     assert "style=" not in component
+
+
+def test_app_token_mutations_pin_modal_context_and_team_card_name_is_not_inline_code() -> None:
+    controller = (
+        _ROOT / "app" / "static" / "js" / "team-management" / "app-tokens.js"
+    ).read_text(encoding="utf-8")
+    team_management = (
+        _ROOT / "app" / "static" / "js" / "team-management" / "main.js"
+    ).read_text(encoding="utf-8")
+
+    assert "contextVersion" in controller
+    assert "mutationVersion" in controller
+    assert "pendingMutation" in controller
+    assert "hide.bs.modal" in controller
+    assert "appToken.operationInProgress" in controller
+    assert 'data-app-token-team-name="${escapeHtml(team.name)}"' in team_management
+    assert 'onclick="openAppTokenModal(${team.id},' not in team_management
+    assert "window.openAppTokenModal(teamId" in team_management
+
+
+
+def test_app_token_requests_pin_authenticated_owner_and_clear_on_identity_change() -> None:
+    controller = (
+        _ROOT / "app" / "static" / "js" / "team-management" / "app-tokens.js"
+    ).read_text(encoding="utf-8")
+    auth_client = (_ROOT / "app" / "static" / "js" / "auth.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert "authIdentityFromToken" in controller
+    assert "authContext" in controller
+    assert "sameAuthOwner" in controller
+    assert "|| !isCurrentContext(context)" in controller
+    assert "tokenCleared" in controller
+    assert "tokenRefreshed" in controller
+    assert "state.pendingMutation = null" in controller
+    assert "hideRawToken()" in controller
+    assert "eventValue.key === 'access_token' && !eventValue.newValue" in controller
+    assert "() => handleAuthChange(false)" in controller
+    assert "else if (this.token || this.tokenExpiry)" in auth_client
+    assert "this.clearToken();" in auth_client
+
+
+def test_app_token_action_buttons_are_not_clipped_by_ellipsis_cell() -> None:
+    stylesheet = (
+        _ROOT / "app" / "static" / "css" / "app-token-modal.css"
+    ).read_text(encoding="utf-8")
+
+    action_column = stylesheet.split(
+        "#appTokenModal .app-token-table__actions", 1
+    )[1].split(
+        "#appTokenModal .app-token-table th", 1
+    )[0]
+    action_cell = stylesheet.split(
+        "#appTokenModal .app-token-table td:nth-child(8)", 1
+    )[1].split(
+        "#appTokenModal .app-token-table td:nth-child(5)", 1
+    )[0]
+
+    assert "width: 10%;" in action_column
+    assert "min-width: 7.5rem;" in action_column
+    assert "overflow: visible;" in action_cell
+    assert "text-overflow: ellipsis;" not in action_cell
 
 
 def test_dashboard_quick_action_hover_does_not_move_outside_compact_rail() -> None:

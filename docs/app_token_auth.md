@@ -30,7 +30,7 @@ Legacy `mcp_machine_credentials`（`mcp_read` 權限）在相容期內仍可解�
 
 ## 2. 建立 / 列表 / 撤銷 / 輪替（JWT 管理 API）
 
-App token 由具備 team admin 權限的使用者透過既有 JWT 登入管理，Super Admin 可跨 team 管理。
+App token 由具備 team admin 權限的使用者透過既有 JWT 登入管理；Super Admin 另可使用 global JWT endpoint 在單一介面跨 team 管理。
 
 ```bash
 # 建立（team admin JWT）
@@ -53,6 +53,25 @@ curl -X DELETE -H "Authorization: Bearer <JWT>" "http://127.0.0.1:9999/api/teams
 
 # 輪替：舊 raw token 立即失效，沒有 grace period，需立刻更新外部設定
 curl -X POST -H "Authorization: Bearer <JWT>" "http://127.0.0.1:9999/api/teams/1/app-tokens/42/rotate"
+
+# Super Admin global 建立（body 必須明確指定 active owner_team_id）
+curl -X POST "http://127.0.0.1:9999/api/app-tokens" \
+  -H "Authorization: Bearer <SUPER_ADMIN_JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "owner_team_id": 2,
+    "name": "global-ci-integration",
+    "scopes": ["test_case:read"],
+    "expires_in_days": 90
+  }'
+
+# Super Admin global 輪替（server 由 token id 解析 owner team）
+curl -X POST -H "Authorization: Bearer <SUPER_ADMIN_JWT>" \
+  "http://127.0.0.1:9999/api/app-tokens/42/rotate"
+
+# Super Admin global 列表（含所有 team metadata，不含 raw_token / token_hash）
+curl -H "Authorization: Bearer <SUPER_ADMIN_JWT>" \
+  "http://127.0.0.1:9999/api/app-tokens"
 ```
 
 `expires_in_days` 省略時預設 90 天；帶 `0` 表示不到期（需明確選擇，不是預設值）。

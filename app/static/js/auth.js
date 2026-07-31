@@ -63,6 +63,9 @@ class AuthClient {
                 } else {
                     console.log('[AuthClient] 從本地儲存載入 Token 成功');
                 }
+            } else if (this.token || this.tokenExpiry) {
+                // 跨分頁登出時，storage 事件可能只剩下空值；同步清除記憶體中的憑證。
+                this.clearToken();
             }
         } catch (error) {
             console.error('[AuthClient] 載入 Token 失敗:', error);

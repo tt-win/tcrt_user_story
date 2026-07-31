@@ -124,6 +124,7 @@ Response（`raw_token` 只出現這一次）：
   "name": "ci-integration",
   "description": "CI pipeline read/write",
   "owner_team_id": 1,
+  "owner_team_name": "Example Team",
   "token_prefix": "tcrt_app_ab12cd3",
   "status": "active",
   "scopes": ["test_case:read", "test_case:write", "test_run:read", "test_run:write", "test_run:execute", "automation:execute"],
@@ -141,7 +142,7 @@ Response（`raw_token` 只出現這一次）：
 
 `GET /api/teams/{team_id}/app-tokens`（需 team admin）
 
-回傳 `{ "items": [...], "total": n }`，item 欄位同建立回應但**不含 `raw_token`**（也從不暴露 `token_hash`）。
+回傳 `{ "items": [...], "total": n }`，item 欄位同建立回應但**不含 `raw_token`**（也從不暴露 `token_hash`）；列表另回傳 `owner_team_name` 供管理介面辨識所屬團隊。
 
 ### 3.3 撤銷 token
 
@@ -158,14 +159,26 @@ Response（`raw_token` 只出現這一次）：
 - 非 active 的 token 不可輪替 → `400 APP_TOKEN_VALIDATION_ERROR`。
 - 回應含一次性 `raw_token`：`{ "id", "name", "token_prefix", "status", "raw_token", "updated_at" }`。
 
-### 3.5 Super Admin 全域管理
+### 3.5 Super Admin global 建立與輪替
+
+Super Admin global modal 使用下列 endpoint；所有 endpoint 均要求 Super Admin JWT，且不接受 app token。
+
+`POST /api/app-tokens`（需 Super Admin，201 Created）
+
+Request body 為 team-scoped create 欄位加上必填 `owner_team_id`。Server 只接受 active owner team，並以該 team 建立 token。
+
+`POST /api/app-tokens/{token_id}/rotate`（需 Super Admin）
+
+Server 由 `token_id` 解析 owner team，不接受 client 傳入 team id；非 active token 回 `400 APP_TOKEN_VALIDATION_ERROR`。回應含一次性 `raw_token`。
+
+### 3.6 Super Admin 全域列表與撤銷
 
 | 方法 | 路徑 | 說明 |
 | --- | --- | --- |
-| GET | `/api/app-tokens` | 列出所有 team 的 app tokens（metadata only） |
+| GET | `/api/app-tokens` | 列出所有 team 的 app tokens（metadata only，含 `owner_team_id`／`owner_team_name`） |
 | DELETE | `/api/app-tokens/{token_id}` | 撤銷任一 team 的 token（冪等） |
 
-所有管理操作都會寫 audit log（含操作者、token 名稱/前綴、IP、User-Agent）。
+所有管理操作都會寫 audit log（含操作者、token 名稱/前綴、owner team、management scope、IP、User-Agent）。
 
 ## 4. Scope 模型
 

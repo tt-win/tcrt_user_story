@@ -1,4 +1,4 @@
-<!-- Shared App Token management modal. Team scope is always revalidated by the API. -->
+<!-- Shared App Token management modal. Team and global scopes are revalidated by the API. -->
 <div class="modal fade" id="appTokenModal" tabindex="-1" aria-labelledby="appTokenModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
@@ -10,14 +10,6 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="關閉"></button>
             </div>
             <div class="modal-body">
-                <div id="appTokenTeamPicker" class="app-token-team-picker d-none">
-                    <label for="appTokenTeamSelect" class="form-label" data-i18n="appToken.selectTeamLabel">選擇團隊</label>
-                    <select id="appTokenTeamSelect" class="form-select form-select-sm" aria-describedby="appTokenTeamHelp" disabled>
-                        <option value="" data-i18n="appToken.selectTeamPlaceholder">請選擇要管理的團隊</option>
-                    </select>
-                    <div id="appTokenTeamHelp" class="form-text" data-i18n="appToken.selectTeamHelp">選擇團隊後才會載入 App Token。</div>
-                    <div id="appTokenTeamError" class="small text-danger d-none" role="alert"></div>
-                </div>
 
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h6 class="mb-0" data-i18n="appToken.tokenList">Token List</h6>
@@ -34,6 +26,13 @@
                     <div class="mb-2">
                         <label for="appTokenDescription" class="form-label" data-i18n="appToken.description">Description</label>
                         <input type="text" class="form-control form-control-sm" id="appTokenDescription" data-i18n-placeholder="appToken.descriptionPlaceholder" placeholder="Token for CI automation">
+                    </div>
+                    <div id="appTokenOwnerTeamPicker" class="app-token-owner-team-picker d-none">
+                        <label for="appTokenOwnerTeamSelect" class="form-label" data-i18n="appToken.selectOwnerTeamLabel">Owner team</label>
+                        <select id="appTokenOwnerTeamSelect" class="form-select form-select-sm" aria-describedby="appTokenOwnerTeamHelp" disabled>
+                            <option value="" data-i18n="appToken.selectOwnerTeamPlaceholder">Select an owner team</option>
+                        </select>
+                        <div id="appTokenOwnerTeamHelp" class="form-text" data-i18n="appToken.selectOwnerTeamHelp">Choose which team owns this token.</div>
                     </div>
                     <div class="mb-2">
                         <span class="form-label d-block" data-i18n="appToken.scopes">Scopes</span>
@@ -121,6 +120,7 @@
                     <table class="table table-sm table-hover align-middle mb-0 app-token-table">
                         <colgroup>
                             <col class="app-token-table__name">
+                            <col class="app-token-table__team">
                             <col class="app-token-table__prefix">
                             <col class="app-token-table__status">
                             <col class="app-token-table__scopes">
@@ -131,6 +131,7 @@
                         <thead class="sticky-top">
                             <tr>
                                 <th scope="col" data-i18n="appToken.tokenName">Name</th>
+                                <th scope="col" data-i18n="appToken.ownerTeam">Owner Team</th>
                                 <th scope="col" data-i18n="appToken.tokenPrefix">Prefix</th>
                                 <th scope="col" data-i18n="appToken.status">Status</th>
                                 <th scope="col" data-i18n="appToken.scopes">Scopes</th>
