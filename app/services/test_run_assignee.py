@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import json
 from typing import Any, Mapping, Optional
 
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.auth.models import UserRole
@@ -47,6 +47,84 @@ def has_assignee_input(payload: Mapping[str, Any]) -> bool:
     """Return whether an update explicitly includes an assignment field."""
 
     return bool(ASSIGNEE_INPUT_FIELDS.intersection(payload))
+
+def current_user_assignment_condition(sync_db: Session, current_user: User) -> Any:
+    """Return a collision-safe predicate for work assigned to one signed-in user.
+
+    Linked assignments match by ``assignee_user_id``. Older snapshot-only rows
+    are included only when a unique Lark ID or email proves they belong to this
+    account and no second identity on the row contradicts it.
+    """
+    condition = TestRunItem.assignee_user_id == current_user.id
+    legacy_condition = _legacy_current_user_assignment_condition(sync_db, current_user)
+    if legacy_condition is not None:
+        condition = or_(
+            condition,
+            and_(TestRunItem.assignee_user_id.is_(None), legacy_condition),
+        )
+    return condition
+
+
+def _legacy_current_user_assignment_condition(sync_db: Session, current_user: User):
+    lark_user_id = _trim_to_none(getattr(current_user, "lark_user_id", None))
+    email = _normalize_email(getattr(current_user, "email", None))
+    lark_is_unique = bool(
+        lark_user_id
+        and _identity_uniquely_resolves_to_current_user(
+            sync_db,
+            current_user.id,
+            func.trim(User.lark_user_id) == lark_user_id,
+        )
+    )
+    email_is_unique = bool(
+        email
+        and _identity_uniquely_resolves_to_current_user(
+            sync_db,
+            current_user.id,
+            func.lower(func.trim(User.email)) == email,
+        )
+    )
+
+    blank_lark = _sql_blank(TestRunItem.assignee_id)
+    blank_email = _sql_blank(TestRunItem.assignee_email)
+    candidates = []
+    if lark_is_unique:
+        lark_match = [func.trim(TestRunItem.assignee_id) == lark_user_id]
+        if email:
+            lark_match.append(
+                or_(
+                    blank_email,
+                    func.lower(func.trim(TestRunItem.assignee_email)) == email,
+                )
+                if email_is_unique
+                else blank_email
+            )
+        candidates.append(and_(*lark_match))
+    if email_is_unique:
+        email_match = [func.lower(func.trim(TestRunItem.assignee_email)) == email]
+        if lark_user_id:
+            email_match.append(
+                or_(blank_lark, func.trim(TestRunItem.assignee_id) == lark_user_id)
+                if lark_is_unique
+                else blank_lark
+            )
+        candidates.append(and_(*email_match))
+    return or_(*candidates) if candidates else None
+
+
+def _identity_uniquely_resolves_to_current_user(
+    sync_db: Session,
+    current_user_id: int,
+    predicate: Any,
+) -> bool:
+    candidate_ids = sync_db.execute(
+        select(User.id).where(predicate).order_by(User.id.asc()).limit(2)
+    ).scalars().all()
+    return candidate_ids == [current_user_id]
+
+
+def _sql_blank(column: Any):
+    return or_(column.is_(None), func.trim(column) == "")
 
 
 def resolve_assignee(

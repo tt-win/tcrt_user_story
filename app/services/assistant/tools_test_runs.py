@@ -47,6 +47,43 @@ TOOLS = [
         projection=_TRC_PROJECTION + ("_deep_links",),
     ),
     AssistantTool(
+        name="list_my_test_run_assignments",
+        method="LOCAL",
+        path_template="",
+        summary=(
+            "List active, draft, or completed (not archived) test runs that have one or more "
+            "items assigned to the signed-in user across every accessible team. Use directly for "
+            "questions about the user's own assignments; do not ask for target_team or enumerate "
+            "teams first."
+        ),
+        permission=PermissionType.READ,
+        risk_level=READ,
+        execution_mode="local",
+        team_check="none",
+        query_params={"limit": s_int("max results, default 50, capped at 50")},
+        projection=("status", "results", "total"),
+    ),
+    AssistantTool(
+        name="search_test_run_assignments",
+        method="LOCAL",
+        path_template="",
+        summary=(
+            "Find active, draft, or completed (not archived) test runs across accessible teams "
+            "with items assigned to a named person. Use this when the user names an assignee; "
+            "provide assignee_name and do not ask for target_team or enumerate teams first."
+        ),
+        permission=PermissionType.READ,
+        risk_level=READ,
+        execution_mode="local",
+        team_check="none",
+        query_params={
+            "assignee_name": s_str("assignee display name, username, or English name"),
+            "limit": s_int("max results, default 50, capped at 50"),
+        },
+        required_query=("assignee_name",),
+        projection=("status", "results", "total"),
+    ),
+    AssistantTool(
         name="get_test_run",
         method="GET",
         path_template="/api/teams/{team_id}/test-run-configs/{config_id}",

@@ -8,7 +8,7 @@ import logging
 from typing import Any, Optional
 from urllib.parse import quote
 
-from sqlalchemy import String, and_, cast, func, or_, select
+from sqlalchemy import String, and_, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -36,6 +36,7 @@ from app.services.system_settings_service import (
     AUTOMATION_HUB_ENTRY_ENABLED_KEY,
     get_bool,
 )
+from app.services.test_run_assignee import current_user_assignment_condition
 
 
 logger = logging.getLogger(__name__)
@@ -267,7 +268,7 @@ def _build_personal_main(sync_db: Session, current_user: User) -> dict[str, Any]
         return sections
 
     try:
-        assignee_condition = _assigned_identity_condition(sync_db, current_user)
+        assignee_condition = current_user_assignment_condition(sync_db, current_user)
         assigned_rows = _load_assigned_rows(
             sync_db,
             current_user,
@@ -337,15 +338,6 @@ def _load_visible_active_teams(sync_db: Session, current_user: User) -> list[dic
     return [{"id": row.id, "name": row.name or "", "can_write": _is_write_capable(current_user)} for row in rows]
 
 
-def _assigned_identity_condition(sync_db: Session, current_user: User) -> Any:
-    assignee_condition = TestRunItem.assignee_user_id == current_user.id
-    legacy_condition = _legacy_identity_condition(sync_db, current_user)
-    if legacy_condition is not None:
-        assignee_condition = or_(
-            assignee_condition,
-            and_(TestRunItem.assignee_user_id.is_(None), legacy_condition),
-        )
-    return assignee_condition
 
 
 def _load_assigned_rows(
@@ -356,7 +348,7 @@ def _load_assigned_rows(
     assignee_condition: Any | None = None,
 ) -> list[Any]:
     if assignee_condition is None:
-        assignee_condition = _assigned_identity_condition(sync_db, current_user)
+        assignee_condition = current_user_assignment_condition(sync_db, current_user)
 
     rows = sync_db.execute(
         select(
@@ -479,73 +471,10 @@ def _load_assigned_preview_rows(
     return list(rows)
 
 
-def _legacy_identity_condition(sync_db: Session, current_user: User):
-    """Return a collision-safe fallback predicate for an unlinked legacy item.
-
-    A legacy snapshot may contain either a Lark ID or an email.  It is only a
-    safe identity if the value uniquely resolves to the bearer, and if a
-    second machine identity on the same Item does not contradict that bearer.
-    """
-
-    lark_user_id = _trim_to_none(getattr(current_user, "lark_user_id", None))
-    email = _normalized_email(getattr(current_user, "email", None))
-    lark_is_unique = bool(
-        lark_user_id
-        and _identity_uniquely_resolves_to_current_user(
-            sync_db,
-            current_user.id,
-            func.trim(User.lark_user_id) == lark_user_id,
-        )
-    )
-    email_is_unique = bool(
-        email
-        and _identity_uniquely_resolves_to_current_user(
-            sync_db,
-            current_user.id,
-            func.lower(func.trim(User.email)) == email,
-        )
-    )
-
-    blank_lark = _sql_blank(TestRunItem.assignee_id)
-    blank_email = _sql_blank(TestRunItem.assignee_email)
-    candidates = []
-    if lark_is_unique:
-        lark_match = [func.trim(TestRunItem.assignee_id) == lark_user_id]
-        if email:
-            lark_match.append(
-                or_(
-                    blank_email,
-                    func.lower(func.trim(TestRunItem.assignee_email)) == email,
-                )
-                if email_is_unique
-                else blank_email
-            )
-        candidates.append(and_(*lark_match))
-    if email_is_unique:
-        email_match = [func.lower(func.trim(TestRunItem.assignee_email)) == email]
-        if lark_user_id:
-            email_match.append(
-                or_(blank_lark, func.trim(TestRunItem.assignee_id) == lark_user_id)
-                if lark_is_unique
-                else blank_lark
-            )
-        candidates.append(and_(*email_match))
-    return or_(*candidates) if candidates else None
 
 
-def _identity_uniquely_resolves_to_current_user(
-    sync_db: Session,
-    current_user_id: int,
-    predicate: Any,
-) -> bool:
-    candidate_ids = sync_db.execute(
-        select(User.id).where(predicate).order_by(User.id.asc()).limit(2)
-    ).scalars().all()
-    return candidate_ids == [current_user_id]
 
 
-def _sql_blank(column: Any):
-    return or_(column.is_(None), func.trim(column) == "")
 
 
 def _resume_run_projection(row: Any, transition: Any) -> dict[str, Any]:

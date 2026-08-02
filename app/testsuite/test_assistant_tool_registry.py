@@ -18,7 +18,7 @@ from app.services.assistant.tool_registry import (
     get_tool_registry,
 )
 
-EXPECTED_TOOL_COUNT = 77  # loopback/composite + local skills/knowledge + plan_batch + generate_chunk_actions
+EXPECTED_TOOL_COUNT = 79  # loopback/composite + local skills/knowledge + plan_batch + generate_chunk_actions
 
 
 def _normalize_route_path(path: str) -> str:
@@ -49,6 +49,40 @@ def test_registry_loads_expected_tool_count_with_unique_names():
     names = registry.names()
     assert len(names) == EXPECTED_TOOL_COUNT, f"expected {EXPECTED_TOOL_COUNT} tools, got {len(names)}"
     assert len(set(names)) == len(names), "tool names MUST be unique"
+
+
+def test_assignment_tools_are_global_and_local():
+    mine = get_tool_registry().get("list_my_test_run_assignments")
+    named = get_tool_registry().get("search_test_run_assignments")
+    assert mine.execution_mode == named.execution_mode == "local"
+    assert mine.team_check == named.team_check == "none"
+    assert "target_team" not in mine.to_llm_schema()["function"]["parameters"]["properties"]
+    named_schema = named.to_llm_schema()["function"]["parameters"]
+    assert "target_team" not in named_schema["properties"]
+    assert "assignee_name" in named_schema["required"]
+
+
+def test_llm_tool_schemas_use_standard_json_schema_types():
+    """Every generated function-parameter schema must use standard JSON Schema types."""
+    valid_types = {"array", "boolean", "integer", "null", "number", "object", "string"}
+    invalid_types = []
+
+    def visit(node, path):
+        if isinstance(node, dict):
+            schema_type = node.get("type")
+            if schema_type is not None and schema_type not in valid_types:
+                invalid_types.append(f"{path}: unsupported JSON Schema type {schema_type!r}")
+            for key, value in node.items():
+                visit(value, f"{path}.{key}")
+        elif isinstance(node, list):
+            for index, value in enumerate(node):
+                visit(value, f"{path}[{index}]")
+
+    for tool in get_tool_registry().all():
+        parameters = tool.to_llm_schema()["function"]["parameters"]
+        visit(parameters, tool.name)
+
+    assert not invalid_types, "\n".join(invalid_types)
 
 
 def test_delete_tools_are_irreversible_except_exemptions():

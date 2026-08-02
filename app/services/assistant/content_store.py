@@ -250,6 +250,8 @@ _TOOL_ROUTING_BLOCK = """
 Pick the simplest tool that answers the question:
 - Known test case number + need full content (steps / expected_result / precondition): use `get_test_case_global`.
 - Exact keyword or number search / list / which team has this case: use `search_test_cases_global`.
+- My assigned test runs: use `list_my_test_run_assignments` directly; it spans accessible teams and includes active, draft, or completed runs (not archived).
+- Named person's assigned test runs: use `search_test_run_assignments` with `assignee_name`; it spans accessible teams and includes active, draft, or completed runs (not archived).
 - Semantic or fuzzy discovery (feature ownership when keywords are unclear): use `search_knowledge`; if degraded or empty, then `search_test_cases_global`.
 - Do **not** route simple number/title lookups through the knowledge graph first.
 - Label team attribution with `team_name` / `team_id` when present.
@@ -259,9 +261,22 @@ Pick the simplest tool that answers the question:
 def ensure_tool_routing_rules(template: str) -> str:
     """Ensure stale DB prompts carry soft tool-routing (not forced knowledge-first)."""
     soft_markers = ("get_test_case_global", "依問題類型", "simplest tool")
-    if any(m in template for m in soft_markers) and "get_test_case_global" in template:
+    has_soft_routing = any(marker in template for marker in soft_markers)
+    required_routes = ("list_my_test_run_assignments", "search_test_run_assignments")
+    assignment_status_markers = (
+        "active/draft/completed",
+        "active, draft, or completed (not archived)",
+    )
+    has_assignment_status_coverage = any(
+        marker in template for marker in assignment_status_markers
+    )
+    if (
+        has_soft_routing
+        and all(route in template for route in required_routes)
+        and has_assignment_status_coverage
+    ):
         return template
-    # Always append soft routing so it overrides older forced knowledge-first text in context.
+    # Always append missing routing so it overrides stale DB prompt text.
     return f"{template.rstrip()}\n\n{_TOOL_ROUTING_BLOCK}\n"
 
 

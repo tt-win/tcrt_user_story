@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 import httpx
-from sqlalchemy import func, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.applications import Starlette
 
@@ -24,7 +24,7 @@ from app.auth.models import UserRole
 from app.auth.permission_service import permission_service
 from app.config import AssistantConfig
 from app.db_access.main import MainAccessBoundary
-from app.models.database_models import Team, TestCaseLocal
+from app.models.database_models import Team, TestCaseLocal, TestRunConfig, TestRunItem, User
 from app.models.test_case import TestDataCategory
 from app.models.team import TeamStatus
 from app.services.assistant import resolvers
@@ -1174,6 +1174,114 @@ class ToolExecutor:
             logger.warning("resolve username for user_id=%s failed: %s", user_id, exc)
             return None
 
+    async def _search_test_run_assignments(
+        self,
+        *,
+        user_id: int | None,
+        arguments: dict[str, Any],
+        assignee_name: str | None,
+    ) -> tuple[int, dict[str, Any]]:
+        """List non-archived runs assigned to the signed-in user or a named person."""
+        if user_id is None:
+            return 403, {"detail": "user identity is required"}
+
+        name_query = assignee_name.strip() if assignee_name is not None else None
+        if assignee_name is not None and not name_query:
+            return 200, {"status": "success", "results": [], "total": 0}
+
+        try:
+            allowed_team_ids = await permission_service.get_user_accessible_teams(user_id)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "test run assignment lookup: failed to resolve accessible teams user_id=%s",
+                user_id,
+            )
+            allowed_team_ids = []
+        if not allowed_team_ids:
+            return 200, {"status": "success", "results": [], "total": 0}
+
+        try:
+            limit = max(1, min(int(arguments.get("limit", 50) or 50), 50))
+        except (TypeError, ValueError):
+            limit = 50
+
+        def _search(sync_db):
+            if name_query is None:
+                from app.services.test_run_assignee import current_user_assignment_condition
+
+                current_user = sync_db.get(User, user_id)
+                if current_user is None:
+                    return []
+                assignment_condition = current_user_assignment_condition(sync_db, current_user)
+                join_assignee_user = False
+            else:
+                escaped = (
+                    name_query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                )
+                pattern = f"%{escaped}%"
+                assignment_condition = or_(
+                    TestRunItem.assignee_name.ilike(pattern, escape="\\"),
+                    TestRunItem.assignee_en_name.ilike(pattern, escape="\\"),
+                    User.full_name.ilike(pattern, escape="\\"),
+                    User.username.ilike(pattern, escape="\\"),
+                )
+                join_assignee_user = True
+
+            run_status = cast(TestRunConfig.status, String)
+            stmt = (
+                select(
+                    TestRunItem.team_id,
+                    Team.name.label("team_name"),
+                    TestRunItem.config_id,
+                    TestRunConfig.name.label("run_name"),
+                    run_status.label("run_status"),
+                    func.count(TestRunItem.id).label("assigned_item_count"),
+                    func.max(TestRunItem.updated_at).label("last_updated_at"),
+                )
+                .select_from(TestRunItem)
+                .join(TestRunConfig, TestRunConfig.id == TestRunItem.config_id)
+                .join(Team, Team.id == TestRunItem.team_id)
+            )
+            if join_assignee_user:
+                stmt = stmt.outerjoin(User, User.id == TestRunItem.assignee_user_id)
+            rows = sync_db.execute(
+                stmt.where(
+                    TestRunItem.team_id.in_(allowed_team_ids),
+                    assignment_condition,
+                    run_status.in_(("active", "draft", "completed")),
+                )
+                .group_by(
+                    TestRunItem.team_id,
+                    Team.name,
+                    TestRunItem.config_id,
+                    TestRunConfig.name,
+                    run_status,
+                )
+                .order_by(
+                    func.max(TestRunItem.updated_at).desc(),
+                    TestRunItem.config_id.desc(),
+                )
+                .limit(limit)
+            ).all()
+            return list(rows)
+
+        rows = await self.main_boundary.run_sync_read(_search)
+        results = [
+            {
+                "team_id": row.team_id,
+                "team_name": row.team_name or f"Team-{row.team_id}",
+                "config_id": row.config_id,
+                "run_name": row.run_name or "",
+                "status": row.run_status,
+                "assigned_item_count": row.assigned_item_count,
+                "last_updated_at": (
+                    row.last_updated_at.isoformat() if row.last_updated_at is not None else None
+                ),
+            }
+            for row in rows
+        ]
+        return 200, {"status": "success", "results": results, "total": len(results)}
+
     async def _run_local_read_tool(
         self,
         tool: AssistantTool,
@@ -1330,6 +1438,18 @@ class ToolExecutor:
                 "set_name": row.set_name or "",
                 "section_name": row.section_name or "",
             }
+        if tool.name == "list_my_test_run_assignments":
+            return await self._search_test_run_assignments(
+                user_id=user_id,
+                arguments=arguments,
+                assignee_name=None,
+            )
+        if tool.name == "search_test_run_assignments":
+            return await self._search_test_run_assignments(
+                user_id=user_id,
+                arguments=arguments,
+                assignee_name=str(arguments.get("assignee_name", "")),
+            )
         if tool.name == "search_knowledge":
             from app.services.knowledge import get_retrieval_service
             from app.audit.database import KnowledgeQuerySource

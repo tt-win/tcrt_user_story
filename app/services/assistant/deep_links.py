@@ -121,6 +121,16 @@ _LIST_LINK_RULES: dict[str, tuple[str, str, dict[str, str]] | tuple[str, str, di
         "/test-run-execution?config_id={config_id}",
         {"config_id": "id"},
     ),
+    "list_my_test_run_assignments": (
+        "test_run",
+        "/test-run-execution?team_id={team_id}&config_id={config_id}",
+        {"team_id": "team_id", "config_id": "config_id"},
+    ),
+    "search_test_run_assignments": (
+        "test_run",
+        "/test-run-execution?team_id={team_id}&config_id={config_id}",
+        {"team_id": "team_id", "config_id": "config_id"},
+    ),
     "list_test_run_sets": (
         "test_run_set",
         "/test-run-management?set_id={set_id}",

@@ -230,6 +230,15 @@ def test_ensure_tool_routing_rules_injects_soft_routing() -> None:
     assert "get_test_case_global" in fixed
     assert "search_knowledge" in fixed
     assert "simplest tool" in fixed
+    legacy_soft_prompt = "Use the simplest tool, including get_test_case_global."
+    assert "list_my_test_run_assignments" in ensure_tool_routing_rules(legacy_soft_prompt)
+    assert "search_test_run_assignments" in ensure_tool_routing_rules(legacy_soft_prompt)
+    stale_assignment_prompt = (
+        "Use the simplest tool, including get_test_case_global. "
+        "Use list_my_test_run_assignments and search_test_run_assignments for active/draft runs."
+    )
+    refreshed_assignment_prompt = ensure_tool_routing_rules(stale_assignment_prompt)
+    assert "active, draft, or completed runs (not archived)" in refreshed_assignment_prompt
     # Must NOT re-introduce forced knowledge-first only path
     assert "must call `search_knowledge` first" not in fixed
     assembled = assemble_system_prompt_text(stale, "| skill | desc |")

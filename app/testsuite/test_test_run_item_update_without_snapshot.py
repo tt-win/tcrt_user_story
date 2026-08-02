@@ -176,3 +176,17 @@ def test_update_result_succeeds_without_snapshot_table(temp_db):
     refreshed = session.query(TestRunItem).filter(TestRunItem.id == item_id).one()
     assert refreshed.test_result == TestResultStatus.PASSED
     session.close()
+
+
+def test_list_item_refs_ignores_blank_result_filter(temp_db):
+    _engine, session_factory = temp_db
+    session = session_factory()
+    team_id, config_id, _item_id = _seed_base_data(session)
+    session.close()
+
+    response = TestClient(app).get(
+        f"/api/teams/{team_id}/test-run-configs/{config_id}/items/refs?test_result_filter="
+    )
+
+    assert response.status_code == 200, response.text
+    assert [item["test_case_number"] for item in response.json()] == ["TC-1"]

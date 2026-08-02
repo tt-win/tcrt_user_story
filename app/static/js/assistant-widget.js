@@ -100,11 +100,101 @@ function parseSseEventId(id) {
 }
 
 /**
- * 面板尺寸模式切換（純函式、可測試）。
- * 'compact' ↔ 'expanded'，接受任意輸入時 fail-closed 回傳 'compact'。
+ * Assistant 面板尺寸模式：narrow / medium / wide。
+ * compact / expanded 僅作為舊版 localStorage 值正規化，避免升級遺失偏好。
  */
-function nextSizeMode(current) {
-  return current === 'compact' ? 'expanded' : 'compact';
+function normalizePanelSizeMode(value) {
+  if (value === 'narrow' || value === 'compact') return 'narrow';
+  if (value === 'medium' || value === 'expanded') return 'medium';
+  return value === 'wide' ? 'wide' : 'narrow';
+}
+
+function legacyPanelSizeMode(value) {
+  const mode = normalizePanelSizeMode(value);
+  return mode === 'medium' ? 'expanded' : (mode === 'wide' ? 'wide' : 'compact');
+}
+
+function safePanelStorageGet(storage, key) {
+  try {
+    return storage && typeof storage.getItem === 'function' ? storage.getItem(key) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function safePanelStorageSet(storage, key, value) {
+  try {
+    if (storage && typeof storage.setItem === 'function') storage.setItem(key, value);
+  } catch (_) {
+    // Web Storage can be unavailable in privacy-restricted or quota-exhausted contexts.
+  }
+}
+
+function panelSizeModeFromStorage(storage, canonicalKey, legacyKey) {
+  const canonical = safePanelStorageGet(storage, canonicalKey);
+  const stored = canonical === null ? safePanelStorageGet(storage, legacyKey) : canonical;
+  return normalizePanelSizeMode(stored);
+}
+
+function persistPanelSizeModeToStorage(storage, canonicalKey, legacyKey, mode) {
+  const normalized = normalizePanelSizeMode(mode);
+  safePanelStorageSet(storage, canonicalKey, normalized);
+  safePanelStorageSet(storage, legacyKey, legacyPanelSizeMode(normalized));
+  return normalized;
+}
+
+function applyPanelSizeModeDom(panel, mode) {
+  const normalized = normalizePanelSizeMode(mode);
+  if (!panel) return normalized;
+  panel.classList.toggle('tcrt-assistant-is-medium', normalized === 'medium');
+  panel.classList.toggle('tcrt-assistant-is-wide', normalized === 'wide');
+  panel.dataset.assistantSizeMode = normalized;
+  return normalized;
+}
+
+function syncPanelSizeControlsDom(switcher, buttons, label, current, mode, labels, groupLabel) {
+  const normalized = normalizePanelSizeMode(mode);
+  if (!switcher) return normalized;
+  if (label) label.textContent = groupLabel;
+  switcher.setAttribute('aria-label', groupLabel);
+  buttons.forEach((button) => {
+    const selected = button.dataset.assistantSizeMode === normalized;
+    button.classList.toggle('is-active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+    button.setAttribute('title', labels[button.dataset.assistantSizeMode] || labels.narrow);
+    button.setAttribute('aria-label', labels[button.dataset.assistantSizeMode] || labels.narrow);
+  });
+  if (current) {
+    current.textContent = labels[normalized];
+    current.setAttribute('aria-label', groupLabel + ': ' + labels[normalized]);
+  }
+  return normalized;
+}
+
+function bindPanelSizeModeButtons(buttons, setMode) {
+  if (!Array.isArray(buttons) || typeof setMode !== 'function') return;
+  buttons.forEach((button) => {
+    if (!button || typeof button.addEventListener !== 'function') return;
+    button.addEventListener('click', () => setMode(button.dataset.assistantSizeMode));
+  });
+}
+
+function setPanelVisibility(panel, open) {
+  if (!panel) return;
+  panel.classList.toggle('tcrt-assistant-is-open', open);
+  panel.inert = !open;
+  if (open) {
+    panel.removeAttribute('aria-hidden');
+    panel.removeAttribute('inert');
+  } else {
+    panel.setAttribute('aria-hidden', 'true');
+    panel.setAttribute('inert', '');
+  }
+}
+
+function wideBackdropShouldShow(panel, mode) {
+  return normalizePanelSizeMode(mode) === 'wide'
+    && !!(panel && panel.classList.contains('tcrt-assistant-is-open'));
 }
 
 /** risk_level → 兩級確認卡（design：idempotent_write/reversible_write=輕量，high_impact/irreversible=警告）。 */
@@ -410,6 +500,7 @@ const AssistantWidget = (() => {
   const AVAILABILITY_CACHE_TTL_MS = 5 * 60 * 1000;
   const PANEL_OPEN_KEY = 'tcrt_assistant_panel_open';
   const PANEL_SIZE_KEY = 'tcrt_assistant_panel_size';
+  const PANEL_SIZE_MODE_KEY = 'tcrt_assistant_panel_size_mode';
   const INFLIGHT_KEY_PREFIX = 'tcrt_assistant_inflight_';
   const MARKED_URL = 'https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js';
   const DOMPURIFY_URL = 'https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js';
@@ -427,8 +518,12 @@ const AssistantWidget = (() => {
   let historyMenuEl = null;
   let attachChipEl = null;
   let teamBadgeEl = null;
-  let expandBtnEl = null;
-  let panelSizeMode = 'compact';
+  let sizeModeSwitcherEl = null;
+  let sizeModeButtons = [];
+  let sizeModeLabelEl = null;
+  let sizeModeCurrentEl = null;
+  let panelSizeMode = 'narrow';
+  let wideBackdropEl = null;
 
   let currentConversation = null; // {id, conversation_key, scope_type, team_id, ...}
   let currentTurnKey = null;
@@ -663,6 +758,52 @@ const AssistantWidget = (() => {
     if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
+  function syncWideBackdrop() {
+    if (!wideBackdropEl) return;
+    wideBackdropEl.classList.toggle(
+      'tcrt-assistant-wide-backdrop-is-visible',
+      wideBackdropShouldShow(panelEl, panelSizeMode)
+    );
+  }
+
+  function syncPanelSizeControls() {
+    if (!sizeModeSwitcherEl) return;
+    const labels = {
+      narrow: t('assistant.sizeNarrow', {}, 'Narrow'),
+      medium: t('assistant.sizeMedium', {}, 'Medium'),
+      wide: t('assistant.sizeWide', {}, 'Wide'),
+    };
+    const groupLabel = t('assistant.sizeModeLabel', {}, 'Panel size');
+    syncPanelSizeControlsDom(
+      sizeModeSwitcherEl,
+      sizeModeButtons,
+      sizeModeLabelEl,
+      sizeModeCurrentEl,
+      panelSizeMode,
+      labels,
+      groupLabel
+    );
+  }
+
+  function persistPanelSizeMode(mode) {
+    persistPanelSizeModeToStorage(localStorage, PANEL_SIZE_MODE_KEY, PANEL_SIZE_KEY, mode);
+  }
+
+  function restorePanelSizeMode() {
+    const mode = panelSizeModeFromStorage(localStorage, PANEL_SIZE_MODE_KEY, PANEL_SIZE_KEY);
+    persistPanelSizeMode(mode);
+    return mode;
+  }
+
+  function setPanelSizeMode(mode, persist = true) {
+    panelSizeMode = normalizePanelSizeMode(mode);
+    if (!panelEl) return;
+    applyPanelSizeModeDom(panelEl, panelSizeMode);
+    syncWideBackdrop();
+    if (persist) persistPanelSizeMode(panelSizeMode);
+    syncPanelSizeControls();
+  }
+
   function mount() {
     if (mounted) return;
     root = el(`<div id="tcrt-assistant-root"></div>`);
@@ -675,8 +816,12 @@ const AssistantWidget = (() => {
       </button>
     `));
     root.appendChild(el(`
-      <section class="tcrt-assistant-panel" id="tcrt-assistant-panel" role="dialog" aria-modal="false" data-i18n-aria-label="assistant.title" aria-label="${_assistantEscapeHtml(t('assistant.title', {}, 'TCRT Assistant'))}">
+      <div class="tcrt-assistant-wide-backdrop" id="tcrt-assistant-wide-backdrop" aria-hidden="true"></div>
+    `));
+    root.appendChild(el(`
+      <section class="tcrt-assistant-panel" id="tcrt-assistant-panel" role="dialog" aria-modal="false" aria-hidden="true" inert data-i18n-aria-label="assistant.title" aria-label="${_assistantEscapeHtml(t('assistant.title', {}, 'TCRT Assistant'))}">
         <header class="tcrt-assistant-head">
+          <div class="tcrt-assistant-head-main">
           <span class="tcrt-assistant-title" data-i18n="assistant.title">${_assistantEscapeHtml(t('assistant.title', {}, 'TCRT Assistant'))}</span>
           <span class="tcrt-assistant-spacer"></span>
           <label class="tcrt-assistant-head-auto-toggle" id="tcrt-assistant-auto-toggle-wrap" title="自動同意模式 (已關閉)">
@@ -690,12 +835,25 @@ const AssistantWidget = (() => {
           <button class="tcrt-assistant-icon-btn" type="button" id="tcrt-assistant-new-btn" data-i18n-title="assistant.newConversation" data-i18n-aria-label="assistant.newConversation" title="${_assistantEscapeHtml(t('assistant.newConversation', {}, 'New conversation'))}" aria-label="${_assistantEscapeHtml(t('assistant.newConversation', {}, 'New conversation'))}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
           </button>
-          <button class="tcrt-assistant-icon-btn" type="button" id="tcrt-assistant-expand-btn" title="${_assistantEscapeHtml(t('assistant.expand', {}, 'Expand'))}" aria-label="${_assistantEscapeHtml(t('assistant.expand', {}, 'Expand'))}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-          </button>
           <button class="tcrt-assistant-icon-btn" type="button" id="tcrt-assistant-close-btn" data-i18n-title="assistant.close" data-i18n-aria-label="assistant.close" title="${_assistantEscapeHtml(t('assistant.close', {}, 'Close'))}" aria-label="${_assistantEscapeHtml(t('assistant.close', {}, 'Close'))}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
           </button>
+        </div>
+        <div class="tcrt-assistant-size-row">
+          <span class="tcrt-assistant-size-label" id="tcrt-assistant-size-label"></span>
+          <div class="tcrt-assistant-size-switcher" id="tcrt-assistant-size-switcher" role="group" aria-label="${_assistantEscapeHtml(t('assistant.sizeModeLabel', {}, 'Panel size'))}">
+            <button class="tcrt-assistant-size-btn" type="button" data-assistant-size-mode="narrow" aria-pressed="false" title="${_assistantEscapeHtml(t('assistant.sizeNarrow', {}, 'Narrow'))}" aria-label="${_assistantEscapeHtml(t('assistant.sizeNarrow', {}, 'Narrow'))}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="7" y="4" width="10" height="16" rx="2"/></svg>
+            </button>
+            <button class="tcrt-assistant-size-btn" type="button" data-assistant-size-mode="medium" aria-pressed="false" title="${_assistantEscapeHtml(t('assistant.sizeMedium', {}, 'Medium'))}" aria-label="${_assistantEscapeHtml(t('assistant.sizeMedium', {}, 'Medium'))}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2"/></svg>
+            </button>
+            <button class="tcrt-assistant-size-btn" type="button" data-assistant-size-mode="wide" aria-pressed="false" title="${_assistantEscapeHtml(t('assistant.sizeWide', {}, 'Wide'))}" aria-label="${_assistantEscapeHtml(t('assistant.sizeWide', {}, 'Wide'))}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/></svg>
+            </button>
+          </div>
+          <span class="tcrt-assistant-size-current" id="tcrt-assistant-size-current" aria-live="polite"></span>
+        </div>
           <div class="tcrt-assistant-history-menu" id="tcrt-assistant-history-menu">
             <div class="tcrt-assistant-hm-header-row">
               <div class="tcrt-assistant-hm-title" id="tcrt-assistant-hm-title" data-i18n="assistant.historyTitleGlobal"></div>
@@ -751,7 +909,11 @@ const AssistantWidget = (() => {
     historyMenuEl = root.querySelector('#tcrt-assistant-history-menu');
     attachChipEl = root.querySelector('#tcrt-assistant-attach-chip');
     teamBadgeEl = root.querySelector('#tcrt-assistant-team-badge');
-    expandBtnEl = root.querySelector('#tcrt-assistant-expand-btn');
+    sizeModeSwitcherEl = root.querySelector('#tcrt-assistant-size-switcher');
+    sizeModeButtons = Array.from(root.querySelectorAll('button[data-assistant-size-mode]'));
+    sizeModeLabelEl = root.querySelector('#tcrt-assistant-size-label');
+    sizeModeCurrentEl = root.querySelector('#tcrt-assistant-size-current');
+    wideBackdropEl = root.querySelector('#tcrt-assistant-wide-backdrop');
 
     wireEvents();
     renderAutoApproveBtn();
@@ -759,13 +921,9 @@ const AssistantWidget = (() => {
 
     if (window.i18n && typeof window.i18n.retranslate === 'function') window.i18n.retranslate(root);
 
-    panelSizeMode = localStorage.getItem(PANEL_SIZE_KEY) === 'expanded' ? 'expanded' : 'compact';
-    if (panelSizeMode === 'expanded') {
-      panelEl.classList.add('tcrt-assistant-is-expanded');
-    }
-    updateExpandBtnIcon();
+    setPanelSizeMode(restorePanelSizeMode(), false);
 
-    if (localStorage.getItem(PANEL_OPEN_KEY) === '1') openPanel();
+    if (safePanelStorageGet(localStorage, PANEL_OPEN_KEY) === '1') openPanel();
   }
 
   function destroy() {
@@ -774,7 +932,12 @@ const AssistantWidget = (() => {
     root.remove();
     root = null; panelEl = null; fabEl = null; messagesEl = null; inputEl = null;
     sendBtnEl = null; composerEl = null; historyMenuEl = null; attachChipEl = null; teamBadgeEl = null;
-    expandBtnEl = null; panelSizeMode = 'compact';
+    sizeModeSwitcherEl = null;
+    sizeModeButtons = [];
+    sizeModeLabelEl = null;
+    sizeModeCurrentEl = null;
+    panelSizeMode = 'narrow';
+    wideBackdropEl = null;
     mounted = false;
   }
 
@@ -788,8 +951,9 @@ const AssistantWidget = (() => {
 
   function openPanel() {
     if (!panelEl) return;
-    panelEl.classList.add('tcrt-assistant-is-open');
-    localStorage.setItem(PANEL_OPEN_KEY, '1');
+    setPanelVisibility(panelEl, true);
+    syncWideBackdrop();
+    safePanelStorageSet(localStorage, PANEL_OPEN_KEY, '1');
     setUnread(false);
     inputEl.focus();
     if (!currentConversation) void switchGlobalConversation();
@@ -797,36 +961,15 @@ const AssistantWidget = (() => {
 
   function closePanel() {
     if (!panelEl) return;
-    panelEl.classList.remove('tcrt-assistant-is-open');
-    localStorage.setItem(PANEL_OPEN_KEY, '0');
+    setPanelVisibility(panelEl, false);
+    syncWideBackdrop();
+    safePanelStorageSet(localStorage, PANEL_OPEN_KEY, '0');
     closeHistoryMenu();
     if (fabEl) fabEl.focus();
   }
 
   function togglePanel() {
     if (isOpen()) closePanel(); else openPanel();
-  }
-
-  function toggleSize() {
-    if (!panelEl) return;
-    panelSizeMode = nextSizeMode(panelSizeMode);
-    panelEl.classList.toggle('tcrt-assistant-is-expanded', panelSizeMode === 'expanded');
-    localStorage.setItem(PANEL_SIZE_KEY, panelSizeMode);
-    updateExpandBtnIcon();
-    scrollToBottom();
-  }
-
-  function updateExpandBtnIcon() {
-    if (!expandBtnEl) return;
-    const isExpanded = panelSizeMode === 'expanded';
-    const labelKey = isExpanded ? 'assistant.shrink' : 'assistant.expand';
-    const fallback = isExpanded ? 'Shrink' : 'Expand';
-    const label = t(labelKey, {}, fallback);
-    expandBtnEl.setAttribute('aria-label', label);
-    expandBtnEl.setAttribute('title', label);
-    expandBtnEl.innerHTML = isExpanded
-      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9V3h6M21 15v6h-6M3 3l7 7M21 21l-7-7"/></svg>'
-      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>';
   }
 
   function toggleHistoryMenu() {
@@ -2080,7 +2223,7 @@ const AssistantWidget = (() => {
     root.querySelector('#tcrt-assistant-close-btn').addEventListener('click', closePanel);
     root.querySelector('#tcrt-assistant-history-btn').addEventListener('click', toggleHistoryMenu);
     root.querySelector('#tcrt-assistant-new-btn').addEventListener('click', () => { closeHistoryMenu(); void newConversation(); });
-    root.querySelector('#tcrt-assistant-expand-btn').addEventListener('click', toggleSize);
+    bindPanelSizeModeButtons(sizeModeButtons, setPanelSizeMode);
     root.querySelector('#tcrt-assistant-hm-new-btn').addEventListener('click', () => { closeHistoryMenu(); void newConversation(); });
     const autoCb = root.querySelector('#tcrt-assistant-auto-cb');
     if (autoCb) {
@@ -2191,8 +2334,8 @@ const AssistantWidget = (() => {
 
     window.addEventListener('teamChanged', () => void onTeamChanged());
     window.addEventListener('teamCleared', () => void onTeamChanged());
-    document.addEventListener('i18nReady', () => { if (mounted && window.i18n) { window.i18n.retranslate(root); updateExpandBtnIcon(); } });
-    document.addEventListener('languageChanged', () => { if (mounted && window.i18n) { window.i18n.retranslate(root); updateExpandBtnIcon(); } });
+    document.addEventListener('i18nReady', () => { if (mounted && window.i18n) { window.i18n.retranslate(root); syncPanelSizeControls(); } });
+    document.addEventListener('languageChanged', () => { if (mounted && window.i18n) { window.i18n.retranslate(root); syncPanelSizeControls(); } });
     document.addEventListener('logout', () => destroy());
   }
 

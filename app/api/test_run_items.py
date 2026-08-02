@@ -713,12 +713,13 @@ def _apply_item_list_filters(
         priority_value = priority_lookup.get(priority_filter.lower()) if isinstance(priority_filter, str) else None
         if priority_value is not None:
             q = q.filter(TestCaseLocalDB.priority == priority_value)
-    if test_result_filter is not None:
-        if str(test_result_filter).lower() in ("null", "none", "unexecuted", "pending"):
+    result_token = str(test_result_filter).strip() if test_result_filter is not None else ""
+    if result_token:
+        if result_token.lower() in ("null", "none", "unexecuted", "pending"):
             q = q.filter(TestRunItemDB.test_result.is_(None))
         else:
             try:
-                q = q.filter(TestRunItemDB.test_result == coerce_test_result_status(test_result_filter))
+                q = q.filter(TestRunItemDB.test_result == coerce_test_result_status(result_token))
             except ValueError:
                 # Unknown token: match nothing rather than raw-string compare that never hits enum rows.
                 q = q.filter(False)

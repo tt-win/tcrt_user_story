@@ -17,6 +17,21 @@ class ValidationResult:
 
 
 def _validate_value(value, schema: dict, path: str, errors: list[str]) -> None:
+    alternatives = schema.get("anyOf")
+    if alternatives:
+        for alternative in alternatives:
+            alternative_errors: list[str] = []
+            _validate_value(value, alternative, path, alternative_errors)
+            if not alternative_errors:
+                return
+        expected_types = " or ".join(
+            str(alternative.get("type", "a valid value"))
+            for alternative in alternatives
+            if isinstance(alternative, dict)
+        )
+        errors.append(f"{path}: expected {expected_types}")
+        return
+
     t = schema.get("type")
     if t == "object":
         if not isinstance(value, dict):
@@ -50,11 +65,6 @@ def _validate_value(value, schema: dict, path: str, errors: list[str]) -> None:
         enum = schema.get("enum")
         if enum and value not in enum:
             errors.append(f"{path}: must be one of {enum}")
-    elif t == "string_or_integer":
-        # 業務上常把 local id 以整數傳入，但 schema 標示為可讀的 string（如 record_id）。
-        # 此處允許 str 或 int，不允 bool；下游 Pydantic 會再做最終正規化。
-        if not isinstance(value, (str, int)) or isinstance(value, bool):
-            errors.append(f"{path}: expected string or integer")
     elif t == "integer":
         if not isinstance(value, int) or isinstance(value, bool):
             errors.append(f"{path}: expected integer")

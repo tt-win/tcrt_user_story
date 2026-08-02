@@ -40,6 +40,25 @@
 }
 .tcrt-assistant-fab.tcrt-assistant-has-unread .tcrt-assistant-unread { display: block; }
 
+/* Wide 模式背景突顯：視覺遮罩置於頁面之上、面板與 FAB 之下，不攔截底層互動。 */
+.tcrt-assistant-wide-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-assistant) - 1);
+  background: rgba(15, 23, 42, .32);
+  backdrop-filter: blur(4px) saturate(.9);
+  -webkit-backdrop-filter: blur(4px) saturate(.9);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .15s ease;
+}
+.tcrt-assistant-wide-backdrop.tcrt-assistant-wide-backdrop-is-visible {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tcrt-assistant-wide-backdrop { transition: none; }
+}
+
 /* ===== 面板 ===== */
 .tcrt-assistant-panel {
   position: fixed;
@@ -62,38 +81,85 @@
 }
 .tcrt-assistant-panel.tcrt-assistant-is-open { opacity: 1; transform: none; pointer-events: auto; }
 
-/* 展開模式：加大面板尺寸以提升長文閱讀與多訊息瀏覽體驗。
-   高度 calc 與 compact 相同的 96px 餘裕，確保面板頂部不被 fixed header 遮擋。 */
-.tcrt-assistant-panel.tcrt-assistant-is-expanded {
+/* Medium 模式：加大面板尺寸以提升長文閱讀與多訊息瀏覽體驗。
+   高度 calc 與 narrow 相同的 96px 餘裕，確保面板頂部不被 fixed header 遮擋。 */
+.tcrt-assistant-panel.tcrt-assistant-is-medium {
   width: min(50vw, calc(100vw - 40px));
   height: min(80vh, calc(100vh - var(--header-height) - var(--footer-height) - 96px));
   height: min(80dvh, calc(100dvh - var(--header-height) - var(--footer-height) - 96px));
 }
 
+/* 寬版模式：桌面上以 viewport 中央約 80% 顯示，清除 narrow/medium 的右下角錨點。 */
+.tcrt-assistant-panel.tcrt-assistant-is-wide {
+  left: 50%;
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  width: min(80vw, calc(100vw - 32px));
+  height: min(80vh, calc(100vh - var(--header-height) - var(--footer-height) - 32px));
+  height: min(80dvh, calc(100dvh - var(--header-height) - var(--footer-height) - 32px));
+}
+.tcrt-assistant-panel.tcrt-assistant-is-wide.tcrt-assistant-is-open {
+  transform: translate(-50%, -50%);
+}
+.tcrt-assistant-panel.tcrt-assistant-is-wide:not(.tcrt-assistant-is-open) {
+  transform: translate(-50%, calc(-50% + 10px)) scale(.98);
+}
+
+
 @media (prefers-reduced-motion: no-preference) {
   .tcrt-assistant-panel { transition: opacity .15s ease, transform .15s ease; }
 }
-/* Mobile 全螢幕：必須同時覆蓋 expanded selector，因為 (0,2,0) specificity 高於 (0,1,0)。 */
+/* Mobile 全螢幕：wide 的 centered transform 必須明確 reset；三個 direct mode button 仍可操作。 */
 @media (max-width: 575.98px) {
   .tcrt-assistant-panel,
-  .tcrt-assistant-panel.tcrt-assistant-is-expanded {
-    inset: 0; width: auto; height: auto; border-radius: 0; z-index: var(--z-assistant);
+  .tcrt-assistant-panel.tcrt-assistant-is-medium,
+  .tcrt-assistant-panel.tcrt-assistant-is-wide {
+    inset: 0;
+    width: auto;
+    height: auto;
+    border-radius: 0;
+    z-index: var(--z-assistant);
   }
+  .tcrt-assistant-panel.tcrt-assistant-is-wide:not(.tcrt-assistant-is-open),
+  .tcrt-assistant-panel.tcrt-assistant-is-wide.tcrt-assistant-is-open {
+    transform: none;
+  }
+  .tcrt-assistant-head { gap: 6px; }
+  .tcrt-assistant-size-row { gap: 5px; }
+  .tcrt-assistant-size-label { font-size: 9px; }
+  .tcrt-assistant-size-btn { height: 24px; padding-inline: 3px; }
+  .tcrt-assistant-size-current { flex-basis: 42px; font-size: 10px; }
 }
 
 .tcrt-assistant-head {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 8px;
-  padding: 12px 14px;
+  padding: 10px 12px 8px;
   position: relative;
   background: linear-gradient(135deg, var(--tr-primary) 0%, var(--tr-primary-dark) 100%);
   color: #fff;
 }
-.tcrt-assistant-head .tcrt-assistant-title { font-weight: 600; font-size: 14.5px; }
+.tcrt-assistant-head-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.tcrt-assistant-head .tcrt-assistant-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 14.5px;
+}
 .tcrt-assistant-head .tcrt-assistant-team-badge { font-size: 11.5px; background: rgba(255, 255, 255, .22); padding: 2px 9px; border-radius: 999px; }
 .tcrt-assistant-head .tcrt-assistant-spacer { flex: 1; }
 .tcrt-assistant-head .tcrt-assistant-icon-btn {
+  flex: 0 0 auto;
   background: transparent;
   border: none;
   color: #fff;
@@ -106,6 +172,63 @@
 }
 .tcrt-assistant-head .tcrt-assistant-icon-btn:hover { background: rgba(255, 255, 255, .18); opacity: 1; }
 .tcrt-assistant-head .tcrt-assistant-icon-btn svg { width: 16px; height: 16px; }
+.tcrt-assistant-size-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.tcrt-assistant-size-label {
+  flex: 0 0 auto;
+  color: rgba(255, 255, 255, .78);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.tcrt-assistant-size-switcher {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid rgba(255, 255, 255, .28);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, .12);
+}
+.tcrt-assistant-size-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 24px;
+  padding: 2px 5px;
+  border: 0;
+  border-radius: 5px;
+  color: rgba(255, 255, 255, .78);
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  opacity: .8;
+}
+.tcrt-assistant-size-btn svg { width: 16px; height: 16px; }
+.tcrt-assistant-size-btn:hover,
+.tcrt-assistant-size-btn:focus-visible { color: #fff; background: rgba(255, 255, 255, .16); opacity: 1; }
+.tcrt-assistant-size-btn.is-active {
+  color: var(--tr-primary-dark);
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .22);
+  opacity: 1;
+}
+.tcrt-assistant-size-current {
+  flex: 0 0 48px;
+  overflow: hidden;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .tcrt-assistant-head .tcrt-assistant-auto-btn {
   font-size: 13px;
@@ -123,7 +246,7 @@
 /* 對話歷史下拉與 Session 管理員 */
 .tcrt-assistant-history-menu {
   position: absolute;
-  top: 48px;
+  top: 100%;
   right: 12px;
   width: 290px;
   background: var(--tr-bg-card);

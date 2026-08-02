@@ -58,12 +58,54 @@ const {
   toolActionI18nKey,
   confirmationActionLabelMarkup,
   escapeHtml,
-  nextSizeMode,
+  normalizePanelSizeMode,
+  legacyPanelSizeMode,
+  panelSizeModeFromStorage,
+  persistPanelSizeModeToStorage,
+  applyPanelSizeModeDom,
+  syncPanelSizeControlsDom,
+  bindPanelSizeModeButtons,
+  setPanelVisibility,
+  wideBackdropShouldShow,
   assistantWidgetDisabledForView,
   assistantUiLocaleFrom,
   assistantConversationStorageKey,
   selectAssistantConversation,
 } = context;
+
+function makeFakeElement(mode) {
+  const attributes = Object.create(null);
+  const classes = new Set();
+  const listeners = Object.create(null);
+  return {
+    attributes,
+    classes,
+    listeners,
+    dataset: mode ? { assistantSizeMode: mode } : {},
+    textContent: '',
+    inert: false,
+    classList: {
+      toggle(name, enabled) {
+        if (enabled) classes.add(name); else classes.delete(name);
+      },
+      contains(name) { return classes.has(name); },
+    },
+    setAttribute(name, value) { attributes[name] = String(value); },
+    getAttribute(name) { return Object.prototype.hasOwnProperty.call(attributes, name) ? attributes[name] : null; },
+    removeAttribute(name) { delete attributes[name]; },
+    addEventListener(type, handler) { listeners[type] = handler; },
+    click() { if (listeners.click) listeners.click({ type: 'click' }); },
+  };
+}
+
+function makeFakeStorage(initial = {}) {
+  const values = { ...initial };
+  return {
+    values,
+    getItem(key) { return Object.prototype.hasOwnProperty.call(values, key) ? values[key] : null; },
+    setItem(key, value) { values[key] = String(value); },
+  };
+}
 
 // ---------------------------------------------------------------------- //
 // 彈出視窗不注入 widget
@@ -135,7 +177,7 @@ test('toolActionI18nKey：合法工具使用 action key，異常 identifier 不�
 });
 
 test('所有 registry 工具皆有三語明確動作名稱，且不等於 method identifier', () => {
-  assert.equal(registryToolNames.size, 77, '工具擷取必須覆蓋完整 registry（含 global / knowledge 工具）');
+  assert.equal(registryToolNames.size, 79, '工具擷取必須覆蓋完整 registry（含 global / knowledge 工具）');
   for (const [locale, translations] of Object.entries(localeSources)) {
     const actions = translations.assistant.action;
     for (const toolName of registryToolNames) {
@@ -564,55 +606,146 @@ test('refreshHistoryMenu：workspace 切換仍固定使用 global history title'
   assert.doesNotMatch(source, /t\('assistant\.historyTitle',/);
 });
 
-// ---------------------------------------------------------------------- //
-// 面板尺寸切換（expand / shrink）
-// ---------------------------------------------------------------------- //
-
-test('nextSizeMode：compact ↔ expanded 雙向切換，未知值 fail-closed 至 compact', () => {
-  assert.equal(nextSizeMode('compact'), 'expanded');
-  assert.equal(nextSizeMode('expanded'), 'compact');
-  assert.equal(nextSizeMode(null), 'compact');
-  assert.equal(nextSizeMode(undefined), 'compact');
-  assert.equal(nextSizeMode(''), 'compact');
-  assert.equal(nextSizeMode('large'), 'compact');
+test('openPanel：首次開啟 lazy 初始化 global conversation', () => {
+  const openPanelBody = source.match(/function openPanel\(\) \{([\s\S]*?)\n  \}\n\n  function closePanel/);
+  assert.ok(openPanelBody, 'openPanel implementation must remain discoverable');
+  assert.match(openPanelBody[1], /if \(!currentConversation\) void switchGlobalConversation\(\);/);
 });
 
-test('CSS 包含 expanded 模式 selector 與 mobile specificity 覆蓋', () => {
-  assert.match(cssSource, /\.tcrt-assistant-panel\.tcrt-assistant-is-expanded\s*\{/);
+// 面板尺寸直接切換（narrow / medium / wide）
+// ---------------------------------------------------------------------- //
+
+test('normalizePanelSizeMode：接受 canonical modes 與 legacy storage 值', () => {
+  assert.equal(normalizePanelSizeMode('narrow'), 'narrow');
+  assert.equal(normalizePanelSizeMode('medium'), 'medium');
+  assert.equal(normalizePanelSizeMode('wide'), 'wide');
+  assert.equal(normalizePanelSizeMode('compact'), 'narrow');
+  assert.equal(normalizePanelSizeMode('expanded'), 'medium');
+  assert.equal(normalizePanelSizeMode(null), 'narrow');
+  assert.equal(normalizePanelSizeMode('large'), 'narrow');
+});
+
+test('legacyPanelSizeMode：canonical mode 可安全 mirror 給 rollback 版本', () => {
+  assert.equal(legacyPanelSizeMode('narrow'), 'compact');
+  assert.equal(legacyPanelSizeMode('medium'), 'expanded');
+  assert.equal(legacyPanelSizeMode('wide'), 'wide');
+  assert.equal(legacyPanelSizeMode('invalid'), 'compact');
+});
+
+test('CSS 使用 medium/wide 幾何並保留 mobile full-screen', () => {
+  assert.match(cssSource, /\.tcrt-assistant-panel\.tcrt-assistant-is-medium\s*\{/);
+  assert.doesNotMatch(cssSource, /\.tcrt-assistant-panel\.tcrt-assistant-is-expanded/);
   assert.match(cssSource, /min\(50vw, calc\(100vw - 40px\)\)/);
   assert.match(cssSource, /min\(80vh, calc\(100vh - var\(--header-height\) - var\(--footer-height\) - 96px\)\)/);
-  assert.match(cssSource, /@media \(max-width: 575\.98px\)[\s\S]*?\.tcrt-assistant-panel,[\s\S]*?\.tcrt-assistant-is-expanded[\s\S]*?inset:\s*0/);
+  assert.match(cssSource, /min\(80vh, calc\(100vh - var\(--header-height\) - var\(--footer-height\) - 32px\)\)/);
+  assert.match(cssSource, /\.tcrt-assistant-panel\.tcrt-assistant-is-wide\s*\{/);
+  assert.match(cssSource, /left:\s*50%;[\s\S]*?top:\s*50%;[\s\S]*?right:\s*auto;[\s\S]*?bottom:\s*auto;/);
+  assert.match(cssSource, /@media \(max-width: 575\.98px\)[\s\S]*?\.tcrt-assistant-panel,[\s\S]*?\.tcrt-assistant-is-medium[\s\S]*?\.tcrt-assistant-is-wide[\s\S]*?inset:\s*0/);
+  assert.match(cssSource, /@media \(max-width: 575\.98px\)[\s\S]*?\.tcrt-assistant-panel\.tcrt-assistant-is-wide\.tcrt-assistant-is-open[\s\S]*?transform:\s*none/);
+  assert.doesNotMatch(cssSource, /#tcrt-assistant-expand-btn/);
 });
 
-test('JS 包含 expand 按鈕 DOM、toggleSize、updateExpandBtnIcon、PANEL_SIZE_KEY', () => {
-  assert.match(source, /id="tcrt-assistant-expand-btn"/);
-  assert.match(source, /PANEL_SIZE_KEY = 'tcrt_assistant_panel_size'/);
-  assert.match(source, /function toggleSize/);
-  assert.match(source, /function updateExpandBtnIcon/);
-  assert.match(source, /addEventListener\('click', toggleSize\)/);
-  assert.match(source, /localStorage\.setItem\(PANEL_SIZE_KEY/);
-  assert.match(source, /languageChanged[\s\S]*?updateExpandBtnIcon/);
-  assert.match(source, /i18nReady[\s\S]*?updateExpandBtnIcon/);
-  assert.match(source, /expandBtnEl = null/);
+test('wide 模式顯示非 modal 背景突顯遮罩', () => {
+  assert.match(cssSource, /\.tcrt-assistant-wide-backdrop\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?inset:\s*0;[\s\S]*?background:\s*rgba\(/);
+  assert.match(cssSource, /backdrop-filter:\s*blur\(4px\)/);
+  assert.match(cssSource, /\.tcrt-assistant-wide-backdrop\.tcrt-assistant-wide-backdrop-is-visible[\s\S]*?opacity:\s*1;/);
+  assert.match(cssSource, /\.tcrt-assistant-wide-backdrop[\s\S]*?pointer-events:\s*none;/);
 });
 
-test('mount 不論初始模式都呼叫 updateExpandBtnIcon（確保 compact 時 label 也被 i18n 翻譯）', () => {
-  assert.match(source, /panelSizeMode = localStorage\.getItem\(PANEL_SIZE_KEY\)[\s\S]*?if \(panelSizeMode === 'expanded'\)[\s\S]*?\}[\s\S]*?updateExpandBtnIcon\(\)/);
+test('panel size preference：canonical 優先、legacy 只在 canonical 缺少時 migration', () => {
+  const legacy = makeFakeStorage({ legacy: 'expanded' });
+  assert.equal(panelSizeModeFromStorage(legacy, 'canonical', 'legacy'), 'medium');
+
+  const corruptCanonical = makeFakeStorage({ canonical: 'garbage', legacy: 'expanded' });
+  assert.equal(panelSizeModeFromStorage(corruptCanonical, 'canonical', 'legacy'), 'narrow');
+
+  const persisted = makeFakeStorage();
+  assert.equal(persistPanelSizeModeToStorage(persisted, 'canonical', 'legacy', 'wide'), 'wide');
+  assert.deepEqual(persisted.values, { canonical: 'wide', legacy: 'wide' });
+
+  const unavailable = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } };
+  assert.equal(panelSizeModeFromStorage(unavailable, 'canonical', 'legacy'), 'narrow');
+  assert.equal(persistPanelSizeModeToStorage(unavailable, 'canonical', 'legacy', 'medium'), 'medium');
 });
 
-test('expand 按鈕不加 data-i18n-title/aria-label（由 JS 動態管理避免 retranslate 覆蓋）', () => {
-  const btnMatch = source.match(/id="tcrt-assistant-expand-btn"[^>]*>/);
-  assert.ok(btnMatch, 'expand button DOM must exist');
-  assert.equal(btnMatch[0].includes('data-i18n-title'), false, 'must NOT have data-i18n-title');
-  assert.equal(btnMatch[0].includes('data-i18n-aria-label'), false, 'must NOT have data-i18n-aria-label');
+test('direct mode buttons：click 直接選 mode 並同步唯一 active indicator', () => {
+  const panel = makeFakeElement();
+  applyPanelSizeModeDom(panel, 'medium');
+  assert.equal(panel.dataset.assistantSizeMode, 'medium');
+  assert.equal(panel.classes.has('tcrt-assistant-is-medium'), true);
+  assert.equal(panel.classes.has('tcrt-assistant-is-wide'), false);
+
+  applyPanelSizeModeDom(panel, 'wide');
+  assert.equal(panel.dataset.assistantSizeMode, 'wide');
+  assert.equal(panel.classes.has('tcrt-assistant-is-medium'), false);
+  assert.equal(panel.classes.has('tcrt-assistant-is-wide'), true);
+
+  const buttons = ['narrow', 'medium', 'wide'].map((mode) => makeFakeElement(mode));
+  let clickedMode = null;
+  bindPanelSizeModeButtons(buttons, (mode) => { clickedMode = mode; });
+  buttons[2].click();
+  assert.equal(clickedMode, 'wide');
+
+  const switcher = makeFakeElement();
+  const label = makeFakeElement();
+  const current = makeFakeElement();
+  syncPanelSizeControlsDom(
+    switcher,
+    buttons,
+    label,
+    current,
+    'wide',
+    { narrow: 'Narrow', medium: 'Medium', wide: 'Wide' },
+    'Panel size'
+  );
+  assert.equal(label.textContent, 'Panel size');
+  assert.equal(switcher.getAttribute('aria-label'), 'Panel size');
+  assert.deepEqual(buttons.map((button) => button.getAttribute('aria-pressed')), ['false', 'false', 'true']);
+  assert.equal(current.textContent, 'Wide');
+  assert.equal(current.getAttribute('aria-label'), 'Panel size: Wide');
 });
 
-test('三語系包含 assistant.expand / assistant.shrink', () => {
+test('panel visibility：closed 時移出 accessibility tree 與 tab order', () => {
+  const panel = makeFakeElement();
+  setPanelVisibility(panel, true);
+  assert.equal(panel.classes.has('tcrt-assistant-is-open'), true);
+  assert.equal(panel.inert, false);
+  assert.equal(panel.getAttribute('aria-hidden'), null);
+  assert.equal(panel.getAttribute('inert'), null);
+
+  setPanelVisibility(panel, false);
+  assert.equal(panel.classes.has('tcrt-assistant-is-open'), false);
+  assert.equal(panel.inert, true);
+  assert.equal(panel.getAttribute('aria-hidden'), 'true');
+  assert.equal(panel.getAttribute('inert'), '');
+});
+
+test('wide backdrop predicate：只有 wide 且 panel open 時成立', () => {
+  const panel = makeFakeElement();
+  assert.equal(wideBackdropShouldShow(panel, 'wide'), false);
+  setPanelVisibility(panel, true);
+  assert.equal(wideBackdropShouldShow(panel, 'wide'), true);
+  assert.equal(wideBackdropShouldShow(panel, 'medium'), false);
+  setPanelVisibility(panel, false);
+  assert.equal(wideBackdropShouldShow(panel, 'wide'), false);
+});
+
+test('JS 直接 mode markup 與 lifecycle contract', () => {
+  assert.equal((source.match(/data-assistant-size-mode=/g) || []).length, 3);
+  assert.match(source, /aria-hidden="true" inert data-i18n-aria-label="assistant\.title"/);
+  assert.doesNotMatch(source, /function nextSizeMode/);
+  assert.doesNotMatch(source, /function toggleSize/);
+  assert.doesNotMatch(source, /id="tcrt-assistant-expand-btn"/);
+  assert.match(source, /bindPanelSizeModeButtons\(sizeModeButtons, setPanelSizeMode\)/);
+  assert.match(source, /setPanelVisibility\(panelEl, true\)/);
+  assert.match(source, /setPanelVisibility\(panelEl, false\)/);
+});
+test('三語系包含三種 mode label', () => {
   for (const [locale, translations] of Object.entries(localeSources)) {
     const a = translations.assistant;
-    assert.ok(a, `assistant section must exist in ${locale}`);
-    assert.ok(typeof a.expand === 'string' && a.expand.length > 0, `assistant.expand must exist in ${locale}`);
-    assert.ok(typeof a.shrink === 'string' && a.shrink.length > 0, `assistant.shrink must exist in ${locale}`);
+    assert.ok(a, 'assistant section must exist in ' + locale);
+    for (const key of ['sizeModeLabel', 'sizeNarrow', 'sizeMedium', 'sizeWide']) {
+      assert.ok(typeof a[key] === 'string' && a[key].length > 0, key + ' must exist in ' + locale);
+    }
   }
 });
-

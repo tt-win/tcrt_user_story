@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -18,11 +19,15 @@ from app.models.database_models import (
     AssistantToolExecution,
     AssistantTurn,
     Team,
+    AssistantMessage,
     TestCaseSection,
     TestCaseSet,
     User,
+    TestRunConfig,
+    TestRunItem,
 )
 from app.models.team import TeamStatus
+from app.models.test_run_config import TestRunStatus
 import app.services.assistant.assistant_llm_service as llm_mod
 from app.services.assistant import conversation_service as conversation_service_module
 from app.testsuite.db_test_helpers import (
@@ -102,6 +107,7 @@ def team_ctx_db(tmp_path, monkeypatch):
                 id=1,
                 username="target-tester",
                 email="target@example.com",
+                lark_user_id="target-lark",
                 hashed_password="x",
                 role=UserRole.USER,
                 is_active=True,
@@ -273,6 +279,116 @@ def test_global_list_teams_read_completes_with_accessible_teams(team_ctx_db):
         assert journal.tool_name == "list_teams"
         assert journal.status == "succeeded"
         assert journal.team_id is None
+
+
+def test_global_assignment_lookups_use_signed_in_user_across_teams(team_ctx_db):
+    with team_ctx_db["bundle"]["sync_session_factory"]() as session:
+        art_run = TestRunConfig(
+            team_id=1,
+            name="ART active",
+            description="",
+            status=TestRunStatus.ACTIVE,
+        )
+        cid_run = TestRunConfig(
+            team_id=2,
+            name="CID draft",
+            description="",
+            status=TestRunStatus.DRAFT,
+        )
+        completed_run = TestRunConfig(
+            team_id=1,
+            name="Completed historical run",
+            description="",
+            status=TestRunStatus.COMPLETED,
+        )
+        session.add_all([art_run, cid_run, completed_run])
+        session.flush()
+        session.add_all(
+            [
+                TestRunItem(
+                    team_id=1,
+                    config_id=art_run.id,
+                    test_case_number="ART-ASSIGNED",
+                    assignee_user_id=1,
+                    assignee_name="Mandy",
+                ),
+                TestRunItem(
+                    team_id=2,
+                    config_id=cid_run.id,
+                    test_case_number="CID-LEGACY",
+                    assignee_id="target-lark",
+                    assignee_name="Mandy",
+                ),
+                TestRunItem(
+                    team_id=1,
+                    config_id=completed_run.id,
+                    test_case_number="ART-COMPLETED",
+                    assignee_user_id=1,
+                    assignee_name="Mandy",
+                ),
+            ]
+        )
+        session.commit()
+
+    client = _client()
+    conv_id = _global_conversation(client)
+    fake = team_ctx_db["llm"]
+    _push_tool_call(fake, "list_my_test_run_assignments", {})
+    _push_text(fake, "目前指派的 test run 已列出")
+
+    response = _send(client, conv_id, text="目前有哪些 test run 指派給我？", message_id="m1")
+    assert response.status_code == 200, response.text
+    assert '"tool_name": "list_my_test_run_assignments"' in response.text
+
+    schema = _tool_schema(fake, "list_my_test_run_assignments")["parameters"]
+    assert "target_team" not in schema["properties"]
+    assert "target_team" not in schema.get("required", [])
+
+    with team_ctx_db["bundle"]["sync_session_factory"]() as session:
+        journal = session.query(AssistantToolExecution).one()
+        assert journal.status == "succeeded"
+        assert journal.team_id is None
+        assert journal.target_selector_json is None
+        tool_message = session.query(AssistantMessage).filter_by(role="tool").one()
+        payload = json.loads(tool_message.content)
+
+    runs = {row["run_name"]: row for row in payload["results"]}
+    assert set(runs) == {"ART active", "CID draft", "Completed historical run"}
+    assert runs["ART active"]["assigned_item_count"] == 1
+    assert runs["CID draft"]["team_name"] == "CID"
+    assert runs["CID draft"]["_deep_links"]["test_run"].startswith(
+        "/test-run-execution?team_id=2&config_id="
+    )
+
+    _push_tool_call(fake, "search_test_run_assignments", {"assignee_name": "Mandy"})
+    _push_text(fake, "Mandy 的 test run 已列出")
+    response = _send(client, conv_id, text="目前有哪些 test run assign 給 Mandy？", message_id="m2")
+    assert response.status_code == 200, response.text
+    assert '"tool_name": "search_test_run_assignments"' in response.text
+
+    named_schema = _tool_schema(fake, "search_test_run_assignments")["parameters"]
+    assert "target_team" not in named_schema["properties"]
+    assert "assignee_name" in named_schema["required"]
+
+    with team_ctx_db["bundle"]["sync_session_factory"]() as session:
+        journals = session.query(AssistantToolExecution).order_by(AssistantToolExecution.id).all()
+        assert [journal.tool_name for journal in journals] == [
+            "list_my_test_run_assignments",
+            "search_test_run_assignments",
+        ]
+        named_message = (
+            session.query(AssistantMessage)
+            .filter_by(role="tool")
+            .order_by(AssistantMessage.id.desc())
+            .first()
+        )
+        named_payload = json.loads(named_message.content)
+
+    assert {row["run_name"] for row in named_payload["results"]} == {
+        "ART active",
+        "CID draft",
+        "Completed historical run",
+    }
 
 
 def test_global_read_uses_selector_and_journals_raw_pair(team_ctx_db):
