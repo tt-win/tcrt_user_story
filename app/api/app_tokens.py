@@ -17,7 +17,7 @@ from app.auth.app_token_dependencies import (
     generate_app_token,
 )
 from app.auth.dependencies import get_current_user, require_super_admin
-from app.auth.models import PermissionType, UserRole
+from app.auth.models import PermissionType
 from app.auth.permission_service import permission_service
 from app.database import get_db
 from app.db_access.main import create_main_access_boundary_for_session

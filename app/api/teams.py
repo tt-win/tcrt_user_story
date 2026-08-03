@@ -10,7 +10,7 @@ from app.auth.dependencies import (
     get_current_user,
     require_admin,
 )
-from app.auth.models import PermissionType, UserRole
+from app.auth.models import PermissionType
 from app.auth.permission_service import permission_service
 from app.models.database_models import User
 from app.models.team import TeamCreate, TeamStatus, TeamUpdate

@@ -1,7 +1,7 @@
 # adhoc-test-run-execution-ui Specification
 
 ## Purpose
-TBD - created by archiving change update-adhoc-test-run-add-row-batch-input. Update Purpose after archive.
+定義 Ad-hoc Test Run 執行頁在可編輯模式下的表格操作行為，包含批次新增空白列、區段列插入、唯讀保護與對應 i18n 體驗。
 ## Requirements
 ### Requirement: Add Row SHALL support user-defined batch count
 
@@ -80,4 +80,3 @@ The system SHALL provide i18n labels for `Insert section above` and `Insert sect
 #### Scenario: Context menu labels follow active locale
 - **WHEN** 使用者切換語系後開啟右鍵選單 / user opens context menu after changing locale
 - **THEN** section insertion actions 顯示對應語系文案 / section insertion actions display locale-specific labels
-

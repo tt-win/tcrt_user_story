@@ -20,6 +20,7 @@ from sqlalchemy import select
 
 from app.auth.dependencies import get_current_user
 from app.auth.models import UserRole
+from app.auth.permission_service import permission_service
 from app.config import AssistantConfig, settings
 from app.database import get_db
 from app.db_access.main import get_main_access_boundary
@@ -72,6 +73,10 @@ def journal_db(tmp_path, monkeypatch):
         async_session_factory=bundle["async_session_factory"],
     )
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1, username="journal-tester", role=UserRole.USER)
+    async def _accessible_teams(_user_id):
+        return [1]
+
+    monkeypatch.setattr(permission_service, "get_user_accessible_teams", _accessible_teams)
     monkeypatch.setattr(settings.ai.assistant, "enabled", True)
     monkeypatch.setattr(settings.openrouter, "api_key", "fake-key-for-test")
 

@@ -242,12 +242,11 @@ class TestCreateAppToken:
         _override_user(data)
 
         with TestClient(app) as client:
-            own_token = client.post(
+            client.post(
                 f"/api/teams/{data['team_id']}/app-tokens",
                 json={"name": "Own Token", "scopes": ["test_case:read"]},
                 headers=_bearer_jwt(),
-            ).json()
-            token_id = own_token["id"]
+            )
             headers = _bearer_jwt()
             team_list = client.get("/api/teams/", headers=headers)
             assert team_list.status_code == 200
