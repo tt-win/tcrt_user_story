@@ -18,6 +18,7 @@ from app.auth.app_token_dependencies import (
 )
 from app.auth.dependencies import get_current_user, require_super_admin
 from app.auth.models import PermissionType, UserRole
+from app.auth.permission_service import permission_service
 from app.database import get_db
 from app.db_access.main import create_main_access_boundary_for_session
 from app.models.app_token import ALL_APP_TOKEN_SCOPES, APP_TOKEN_DEFAULT_EXPIRY_DAYS
@@ -26,7 +27,6 @@ from app.models.database_models import (
     TeamAppToken,
     TeamAppTokenStatus,
     User,
-    UserTeamPermission,
 )
 from app.models.team import TeamStatus
 from app.services.observability import Impact, Outcome
@@ -144,32 +144,13 @@ async def _require_team_admin(
     current_user: User,
     db: AsyncSession,
 ) -> User:
-    role = (
-        current_user.role.value
-        if isinstance(current_user.role, UserRole)
-        else str(current_user.role)
+    permission_check = await permission_service.check_team_permission(
+        current_user.id,
+        team_id,
+        PermissionType.ADMIN,
+        current_user.role,
     )
-    if role == UserRole.SUPER_ADMIN.value:
-        return current_user
-
-    boundary = create_main_access_boundary_for_session(db)
-
-    async def _load_permission(session: AsyncSession):
-        result = await session.execute(
-            select(UserTeamPermission.permission).where(
-                UserTeamPermission.user_id == current_user.id,
-                UserTeamPermission.team_id == team_id,
-            )
-        )
-        return result.scalar_one_or_none()
-
-    permission = await boundary.run_read(_load_permission)
-    permission_value = (
-        permission.value
-        if isinstance(permission, PermissionType)
-        else str(permission)
-    )
-    if permission_value != PermissionType.ADMIN.value:
+    if not permission_check.has_permission:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": "INSUFFICIENT_PERMISSION", "message": "Team admin permission required"},

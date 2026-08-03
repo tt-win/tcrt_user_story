@@ -227,7 +227,7 @@ class TestCreateAppToken:
             assert resp.status_code == 403
 
 
-    def test_team_scoped_admin_cannot_cross_team(self, temp_db):
+    def test_admin_can_manage_all_accessible_teams(self, temp_db):
         with temp_db() as session:
             data = _seed_data(session, role=UserRole.ADMIN)
             foreign_team = Team(
@@ -256,25 +256,42 @@ class TestCreateAppToken:
                 for team in team_list.json()
             }
             assert manage_flags[data["team_id"]] is True
-            assert manage_flags[foreign_team_id] is False
+            assert manage_flags[foreign_team_id] is True
 
             assert client.get(
                 f"/api/teams/{foreign_team_id}/app-tokens",
                 headers=headers,
-            ).status_code == 403
-            assert client.post(
+            ).status_code == 200
+            foreign_token = client.post(
                 f"/api/teams/{foreign_team_id}/app-tokens",
                 json={"name": "Foreign Token", "scopes": ["test_case:read"]},
                 headers=headers,
-            ).status_code == 403
+            ).json()
             assert client.post(
-                f"/api/teams/{foreign_team_id}/app-tokens/{token_id}/rotate",
+                f"/api/teams/{foreign_team_id}/app-tokens/{foreign_token['id']}/rotate",
                 headers=headers,
-            ).status_code == 403
+            ).status_code == 200
             assert client.delete(
-                f"/api/teams/{foreign_team_id}/app-tokens/{token_id}",
+                f"/api/teams/{foreign_team_id}/app-tokens/{foreign_token['id']}",
                 headers=headers,
-            ).status_code == 403
+            ).status_code == 200
+
+    def test_admin_without_legacy_team_permission_can_list_tokens(self, temp_db):
+        with temp_db() as session:
+            data = _seed_data(session, team_permission=None)
+        _override_user(data)
+
+        with TestClient(app) as client:
+            headers = _bearer_jwt()
+            teams = client.get("/api/teams/", headers=headers).json()
+            assert teams[0]["can_manage_app_tokens"] is True
+
+            response = client.get(
+                f"/api/teams/{data['team_id']}/app-tokens",
+                headers=headers,
+            )
+            assert response.status_code == 200
+            assert response.json()["items"] == []
 
 
 class TestListAppTokens:
