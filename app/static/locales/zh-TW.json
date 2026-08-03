@@ -4044,7 +4044,7 @@
       "irreversible": "此操作為永久且無法復原。"
     },
     "fabLabel": "開啟 TCRT 助手",
-    "title": "TCRT AI 助手",
+    "title": "TCRT AI 助手（Beta）",
     "scopeNotice": "僅協助 TCRT 的 test case 與 test run 操作，動作以你的帳號權限執行。",
     "scopeDataEgress": "對話內容會送往外部 LLM，請勿貼入密碼等機密。",
     "inputPlaceholder": "詢問或操作 test case / test run…",
