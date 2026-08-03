@@ -85,6 +85,21 @@ def test_llm_tool_schemas_use_standard_json_schema_types():
     assert not invalid_types, "\n".join(invalid_types)
 
 
+def test_test_case_priority_schemas_match_api_enum():
+    expected = ["High", "Medium", "Low"]
+    registry = get_tool_registry()
+
+    for name in ("create_test_case", "update_test_case"):
+        schema = registry.get(name).body_schema["properties"]["priority"]
+        assert schema["enum"] == expected
+
+    bulk_schema = registry.get("bulk_create_test_cases").body_schema["properties"]["items"]["items"]
+    assert bulk_schema["properties"]["priority"]["enum"] == expected
+
+    batch_schema = registry.get("batch_update_test_cases").body_schema["properties"]["update_data"]
+    assert batch_schema["properties"]["priority"]["enum"] == expected
+
+
 def test_delete_tools_are_irreversible_except_exemptions():
     registry = get_tool_registry()
     for tool in registry.all():

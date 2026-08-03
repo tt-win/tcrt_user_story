@@ -59,13 +59,13 @@ class _FakeLLM:
 
 
 
-def _push_tool_call(fake, name, arguments):
+def _push_tool_call(fake, name, arguments, provider_tool_call_id="p"):
     fake.script.append(
         llm_mod.AssistantLLMResult(
             content=None,
             tool_calls=[
                 llm_mod.ParsedToolCall(
-                    provider_tool_call_id="p", name=name, arguments=arguments
+                    provider_tool_call_id=provider_tool_call_id, name=name, arguments=arguments
                 )
             ],
         )
@@ -279,6 +279,55 @@ def test_global_list_teams_read_completes_with_accessible_teams(team_ctx_db):
         assert journal.tool_name == "list_teams"
         assert journal.status == "succeeded"
         assert journal.team_id is None
+
+
+def test_global_latest_case_query_uses_created_at_sort_contract(team_ctx_db):
+    client = _client()
+    conv_id = _global_conversation(client)
+    fake = team_ctx_db["llm"]
+    _push_tool_call(
+        fake,
+        "get_skill",
+        {"skill_id": "latest-test-case"},
+        provider_tool_call_id="skill",
+    )
+    _push_tool_call(fake, "list_teams", {}, provider_tool_call_id="teams")
+    _push_tool_call(
+        fake,
+        "list_test_cases",
+        {
+            "target_team": {"id": 1, "name": "ART"},
+            "sort_by": "created_at",
+            "sort_order": "desc",
+            "limit": 1,
+        },
+        provider_tool_call_id="query",
+    )
+    _push_text(fake, "ART 最新建立的 test case 已列出")
+
+    response = _send(client, conv_id, text="ART team 最新建立的 test case", message_id="m1")
+
+    assert response.status_code == 200, response.text
+    assert '"tool_name": "get_skill"' in response.text
+    assert '"tool_name": "list_test_cases"' in response.text
+    assert "latest-test-case" in fake.last_system_prompt
+
+    with team_ctx_db["bundle"]["sync_session_factory"]() as session:
+        journals = (
+            session.query(AssistantToolExecution)
+            .order_by(AssistantToolExecution.id.asc())
+            .all()
+        )
+        assert [journal.tool_name for journal in journals] == [
+            "get_skill",
+            "list_teams",
+            "list_test_cases",
+        ]
+        query_args = json.loads(journals[-1].arguments_json)
+        assert query_args["sort_by"] == "created_at"
+        assert query_args["sort_order"] == "desc"
+        assert query_args["limit"] == 1
+        assert journals[-1].team_id == 1
 
 
 def test_global_assignment_lookups_use_signed_in_user_across_teams(team_ctx_db):

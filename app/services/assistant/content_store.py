@@ -250,6 +250,7 @@ _TOOL_ROUTING_BLOCK = """
 Pick the simplest tool that answers the question:
 - Known test case number + need full content (steps / expected_result / precondition): use `get_test_case_global`.
 - Exact keyword or number search / list / which team has this case: use `search_test_cases_global`.
+- Latest or newest test case in a named team: call `get_skill` with `skill_id="latest-test-case"` first, then follow that recipe.
 - My assigned test runs: use `list_my_test_run_assignments` directly; it spans accessible teams and includes active, draft, or completed runs (not archived).
 - Named person's assigned test runs: use `search_test_run_assignments` with `assignee_name`; it spans accessible teams and includes active, draft, or completed runs (not archived).
 - Semantic or fuzzy discovery (feature ownership when keywords are unclear): use `search_knowledge`; if degraded or empty, then `search_test_cases_global`.
@@ -270,10 +271,15 @@ def ensure_tool_routing_rules(template: str) -> str:
     has_assignment_status_coverage = any(
         marker in template for marker in assignment_status_markers
     )
+    has_latest_case_skill_routing = (
+        "latest-test-case" in template
+        and "get_skill" in template
+    )
     if (
         has_soft_routing
         and all(route in template for route in required_routes)
         and has_assignment_status_coverage
+        and has_latest_case_skill_routing
     ):
         return template
     # Always append missing routing so it overrides stale DB prompt text.

@@ -220,7 +220,7 @@ class TestCaseRepoService:
             }
             col = sort_field_map.get(sort_by, TestCaseLocal.created_at)
             if order_desc:
-                q = q.order_by(col.desc(), TestCaseLocal.id.asc())
+                q = q.order_by(col.desc(), TestCaseLocal.id.desc())
             else:
                 q = q.order_by(col.asc(), TestCaseLocal.id.asc())
 

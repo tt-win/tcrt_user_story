@@ -461,7 +461,7 @@ async def test_batch_update_and_preview_tools_accept_string_or_integer_record_id
         arguments = {
             "operation": "update_priority",
             "record_ids": ids,
-            "update_data": {"priority": "P1"},
+            "update_data": {"priority": "High"},
         }
         validation = validate_arguments(arguments, combined_schema(update_tool))
         assert validation.ok, f"batch_update_test_cases 應接受 {type(ids[0]).__name__} record_ids: {validation.errors}"
@@ -477,7 +477,7 @@ async def test_batch_update_and_preview_tools_accept_string_or_integer_record_id
     # 3. batch_update_test_cases 實際能建立 pending（驗證權限/team resolve 也走整數）
     prepared = await executor.prepare_write_tool(
         update_tool,
-        {"operation": "update_priority", "record_ids": case_ids, "update_data": {"priority": "P1"}},
+        {"operation": "update_priority", "record_ids": case_ids, "update_data": {"priority": "High"}},
         conversation=_FakeConversation(),
         user_id=1,
         role=UserRole.USER,

@@ -1,6 +1,11 @@
+from datetime import datetime
 import json
+from types import SimpleNamespace
 
 import pytest
+
+from app.api.test_cases import list_test_case_refs
+from app.auth.models import UserRole
 
 
 from app.models.database_models import (
@@ -84,6 +89,7 @@ def repo_service_db(tmp_path):
 
     yield {
         "team_id": team_id,
+        "sync_sessionmaker": SyncSessionLocal,
         "async_sessionmaker": AsyncSessionLocal,
     }
 
@@ -112,6 +118,71 @@ async def test_list_filters_cases_by_tcg_json_content(repo_service_db):
         )
 
         assert [row.test_case_number for row in rows] == ["TC-001", "TC-002"]
+
+
+@pytest.mark.asyncio
+async def test_list_latest_order_uses_created_at_and_deterministic_id_tiebreaker(repo_service_db):
+    with repo_service_db["sync_sessionmaker"]() as session:
+        cases = session.query(CaseModel).order_by(CaseModel.id.asc()).all()
+        cases[0].created_at = datetime(2026, 1, 1)
+        cases[1].created_at = datetime(2026, 1, 3)
+        cases[2].created_at = datetime(2026, 1, 2)
+        session.commit()
+
+    async with repo_service_db["async_sessionmaker"]() as session:
+        service = RepoService(session)
+        rows = await service.list(
+            team_id=repo_service_db["team_id"],
+            sort_by="created_at",
+            sort_order="desc",
+            limit=1,
+        )
+        assert [row.test_case_number for row in rows] == ["TC-002"]
+
+    with repo_service_db["sync_sessionmaker"]() as session:
+        cases = session.query(CaseModel).order_by(CaseModel.id.asc()).all()
+        cases[2].created_at = cases[1].created_at
+        session.commit()
+
+    async with repo_service_db["async_sessionmaker"]() as session:
+        service = RepoService(session)
+        rows = await service.list(
+            team_id=repo_service_db["team_id"],
+            sort_by="created_at",
+            sort_order="desc",
+            limit=1,
+        )
+        assert [row.test_case_number for row in rows] == ["TC-003"]
+
+
+@pytest.mark.asyncio
+async def test_list_test_case_refs_passes_latest_sort_and_returns_timestamp(repo_service_db):
+    with repo_service_db["sync_sessionmaker"]() as session:
+        cases = session.query(CaseModel).order_by(CaseModel.id.asc()).all()
+        cases[0].created_at = datetime(2026, 1, 1)
+        cases[1].created_at = datetime(2026, 1, 3)
+        cases[2].created_at = datetime(2026, 1, 2)
+        session.commit()
+
+    async with repo_service_db["async_sessionmaker"]() as session:
+        refs = await list_test_case_refs(
+            team_id=repo_service_db["team_id"],
+            db=session,
+            current_user=SimpleNamespace(id=1, role=UserRole.SUPER_ADMIN),
+            search=None,
+            priority_filter=None,
+            test_result_filter=None,
+            assignee_filter=None,
+            set_id=None,
+            sort_by="created_at",
+            sort_order="desc",
+            skip=0,
+            limit=1,
+        )
+
+    assert refs[0]["test_case_number"] == "TC-002"
+    assert refs[0]["created_at"] == datetime(2026, 1, 3)
+    assert "steps" not in refs[0]
 
 
 @pytest.mark.asyncio

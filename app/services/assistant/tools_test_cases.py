@@ -14,9 +14,11 @@ from app.services.assistant.tool_registry import (
 
 _TC_LIST = ("record_id", "test_case_number", "title", "priority", "test_result", "assignee_name",
             "test_case_set_id", "test_case_section_id", "section_name", "section_path",
-            "tcg_tickets", "updated_at")
+            "tcg_tickets", "created_at", "updated_at")
 _TC_DETAIL = _TC_LIST + ("precondition", "steps", "expected_result", "test_data", "attachments")
 _PAGE = ("skip", "limit", "total", "has_next", "next_cursor")
+
+_SORT_FIELDS = ["id", "title", "priority", "test_case_number", "test_result", "created_at", "updated_at"]
 
 _FILTER_QUERY = {
     "search": s_str("keyword search across title/number"),
@@ -25,7 +27,7 @@ _FILTER_QUERY = {
     "assignee_filter": s_str("filter by assignee name"),
     "tcg_filter": s_str("filter by TCG/JIRA ticket"),
     "set_id": s_int("filter by test_case_set_id"),
-    "sort_by": s_str("sort field"),
+    "sort_by": s_str("sort field", enum=_SORT_FIELDS),
     "sort_order": s_str("asc|desc", enum=["asc", "desc"]),
     "skip": s_int("pagination offset"),
     "limit": s_int("page size"),
@@ -34,13 +36,14 @@ _FILTER_QUERY = {
 _CREATE_UPDATE_FIELDS = {
     "test_case_number": s_str("unique case number, required on create"),
     "title": s_str("case title"),
-    "priority": s_str("P0|P1|P2|P3", enum=["P0", "P1", "P2", "P3"]),
+    "priority": s_str("High|Medium|Low", enum=["High", "Medium", "Low"]),
     "precondition": s_str(),
     "steps": s_str(),
     "expected_result": s_str(),
     "tcg": s_array(s_str(), "related JIRA/TCG ticket keys"),
     "test_data": s_array(TEST_DATA_ITEM_SCHEMA, "structured test data rows"),
 }
+
 
 TOOLS = [
     AssistantTool(
@@ -65,7 +68,8 @@ TOOLS = [
         method="GET",
         path_template="/api/teams/{team_id}/testcases/refs",
         summary=(
-            "List slim test-case refs (record_id, number, title, priority, set_id). "
+            "List slim test-case refs (record_id, number, title, priority, set_id, created_at). "
+            "Sorted by created_at descending by default; use sort_by/sort_order for other orders. "
             "No steps/precondition/test_data. Prefer this before full list for bulk work."
         ),
         permission=PermissionType.READ,
@@ -76,11 +80,21 @@ TOOLS = [
             "test_result_filter": s_str(),
             "assignee_filter": s_str(),
             "set_id": s_int(),
+            "sort_by": s_str("sort field", enum=_SORT_FIELDS),
+            "sort_order": s_str("asc|desc", enum=["asc", "desc"]),
             "skip": s_int("pagination offset"),
             "limit": s_int("page size, max 200"),
         },
         team_check="inject",
-        projection=("record_id", "test_case_number", "title", "priority", "test_case_set_id", "_deep_links"),
+        projection=(
+            "record_id",
+            "test_case_number",
+            "title",
+            "priority",
+            "test_case_set_id",
+            "created_at",
+            "_deep_links",
+        ),
         default_limit=50,
         max_limit=200,
     ),
@@ -324,7 +338,12 @@ TOOLS = [
             {
                 "operation": s_str("update_priority|update_tcg", enum=["update_priority", "update_tcg"]),
                 "record_ids": s_array(s_str_or_int("test case local id, lark_record_id, or test_case_number")),
-                "update_data": body({"priority": s_str(), "tcg": s_array(s_str())}),
+                "update_data": body(
+                    {
+                        "priority": s_str("High|Medium|Low", enum=["High", "Medium", "Low"]),
+                        "tcg": s_array(s_str()),
+                    }
+                ),
             },
             required=["operation", "record_ids"],
         ),

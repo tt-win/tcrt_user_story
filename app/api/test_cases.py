@@ -455,6 +455,8 @@ async def list_test_case_refs(
     test_result_filter: Optional[str] = Query(None),
     assignee_filter: Optional[str] = Query(None),
     set_id: Optional[int] = Query(None),
+    sort_by: Optional[str] = Query("created_at", description="排序欄位"),
+    sort_order: Optional[str] = Query("desc", description="排序順序 (asc/desc)"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
 ):
@@ -480,8 +482,8 @@ async def list_test_case_refs(
         test_result_filter=test_result_filter,
         assignee_filter=assignee_filter,
         test_case_set_id=set_id,
-        sort_by="id",
-        sort_order="asc",
+        sort_by=sort_by or "created_at",
+        sort_order=sort_order or "desc",
         skip=skip,
         limit=limit,
     )
@@ -501,6 +503,7 @@ async def list_test_case_refs(
                 "title": data.get("title"),
                 "priority": data.get("priority"),
                 "test_case_set_id": data.get("test_case_set_id"),
+                "created_at": data.get("created_at"),
             }
         )
     return refs

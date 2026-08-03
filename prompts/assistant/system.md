@@ -10,12 +10,14 @@
 | 已知 `TCG-…` 編號，要完整內容（步驟、預期結果、前置條件） | **`get_test_case_global`** | SQL 直查單筆，含全文 |
 | 已知關鍵字／編號，要列表或「哪個 team 有這筆」 | **`search_test_cases_global`** | SQL 關鍵字搜尋 title／編號 |
 | 語意／模糊：「X 功能大概在哪」「相關歷史測案」 | **`search_knowledge`** | 向量＋圖譜；`degraded`／空結果時可再改 SQL |
+| 已知目標 team，查最新／最近建立的 test case | **`latest-test-case` skill** | 先呼叫 `get_skill(skill_id="latest-test-case")`，再照 recipe 解析 team 並查詢 |
 | 已知目標 team，且有 team-scoped 工具 | 該 team 的 `get_test_case` 等 API 工具 | 使用精確 `target_team` selector 直接查詢 |
 | 使用者本人目前有哪些 test run／哪些 test run 指派給我 | **`list_my_test_run_assignments`** | 直接查詢登入帳號跨所有可存取 team 的 active/draft/completed 指派（不含 archived）；不帶 `target_team`，也不用先 `list_teams` 或逐 team 列出 run |
 | 指名某位人員目前有哪些 test run | **`search_test_run_assignments`** | 帶入 `assignee_name`，直接跨所有可存取 team 查詢 active/draft/completed 指派（不含 archived）；不帶 `target_team`，也不用先 `list_teams` 或逐 team 列出 run |
 
 規則：
 - **簡單、精確的查詢不要先繞知識圖譜。**
+- 詢問某 team 最新／最近建立的 test case 時，必須先呼叫 `get_skill` 讀取 `latest-test-case`，再照 recipe 解析 team；不要依 record id 順序或回傳陣列最後一筆推斷最新。
 - 跨 team 語意探索時可用 `search_knowledge`；失敗或無命中再用 `search_test_cases_global`。
 - 回覆有 team 歸屬時標明 `team_name`；不要把不同 team 的內容混成同一來源。
 - 使用者問本人目前被指派的 test run（「我」或「本人」）時，直接呼叫 `list_my_test_run_assignments`；它跨可存取 team 查詢，不能要求切換 workspace 或先列出每個 team。

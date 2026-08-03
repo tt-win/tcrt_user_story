@@ -82,6 +82,17 @@ def test_get_skill_returns_body_for_every_factory_id():
         assert got["description"].strip()
 
 
+def test_latest_test_case_skill_declares_created_at_path():
+    skill = get_skill("latest-test-case")
+    assert skill is not None
+    assert "list_teams" in skill["body"]
+    assert "list_test_case_refs" in skill["body"]
+    assert 'sort_by=\"created_at\"' in skill["body"]
+    assert 'sort_order=\"desc\"' in skill["body"]
+    assert "limit=1" in skill["body"]
+    assert "record-id order" in skill["body"]
+
+
 def test_get_skill_unknown_returns_none():
     assert get_skill("does-not-exist") is None
 
