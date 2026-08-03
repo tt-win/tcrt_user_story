@@ -239,6 +239,19 @@ function createModalBindingContext() {
     };
 }
 
+function createEditableControlContext() {
+    const context = vm.createContext({
+        console,
+        document: { addEventListener() {} },
+        window: { addEventListener() {} },
+    });
+    vm.runInContext(
+        `${modalSource}\nglobalThis.__enableEditableTestCaseFormControls = enableEditableTestCaseFormControls;`,
+        context,
+    );
+    return context.__enableEditableTestCaseFormControls;
+}
+
 function createMarkdownHotkeyContext() {
     const context = vm.createContext({
         console,
@@ -616,6 +629,26 @@ test('Detail Markdown 編輯器不重複 render、量測或重疊內容', () => 
         markdownSource,
         /toolbar\.classList\.toggle\('d-none', mode === 'preview'\)/,
     );
+});
+
+test('Markdown preview task controls remain disabled when editable fields unlock', () => {
+    const enableControls = createEditableControlContext();
+    const editableInput = { disabled: true, closest: () => null };
+    const markdownTaskCheckbox = {
+        disabled: true,
+        closest: (selector) => (selector === '.markdown-preview' ? {} : null),
+    };
+    const form = {
+        querySelectorAll: (selector) => {
+            assert.equal(selector, 'input, textarea, select');
+            return [editableInput, markdownTaskCheckbox];
+        },
+    };
+
+    enableControls(form);
+
+    assert.equal(editableInput.disabled, false);
+    assert.equal(markdownTaskCheckbox.disabled, true);
 });
 
 function attachmentsSourceForNavigation() {

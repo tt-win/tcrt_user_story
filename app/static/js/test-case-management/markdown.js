@@ -332,110 +332,114 @@ function updateMarkdownPreview(fieldId) {
     }
 }
 
-function escapeMarkdownHtml(value) {
-    if (typeof escapeHtml === 'function') {
-        return escapeHtml(value);
+function escapeTcmMarkdownFallback(value) {
+    return String(value === undefined || value === null ? '' : value).replace(/[&<>"']/g, (character) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;'
+    })[character]);
+}
+
+function getTcmMarkdownFallbackHtml(source) {
+    return `<pre>${escapeTcmMarkdownFallback(source)}</pre>`;
+}
+
+function getTcmMarkdownRenderResult(content) {
+    const source = content === undefined || content === null ? '' : String(content);
+    if (!source) {
+        return { html: '', status: 'ok' };
     }
-    if (value === undefined || value === null) return '';
-    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
-    return String(value).replace(/[&<>"']/g, (ch) => map[ch]);
+
+    const adapter = window.TCRTMarkdown;
+    if (!adapter || typeof adapter.render !== 'function') {
+        return { html: getTcmMarkdownFallbackHtml(source), status: 'fallback', reason: 'adapter-unavailable' };
+    }
+
+    try {
+        const result = adapter.render(source, { surface: 'test-case-management' });
+        if (!result || typeof result.html !== 'string') {
+            return { html: getTcmMarkdownFallbackHtml(source), status: 'fallback', reason: 'invalid-adapter-result' };
+        }
+        return {
+            html: result.html,
+            status: result.status === 'ok' ? 'ok' : 'fallback',
+            ...(result.reason ? { reason: String(result.reason) } : {})
+        };
+    } catch (_) {
+        return { html: getTcmMarkdownFallbackHtml(source), status: 'fallback', reason: 'adapter-error' };
+    }
 }
 
-function renderMarkdownInline(text) {
-    return escapeMarkdownHtml(text || '')
-        .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width: 100%; height: auto;">')
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-        .replace(/`([^`]+)`/g, '<code>$1</code>')
-        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+function getTcmMarkdownUnavailableLabel() {
+    const fallback = 'Markdown 預覽暫時無法使用，目前顯示原始文字。';
+    if (window.i18n && typeof window.i18n.t === 'function') {
+        return window.i18n.t('errors.markdownRendererUnavailable', {}, fallback);
+    }
+    return fallback;
 }
 
-function renderBasicMarkdownHtml(content) {
-    const lines = String(content || '').replace(/\r\n?/g, '\n').split('\n');
-    const htmlParts = [];
-    let paragraphLines = [];
-    let listType = null;
-    let listItems = [];
+function updateTcmMarkdownRenderState(previewDiv, result) {
+    if (!previewDiv) return;
+    const status = result && result.status === 'ok' ? 'ok' : 'fallback';
+    previewDiv.setAttribute('data-markdown-status', status);
+    if (result && result.reason) {
+        previewDiv.setAttribute('data-markdown-reason', String(result.reason));
+    } else {
+        previewDiv.removeAttribute('data-markdown-reason');
+    }
+    previewDiv.classList.toggle('markdown-render-fallback', status === 'fallback');
 
-    const flushParagraph = () => {
-        if (!paragraphLines.length) return;
-        htmlParts.push(`<p>${paragraphLines.join('<br>')}</p>`);
-        paragraphLines = [];
-    };
-
-    const flushList = () => {
-        if (!listType || !listItems.length) {
-            listType = null;
-            listItems = [];
-            return;
+    const existingIndicator = previewDiv.querySelector('[data-markdown-render-status]');
+    if (status === 'fallback') {
+        const indicator = existingIndicator || document.createElement('span');
+        const fallback = getTcmMarkdownUnavailableLabel();
+        indicator.setAttribute('data-markdown-render-status', 'fallback');
+        indicator.setAttribute('data-i18n', 'errors.markdownRendererUnavailable');
+        indicator.setAttribute('data-i18n-fallback', fallback);
+        indicator.setAttribute('role', 'status');
+        indicator.setAttribute('aria-live', 'polite');
+        indicator.className = 'markdown-render-status text-muted small d-block mt-1';
+        indicator.textContent = fallback;
+        if (!existingIndicator) previewDiv.appendChild(indicator);
+        if (window.i18n && typeof window.i18n.retranslate === 'function') {
+            window.i18n.retranslate(indicator);
         }
-        htmlParts.push(`<${listType}>${listItems.join('')}</${listType}>`);
-        listType = null;
-        listItems = [];
-    };
+    } else if (existingIndicator) {
+        existingIndicator.remove();
+    }
+}
 
-    lines.forEach((rawLine) => {
-        const line = rawLine.trimEnd();
-        const trimmed = line.trim();
+function scheduleTcmMarkdownRerender(previewDiv) {
+    const adapter = window.TCRTMarkdown;
+    if (!previewDiv || !adapter || !adapter.ready || typeof adapter.ready.then !== 'function') return;
+    if (previewDiv.getAttribute('data-markdown-status') !== 'fallback') return;
 
-        if (!trimmed) {
-            flushParagraph();
-            flushList();
-            return;
-        }
-
-        const headingMatch = trimmed.match(/^(#{1,6})\s+(.*)$/);
-        if (headingMatch) {
-            flushParagraph();
-            flushList();
-            const level = headingMatch[1].length;
-            htmlParts.push(`<h${level}>${renderMarkdownInline(headingMatch[2])}</h${level}>`);
-            return;
-        }
-
-        const unorderedMatch = line.match(/^\s*[-*+]\s+(.*)$/);
-        if (unorderedMatch) {
-            flushParagraph();
-            if (listType !== 'ul') flushList();
-            listType = 'ul';
-            listItems.push(`<li>${renderMarkdownInline(unorderedMatch[1])}</li>`);
-            return;
-        }
-
-        const orderedMatch = line.match(/^\s*\d+\.\s+(.*)$/);
-        if (orderedMatch) {
-            flushParagraph();
-            if (listType !== 'ol') flushList();
-            listType = 'ol';
-            listItems.push(`<li>${renderMarkdownInline(orderedMatch[1])}</li>`);
-            return;
-        }
-
-        flushList();
-        paragraphLines.push(renderMarkdownInline(trimmed));
-    });
-
-    flushParagraph();
-    flushList();
-
-    return htmlParts.join('');
+    const source = previewDiv.getAttribute('data-markdown-source') || '';
+    Promise.resolve(adapter.ready).then((ready) => {
+        if (!ready || ready.status !== 'ok') return;
+        if (!previewDiv.isConnected || previewDiv.getAttribute('data-markdown-source') !== source) return;
+        const result = getTcmMarkdownRenderResult(source);
+        previewDiv.innerHTML = result.html;
+        updateTcmMarkdownRenderState(previewDiv, result);
+    }).catch(() => {});
 }
 
 function renderMarkdownToElement(content, previewDiv) {
     if (!previewDiv) return;
-    if (typeof marked !== 'undefined') {
-        try {
-            previewDiv.innerHTML = marked.parse(content);
-            return;
-        } catch (error) {
-            const markdownErrorMessage = window.i18n ? window.i18n.t('errors.markdownParseError') : 'Markdown 解析錯誤';
-            previewDiv.innerHTML = `<p class="text-muted">${markdownErrorMessage}</p>`;
-            return;
-        }
+    const source = content === undefined || content === null ? '' : String(content);
+    if (!source) {
+        const previewPlaceholder = window.i18n ? window.i18n.t('messages.previewDisplayHere') : '預覽將在此顯示...';
+        previewDiv.innerHTML = `<p class="text-muted">${previewPlaceholder}</p>`;
+        previewDiv.removeAttribute('data-markdown-source');
+        previewDiv.removeAttribute('data-markdown-status');
+        previewDiv.removeAttribute('data-markdown-reason');
+        previewDiv.classList.remove('markdown-render-fallback');
+        return;
     }
-    const previewPlaceholder = window.i18n ? window.i18n.t('messages.previewDisplayHere') : '預覽將在此顯示...';
-    const html = renderBasicMarkdownHtml(content);
-    previewDiv.innerHTML = html || `<p class="text-muted">${previewPlaceholder}</p>`;
+
+    const result = getTcmMarkdownRenderResult(source);
+    previewDiv.setAttribute('data-markdown-source', source);
+    previewDiv.innerHTML = result.html;
+    updateTcmMarkdownRenderState(previewDiv, result);
+    scheduleTcmMarkdownRerender(previewDiv);
 }
 
 // 更新單一欄位的預覽

@@ -3,9 +3,6 @@
 {% block title %}{{ i18n.t('testRun.execution') if i18n else 'Test Run 執行' }} - Test Case Repository Web Tool{% endblock %}
 
 {% block head %}
-<!-- Markdown 編輯器相關資源 -->
-<script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
 <link rel="stylesheet" href="/static/css/test-run-execution.css">
 {% endblock %}
 
@@ -734,6 +731,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/common/markdown-renderer.js"></script>
 <script src="/static/js/assignee-selector.js"></script>
 
 

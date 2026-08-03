@@ -394,10 +394,9 @@ class QAAIHelperTicketReparseRequest(BaseModel):
     @field_validator("raw_ticket_markdown")
     @classmethod
     def _validate_markdown(cls, value: str) -> str:
-        normalized = (value or "").strip()
-        if not normalized:
+        if not value or not value.strip():
             raise ValueError("raw_ticket_markdown 不可為空")
-        return normalized
+        return value
 
 
 class QAAIHelperNoTicketSessionRequest(BaseModel):

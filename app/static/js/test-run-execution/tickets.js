@@ -150,28 +150,21 @@ async function loadComment(testRunItemId) {
 
             if (data.comment && data.comment.trim()) {
                 const originalMarkdown = data.comment;
+                const renderResult = getMarkdownRenderResult(originalMarkdown);
 
-                // 使用 marked 库将 markdown 转换为 HTML
-                let htmlContent = marked.parse(originalMarkdown);
-
-                // 使用 DOMPurify 清理 HTML，防止 XSS 攻击
-                // 配置允许的标签和属性
-                const cleanHtml = DOMPurify.sanitize(htmlContent, {
-                    ALLOWED_TAGS: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'br', 'strong', 'em', 'u', 'del',
-                                  'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'hr', 'table', 'thead', 'tbody',
-                                  'th', 'tr', 'td', 'a', 'img', 'span', 'div'],
-                    ALLOWED_ATTR: ['href', 'title', 'alt', 'src', 'class', 'id'],
-                    ALLOW_DATA_ATTR: false
-                });
-
-                // 在 data attribute 中存储原始 markdown，以便编辑时使用
+                // 保留原始 Markdown，顯示內容只接受 shared adapter 的安全輸出
                 commentContent.setAttribute('data-original-markdown', originalMarkdown);
-
-                // 设置渲染的 HTML
-                commentContent.innerHTML = cleanHtml;
+                commentContent.setAttribute('data-markdown-source', encodeURIComponent(originalMarkdown));
+                commentContent.innerHTML = renderResult.html;
+                applyMarkdownRenderState(commentContent, renderResult);
+                scheduleMarkdownRerender(commentContent.parentElement || commentContent);
             } else {
                 commentContent.innerHTML = '<span data-i18n="testRun.noComment">尚無註釋</span>';
                 commentContent.removeAttribute('data-original-markdown');
+                commentContent.removeAttribute('data-markdown-source');
+                commentContent.removeAttribute('data-markdown-status');
+                commentContent.removeAttribute('data-markdown-reason');
+                commentContent.classList.remove('markdown-render-fallback');
             }
         }
     } catch (error) {
@@ -180,6 +173,10 @@ async function loadComment(testRunItemId) {
         if (commentContent) {
             commentContent.innerHTML = `<span class="text-danger">${escapeHtml(treTranslate('testRun.loadFailed', '載入失敗'))}</span>`;
             commentContent.removeAttribute('data-original-markdown');
+            commentContent.removeAttribute('data-markdown-source');
+            commentContent.removeAttribute('data-markdown-status');
+            commentContent.removeAttribute('data-markdown-reason');
+            commentContent.classList.remove('markdown-render-fallback');
         }
     }
 }
@@ -216,6 +213,10 @@ async function editComment(testRunItemId) {
     const originalMarkdown = commentContent.getAttribute('data-original-markdown');
     const hasSmallClass = commentContent.classList.contains('small');
     const originalStyle = commentContent.getAttribute('style');
+    const originalMarkdownSource = commentContent.getAttribute('data-markdown-source');
+    const originalMarkdownStatus = commentContent.getAttribute('data-markdown-status');
+    const originalMarkdownReason = commentContent.getAttribute('data-markdown-reason');
+    invalidateMarkdownRerender(commentContent);
 
     // 暫時移除 small class
     if (hasSmallClass) {
@@ -254,12 +255,35 @@ async function editComment(testRunItemId) {
         if (originalMarkdown) {
             commentContent.setAttribute('data-original-markdown', originalMarkdown);
         }
+        if (originalMarkdownSource !== null) {
+            commentContent.setAttribute('data-markdown-source', originalMarkdownSource);
+        } else {
+            commentContent.removeAttribute('data-markdown-source');
+        }
+        if (originalMarkdownStatus !== null) {
+            commentContent.setAttribute('data-markdown-status', originalMarkdownStatus);
+        } else {
+            commentContent.removeAttribute('data-markdown-status');
+        }
+        if (originalMarkdownReason !== null) {
+            commentContent.setAttribute('data-markdown-reason', originalMarkdownReason);
+        } else {
+            commentContent.removeAttribute('data-markdown-reason');
+        }
+        commentContent.classList.toggle('markdown-render-fallback', originalMarkdownStatus === 'fallback');
+        if (originalMarkdownStatus !== null) {
+            applyMarkdownRenderState(commentContent, {
+                status: originalMarkdownStatus === 'ok' ? 'ok' : 'fallback',
+                ...(originalMarkdownReason ? { reason: originalMarkdownReason } : {})
+            });
+        }
         if (hasSmallClass) {
             commentContent.classList.add('small');
         }
         if (originalStyle) {
             commentContent.setAttribute('style', originalStyle);
         }
+        scheduleMarkdownRerender(commentContent.parentElement || commentContent);
     };
 
     // 綁定儲存按鈕事件

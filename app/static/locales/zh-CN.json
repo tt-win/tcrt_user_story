@@ -644,6 +644,7 @@
     "loadTestCasesFailed": "加载测试案例失败",
     "loadTestRunsFailed": "加载测试执行记录失败",
     "markdownParseError": "Markdown 解析错误",
+    "markdownRendererUnavailable": "Markdown 预览暂时不可用，当前显示原始文本。",
     "noAttachmentDownloadInfo": "没有可用的附件下载信息",
     "noAttachments": "尚无附件",
     "noMatchingTPConfigs": "沒有找到符合條件的 TP 票號配置",
@@ -2170,6 +2171,7 @@
     "management": "测试执行管理",
     "minutes": "分钟",
     "missingConfigId": "缺少测试执行配置 ID",
+    "teamUnavailable": "此 Test Run 所属团队当前不可用",
     "noBugTickets": "尚无关联的 Bug Tickets",
     "noBugTicketsInRun": "此 Test Run 尚无 Bug Tickets",
     "noContactsFound": "找不到联系人",
@@ -3946,14 +3948,7 @@
       "database": "Database",
       "collections": "Collections",
       "sectionQdrant": "Qdrant（向量数据库）",
-      "sectionNeo4j": "Neo4j（图数据库）",
-      "sectionBackfill": "Qdrant Backfill（initial bulk load）",
-      "backfillHint": "此处显示 TCRT → Qdrant 的初始 backfill 进度，不是 Neo4j 同步数量。分页打开时每 5 秒自动更新；已完成的记录会保持不变，直到下一次 backfill。",
-      "entityType": "Entity",
-      "processed": "已处理 / 已扫描",
-      "lastId": "Last processed id",
-      "updatedAt": "Updated at",
-      "noProgress": "暂无 backfill 记录"
+      "sectionNeo4j": "Neo4j（图数据库）"
     }
   },
   "assistant": {
@@ -4081,6 +4076,7 @@
     "offtopicRejected": "抱歉，我只能协助 TCRT 内的 test case 与 test run 操作。",
     "errorGeneric": "发生错误",
     "retry": "重试",
+    "markdownUnavailable": "Markdown 渲染器不可用，当前显示原始文本。",
     "activity": "执行操作",
     "executing": "执行中：{tool}",
     "executingPrefix": "执行中：",

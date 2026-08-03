@@ -12,6 +12,13 @@
  * 顯示測試案例 Modal
  * @param {object|null} testCase - 測試案例資料，null 表示新增
  */
+function enableEditableTestCaseFormControls(form) {
+    if (!form) return;
+    form.querySelectorAll('input, textarea, select').forEach((control) => {
+        if (!control.closest('.markdown-preview')) control.disabled = false;
+    });
+}
+
 function showTestCaseModal(testCase = null) {
     const modal = document.getElementById('testCaseModal');
     const title = document.getElementById('testCaseModalTitle');
@@ -231,7 +238,7 @@ function showTestCaseModal(testCase = null) {
     }
 
     // 啟用所有欄位（檢視/編輯合一）
-    form.querySelectorAll('input, textarea, select').forEach(el => el.disabled = false);
+    enableEditableTestCaseFormControls(form);
 
     // 綁定變更監聽器
     bindFormChangeListeners();

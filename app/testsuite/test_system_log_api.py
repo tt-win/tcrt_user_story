@@ -495,6 +495,10 @@ class TestPageSmoke:
         assert html.count('role="tabpanel"') == 4
         assert html.count('tabindex="0"') >= 4
         assert 'id="rtsRefreshBtn"' in html and 'id="rtsContent"' in html
+        # Qdrant/Neo4j health remains; initial-backfill progress is no longer exposed.
+        assert 'id="kgQdrantStatus"' in html and 'id="kgNeo4jStatus"' in html
+        assert 'id="kgBackfillRows"' not in html
+        assert 'systemLogs.kg.sectionBackfill' not in html
 
     def test_static_assets_exist(self):
         client = TestClient(app)

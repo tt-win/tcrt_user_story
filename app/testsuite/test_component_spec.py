@@ -646,8 +646,6 @@ _VENDOR_DIR = _STATIC_DIR / "vendor"
 # fix-frontend-asset-and-font-integrity (tracked debt). New external hosts must
 # not be added without extending vendor/ or this allowlist deliberately.
 _ALLOWED_PAGE_SCOPED_ASSET_PREFIXES = (
-    "https://cdn.jsdelivr.net/npm/marked@",
-    "https://cdn.jsdelivr.net/npm/dompurify@",
     "https://cdn.jsdelivr.net/npm/chart.js@",
     "https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@",
     "https://cdn.jsdelivr.net/npm/reactflow@",

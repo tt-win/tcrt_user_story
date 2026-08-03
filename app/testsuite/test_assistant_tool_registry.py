@@ -200,6 +200,20 @@ def test_every_tool_has_projection_or_declares_no_response_body():
         )
 
 
+def test_test_run_deep_link_tools_project_team_id():
+    registry = get_tool_registry()
+    for tool_name in (
+        "create_test_run_config",
+        "get_test_run",
+        "list_test_runs",
+        "restart_test_run",
+        "list_test_run_items",
+    ):
+        tool = registry.get(tool_name)
+        assert tool is not None
+        assert "team_id" in tool.projection, tool_name
+
+
 def test_fixed_body_fields_are_excluded_from_llm_schema():
     """server-fixed 欄位（如 operation=delete）不得出現在送給 LLM 的 schema，避免 LLM 誤以為可控制。"""
     registry = get_tool_registry()

@@ -50,9 +50,9 @@ class TestCreateTestCaseSet:
 
 class TestCreateTestRunConfig:
     def test_basic(self):
-        result = {"id": 42, "name": "Sprint 43"}
+        result = {"id": 42, "team_id": 7, "name": "Sprint 43"}
         links = build_deep_links("create_test_run_config", result, {})
-        assert links == {"test_run": "/test-run-execution?config_id=42"}
+        assert links == {"test_run": "/test-run-execution?team_id=7&config_id=42"}
 
 
 class TestCreateTestRunSet:
@@ -64,12 +64,16 @@ class TestCreateTestRunSet:
 
 class TestRestartTestRun:
     def test_basic(self):
-        result = {"new_config_id": 99, "mode": "failed"}
+        result = {"new_config_id": 99, "team_id": 7, "mode": "failed"}
         links = build_deep_links("restart_test_run", result, {})
-        assert links == {"test_run": "/test-run-execution?config_id=99"}
+        assert links == {"test_run": "/test-run-execution?team_id=7&config_id=99"}
 
     def test_missing_new_config_id(self):
         links = build_deep_links("restart_test_run", {"mode": "all"}, {})
+        assert links == {}
+
+    def test_missing_team_id(self):
+        links = build_deep_links("restart_test_run", {"new_config_id": 99}, {})
         assert links == {}
 
 
@@ -132,7 +136,7 @@ class TestEdgeCases:
         assert links == {}
 
     def test_url_is_relative(self):
-        links = build_deep_links("create_test_run_config", {"id": 1}, {})
+        links = build_deep_links("create_test_run_config", {"id": 1, "team_id": 7}, {})
         assert links["test_run"].startswith("/")
         assert not links["test_run"].startswith("//")
 
@@ -156,8 +160,8 @@ class TestGetTestCaseSet:
 
 class TestGetTestRun:
     def test_basic(self):
-        links = build_deep_links("get_test_run", {"id": 42}, {})
-        assert links == {"test_run": "/test-run-execution?config_id=42"}
+        links = build_deep_links("get_test_run", {"id": 42, "team_id": 7}, {})
+        assert links == {"test_run": "/test-run-execution?team_id=7&config_id=42"}
 
 
 class TestGetTestRunSet:
@@ -195,9 +199,9 @@ class TestListDeepLinks:
         assert payload[1]["_deep_links"] == {"test_case_set": "/test-case-management?set_id=2"}
 
     def test_list_test_runs(self):
-        payload = [{"id": 10, "name": "Run A"}]
+        payload = [{"id": 10, "team_id": 7, "name": "Run A"}]
         build_list_deep_links("list_test_runs", payload)
-        assert payload[0]["_deep_links"] == {"test_run": "/test-run-execution?config_id=10"}
+        assert payload[0]["_deep_links"] == {"test_run": "/test-run-execution?team_id=7&config_id=10"}
 
     def test_list_test_run_sets(self):
         payload = [{"id": 5, "name": "Set A"}]
@@ -205,9 +209,9 @@ class TestListDeepLinks:
         assert payload[0]["_deep_links"] == {"test_run_set": "/test-run-management?set_id=5"}
 
     def test_list_test_run_items(self):
-        payload = [{"id": 1, "config_id": 42, "title": "Case A"}]
+        payload = [{"id": 1, "team_id": 7, "config_id": 42, "title": "Case A"}]
         build_list_deep_links("list_test_run_items", payload)
-        assert payload[0]["_deep_links"] == {"test_run": "/test-run-execution?config_id=42"}
+        assert payload[0]["_deep_links"] == {"test_run": "/test-run-execution?team_id=7&config_id=42"}
 
     def test_non_list_tool_returns_false(self):
         payload = [{"id": 1}]

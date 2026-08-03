@@ -1,0 +1,38 @@
+{
+  "dialect": "GFM 0.29 declared extensions only",
+  "positive": [
+    { "name": "tables", "source": "| A | B |\n| --- | :---: |\n| 1 | 2 |", "mustContain": ["<table", "<thead>", "<tbody>", "<th>", "<td>"] },
+    { "name": "tables-without-outer-pipes", "source": "A | B\n--- | ---\n1 | 2", "mustContain": ["<table", "<td>1</td>", "<td>2</td>"] },
+    { "name": "tables-pad-short-row", "source": "| A | B |\n| --- | --- |\n| 1 |", "mustContain": ["<td>1</td>", "<td></td>"] },
+    { "name": "table-marker-source-cannot-forge-rendered-table", "source": "literal TCRTMDTABLEMARKER0END\n\n| A | B |\n| --- | --- |\n| 1 | 2 |", "mustContain": ["literal TCRTMDTABLEMARKER0END", "<table", "<td>1</td>"] },
+    { "name": "table-marker-entity-cannot-forge-rendered-table", "source": "literal TCRTMDTABLEMARKER&#48;END\n\n| A | B |\n| --- | --- |\n| 1 | 2 |", "mustContain": ["literal TCRTMDTABLEMARKER0END", "<table", "<td>1</td>"] },
+    { "name": "tables-preserve-inline-source", "source": "| Link | Code | Escaped |\n| --- | --- | --- |\n| [a|b](https://example.test) | `a|b` | escaped\\|pipe |", "mustContain": ["<a href=\"https://example.test/\" target=\"_blank\" rel=\"noopener noreferrer\">a|b</a>", "<code>a|b</code>", "<td>escaped|pipe</td>"] },
+    { "name": "tables-inside-list-items", "source": "- context\n\n  | A | B |\n  | --- | --- |\n  | 1 | 2 |", "mustContain": ["<li>", "<table", "<td>1</td>", "<td>2</td>"] },
+    { "name": "tables-inside-blockquotes", "source": "> | A | B |\n> | --- | --- |\n> | 1 | 2 |", "mustContain": ["<blockquote>", "<table", "<td>1</td>", "<td>2</td>"] },
+    { "name": "task-list-items", "source": "- [ ] todo\n- [x] done", "mustContain": ["type=\"checkbox\"", "disabled", "checked"] },
+    { "name": "task-uppercase-and-nested", "source": "- [X] **done**", "mustContain": ["type=\"checkbox\"", "checked", "<strong>done</strong>"] },
+    { "name": "empty-task-list-item", "source": "- [x]", "mustContain": ["type=\"checkbox\"", "checked", "disabled"] },
+    { "name": "task-list-items-inside-blockquotes", "source": "> - [x] quoted", "mustContain": ["<blockquote>", "type=\"checkbox\"", "checked", "disabled"] },
+    { "name": "strikethrough", "source": "~~removed~~", "mustContain": ["<del>removed</del>"] },
+    { "name": "strikethrough-nested", "source": "~~**removed**~~", "mustContain": ["<del><strong>removed</strong></del>"] },
+    { "name": "autolink-literals", "source": "See https://example.com and user@example.com", "mustContain": ["href=\"https://example.com/\"", "mailto:user@example.com"] },
+    { "name": "autolink-www-and-punctuation", "source": "See www.example.com.", "mustContain": ["href=\"https://www.example.com/\"", "</a>."] }
+  ],
+  "negative": [
+    { "name": "footnotes-remain-literal", "source": "Here is a reference[^1].\n\n[^1]: note", "mustContain": ["[^1]", "[^1]: note"], "mustNotContain": ["<sup", "footnote"] },
+    { "name": "emoji-remains-literal", "source": ":smile:", "mustContain": [":smile:"], "mustNotContain": ["<img", "<span"] },
+    { "name": "math-is-not-enabled", "source": "$x^2$", "mustContain": ["$x^2$"], "mustNotContain": ["<math", "katex"] },
+    { "name": "underline-remains-literal", "source": "__not underline__", "mustContain": ["<strong>not underline</strong>"], "mustNotContain": ["<u>"] },
+    { "name": "raw-underline-is-escaped", "source": "<u>underline</u>", "mustContain": ["&lt;u&gt;underline&lt;/u&gt;"], "mustNotContain": ["<u>"] },
+    { "name": "heading-anchors-are-not-added", "source": "# Heading", "mustContain": ["<h1>Heading</h1>"], "mustNotContain": [" id=", "<a"] },
+    { "name": "malformed-table-remains-paragraph", "source": "| A | B |\n| --- | nope |\n| 1 | 2 |", "mustNotContain": ["<table", "<thead>"] },
+    { "name": "quoted-fenced-table-remains-code", "source": "> ```markdown\n> | A | B |\n> | --- | --- |\n> | 1 | 2 |\n> ```", "mustContain": ["<pre><code>"], "mustNotContain": ["<table", "<thead>"] },
+    { "name": "indented-table-remains-code", "source": "    | A | B |\n    | --- | --- |\n    | 1 | 2 |", "mustContain": ["<pre><code>"], "mustNotContain": ["<table", "<thead>"] },
+    { "name": "indented-task-marker-remains-code", "source": "    - [x] done", "mustContain": ["<pre><code>"], "mustNotContain": ["<input"] },
+    { "name": "formatted-task-marker-remains-literal", "source": "- **[x] done**", "mustContain": ["[x] done"], "mustNotContain": ["<input"] },
+    { "name": "raw-html-task-lookalike-remains-literal", "source": "- <span>[x] done</span>", "mustContain": ["[x] done"], "mustNotContain": ["<input"] },
+    { "name": "formatted-internal-task-marker-cannot-forge-checkbox", "source": "- TCRTMDTASK**MARKER0END** fake\n- [x] real", "mustContain": ["fake"], "checkboxCount": 1 },
+    { "name": "entity-internal-task-marker-cannot-forge-checkbox", "source": "- TCRTMDTASKMARKER&#48;END fake\n- [x] real", "mustContain": ["fake"], "checkboxCount": 1 },
+    { "name": "task-marker-boundary-remains-literal", "source": "- [x]done", "mustContain": ["[x]done"], "mustNotContain": ["<input"] }
+  ]
+}

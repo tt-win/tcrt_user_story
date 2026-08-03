@@ -644,6 +644,7 @@
     "loadTestCasesFailed": "Failed to load test cases",
     "loadTestRunsFailed": "Failed to load test run records",
     "markdownParseError": "Markdown parsing error",
+    "markdownRendererUnavailable": "Markdown preview unavailable; showing source text.",
     "noAttachmentDownloadInfo": "No attachment download information available",
     "noAttachments": "No attachments",
     "noMatchingTPConfigs": "No matching TP ticket configurations found",
@@ -2170,6 +2171,7 @@
     "management": "Test Run Management",
     "minutes": "minutes",
     "missingConfigId": "Missing test run configuration ID",
+    "teamUnavailable": "Unable to open this Test Run because its team is unavailable.",
     "noBugTickets": "No associated Bug Tickets yet",
     "noBugTicketsInRun": "No Bug Tickets in this Test Run",
     "noContactsFound": "No contacts found",
@@ -3946,14 +3948,7 @@
       "database": "Database",
       "collections": "Collections",
       "sectionQdrant": "Qdrant (vector database)",
-      "sectionNeo4j": "Neo4j (graph database)",
-      "sectionBackfill": "Qdrant backfill (initial bulk load)",
-      "backfillHint": "This is the initial TCRT → Qdrant backfill progress, not the Neo4j sync count. It refreshes every 5 seconds while this tab is open; completed records remain unchanged until the next backfill.",
-      "entityType": "Entity",
-      "processed": "Processed / scanned",
-      "lastId": "Last processed id",
-      "updatedAt": "Updated at",
-      "noProgress": "No backfill progress yet"
+      "sectionNeo4j": "Neo4j (graph database)"
     }
   },
   "assistant": {
@@ -4081,6 +4076,7 @@
     "offtopicRejected": "Sorry, I can only help with TCRT test case and test run operations.",
     "errorGeneric": "Something went wrong",
     "retry": "Retry",
+    "markdownUnavailable": "Markdown renderer unavailable; showing source text.",
     "activity": "Running actions",
     "executing": "Running {tool}…",
     "executingPrefix": "Running:",

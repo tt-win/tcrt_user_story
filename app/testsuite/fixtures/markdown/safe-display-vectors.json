@@ -1,0 +1,51 @@
+{
+  "rawHtml": [
+    "<a href=\"/raw\">raw anchor</a>",
+    "<img src=\"https://evil.example/x\" onerror=\"alert(1)\">",
+    "<input type=\"checkbox\" checked onclick=\"alert(1)\">",
+    "<script>alert(1)</script><style>body{display:none}</style>"
+  ],
+  "links": {
+    "allowedRelative": "[relative](/cases/1)",
+    "allowedEncodedRelative": "[encoded-scheme](java%73cript:alert(1))",
+    "allowedExternal": "[external](https://example.com/path)",
+    "allowedMailto": "<user@example.com>",
+    "userinfo": [
+      "[username](https://user@example.com/path)",
+      "[password](https://example.com:secret@example.com/path)",
+      "[encoded-username](https://user%40example.com/path)"
+    ],
+    "rejected": [
+      "[js](javascript:alert(1))",
+      "[data](data:text/html,<script>alert(1)</script>)",
+      "[blob](blob:https://example.com/id)",
+      "[file](file:///etc/passwd)",
+      "[protocol-relative](//evil.example/path)",
+      "[entity-scheme](java&#x73;cript:alert(1))",
+      "[mailto-query](mailto:user@example.com?subject=unsafe)",
+      "[mailto-percent-control](mailto:user@example.com%0A)",
+      "[mailto-path](mailto:user@example.com/path)",
+      "[mailto-encoded-path](mailto:user@example.com%2Fpath)",
+      "[mailto-invalid-local](mailto:.user@example.com)",
+      "[mailto-repeated-local-dot](mailto:user..name@example.com)",
+      "[mailto-invalid-domain](mailto:user@-example.com)",
+      "[mailto-invalid-domain-dots](mailto:user@example..com)",
+      "[mailto-localhost](mailto:user@localhost)",
+      "[mailto-userinfo](mailto:user@example.com@evil.example)"
+    ]
+  },
+  "images": [
+    "![relative](/images/logo.png)",
+    "![https](https://example.com/logo.png)",
+    "![http](http://example.com/logo.png)",
+    "![data](data:image/png;base64,AAAA)",
+    "![userinfo](https://user@example.com/logo.png)",
+    "![userinfo-password](https://example.com:secret@example.com/logo.png)",
+    "![encoded-userinfo](https://user%40example.com/logo.png)"
+  ],
+  "lineBreaks": {
+    "soft": "one\ntwo",
+    "hardSpaces": "one  \ntwo",
+    "hardBackslash": "one\\\ntwo"
+  }
+}

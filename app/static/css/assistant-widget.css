@@ -448,6 +448,16 @@
   box-shadow: var(--tr-shadow-sm);
 }
 .tcrt-assistant-user-text { overflow-wrap: break-word; }
+.tcrt-assistant-markdown-source { white-space: pre-wrap; overflow-wrap: anywhere; }
+.tcrt-assistant-markdown-status {
+  margin-top: 6px;
+  color: var(--tr-text-secondary);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.tcrt-assistant-msg.tcrt-assistant-user .tcrt-assistant-markdown-status {
+  color: var(--tr-primary-light);
+}
 .tcrt-assistant-msg-attachments { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
 .tcrt-assistant-user-text + .tcrt-assistant-msg-attachments { margin-top: 6px; }
 .tcrt-assistant-attach-pill {

@@ -502,8 +502,6 @@ const AssistantWidget = (() => {
   const PANEL_SIZE_KEY = 'tcrt_assistant_panel_size';
   const PANEL_SIZE_MODE_KEY = 'tcrt_assistant_panel_size_mode';
   const INFLIGHT_KEY_PREFIX = 'tcrt_assistant_inflight_';
-  const MARKED_URL = 'https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js';
-  const DOMPURIFY_URL = 'https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js';
   const RECONNECT_MAX_ATTEMPTS = 3;
   const SCOPE_NOTICE_AUTO_DISMISS_MS = 8000;
 
@@ -530,8 +528,6 @@ const AssistantWidget = (() => {
   let turnState = 'idle';
   let hasUnresolvedConfirm = false;
   let selectedFiles = [];
-  let mdLibsPromise = null;
-  let mdLibsReady = false;
   let activeAbortController = null;
   let currentEventSeq = -1;
   let streamGeneration = 0;
@@ -602,74 +598,115 @@ const AssistantWidget = (() => {
     }
   }
 
-  /* ---------------- Markdown（lazy-load + fallback） ---------------- */
+  /* ---------------- Shared Markdown adapter ---------------- */
 
-  function loadScript(src) {
-    return new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = src;
-      s.onload = resolve;
-      s.onerror = reject;
-      document.head.appendChild(s);
+  function renderMarkdown(source) {
+    const rawSource = source == null ? '' : String(source);
+    const adapter = window.TCRTMarkdown;
+    if (!adapter || typeof adapter.render !== 'function') {
+      return { html: '', status: 'fallback', reason: 'adapter-unavailable' };
+    }
+    try {
+      const result = adapter.render(rawSource, { surface: 'assistant' });
+      if (result && typeof result.html === 'string'
+          && (result.status === 'ok' || result.status === 'fallback')) {
+        return result;
+      }
+    } catch (e) {
+      // The adapter owns parser/sanitizer diagnostics; never render partial HTML here.
+    }
+    return { html: '', status: 'fallback', reason: 'adapter-error' };
+  }
+
+  function updateMarkdownUnavailableIndicator(textWrap, unavailable) {
+    let indicator = textWrap.querySelector('.tcrt-assistant-markdown-status');
+    if (!unavailable) {
+      if (indicator) indicator.remove();
+      return;
+    }
+    if (!indicator) {
+      indicator = el('<div class=\"tcrt-assistant-markdown-status\" role=\"status\" aria-live=\"polite\"><span data-i18n=\"assistant.markdownUnavailable\"></span></div>');
+      textWrap.appendChild(indicator);
+    }
+    const label = t(
+      'assistant.markdownUnavailable',
+      {},
+      'Markdown renderer unavailable; showing source text.'
+    );
+    const labelEl = indicator.querySelector('span');
+    if (labelEl) labelEl.textContent = label;
+    if (window.i18n && typeof window.i18n.retranslate === 'function') window.i18n.retranslate(indicator);
+  }
+
+  // Tables are wrapped only after the adapter has produced Safe Display HTML;
+  // this is host presentation, not a renderer/sanitizer allowlist exception.
+  function decorateTableBlocks(scope) {
+    if (!scope || typeof scope.querySelectorAll !== 'function') return;
+    const tables = scope.querySelectorAll('table');
+    for (const table of tables) {
+      if (table.closest && table.closest('.tcrt-assistant-table-wrap')) continue;
+      const parent = table.parentNode;
+      if (!parent) continue;
+      const wrap = el('<div class=\"tcrt-assistant-table-wrap\"></div>');
+      parent.insertBefore(wrap, table);
+      wrap.appendChild(table);
+    }
+  }
+
+  function decorateMarkdownPresentation(scope) {
+    decorateCodeBlocks(scope);
+    decorateTableBlocks(scope);
+  }
+
+  function applyMarkdownResult(textWrap, source, result) {
+    const html = result && typeof result.html === 'string' ? result.html : '';
+    const available = !!result && result.status === 'ok';
+    textWrap.replaceChildren();
+    if (html) {
+      // `html` is the canonical adapter's Safe Display output.
+      textWrap.innerHTML = html;
+    } else {
+      const sourceEl = el('<div class="tcrt-assistant-markdown-source"></div>');
+      sourceEl.textContent = source;
+      textWrap.appendChild(sourceEl);
+    }
+    textWrap.classList.toggle('tcrt-assistant-markdown-fallback', !available);
+    if (available) decorateMarkdownPresentation(textWrap);
+    updateMarkdownUnavailableIndicator(textWrap, !available);
+  }
+
+  function rerenderMarkdownWhenReady(textWrap, source, token) {
+    const adapter = window.TCRTMarkdown;
+    if (!adapter || !adapter.ready || typeof adapter.ready.then !== 'function') return;
+    Promise.resolve(adapter.ready).then((ready) => {
+      if (!ready || ready.status !== 'ok') return;
+      if (!textWrap.isConnected
+          || textWrap._tcrtMarkdownRenderToken !== token
+          || textWrap._tcrtMarkdownSource !== source) return;
+      const result = renderMarkdown(source);
+      if (result.status === 'ok') applyMarkdownResult(textWrap, source, result);
+    }).catch(() => {
+      // Keep the adapter-provided escaped fallback and unavailable indicator.
     });
   }
 
-  function ensureMarkdownLibs() {
-    if (mdLibsPromise) return mdLibsPromise;
-    mdLibsPromise = Promise.all([loadScript(MARKED_URL), loadScript(DOMPURIFY_URL)])
-      .then(() => {
-        if (window.DOMPurify && typeof window.DOMPurify.addHook === 'function') {
-          window.DOMPurify.addHook('afterSanitizeAttributes', (node) => {
-            if (node.tagName === 'A') {
-              // Deep links from assistant should open in the same tab so the
-              // main TCRT app remains in focus; strip any target/rel so the
-              // browser uses the default navigation behavior.
-              node.removeAttribute('target');
-              node.removeAttribute('rel');
-            }
-          });
-        }
-        if (window.marked && typeof window.marked.setOptions === 'function') {
-          window.marked.setOptions({ gfm: true, breaks: true });
-        }
-        if (window.marked && typeof window.marked.use === 'function') {
-          // 面板寬度固定，寬表格（多欄或單欄超長文字）必須能獨立橫向捲動，
-          // 不能撐破訊息氣泡；用 wrapper div 而非在 <table> 本身設 display:block，
-          // 避免破壞瀏覽器對 table/thead/tr/td 內建的表格版面配置。
-          window.marked.use({
-            renderer: {
-              table(header, body) {
-                const bodyHtml = body ? `<tbody>${body}</tbody>` : '';
-                return `<div class="tcrt-assistant-table-wrap"><table>\n<thead>\n${header}</thead>\n${bodyHtml}</table>\n</div>\n`;
-              },
-            },
-          });
-        }
-        mdLibsReady = !!(window.marked && window.DOMPurify);
-      })
-      .catch(() => {
-        mdLibsReady = false;
-      });
-    return mdLibsPromise;
+  function setMarkdownText(textWrap, source) {
+    const rawSource = source == null ? '' : String(source);
+    const token = {};
+    textWrap._tcrtMarkdownSource = rawSource;
+    textWrap._tcrtMarkdownRenderToken = token;
+    const result = renderMarkdown(rawSource);
+    applyMarkdownResult(textWrap, rawSource, result);
+    if (result.status === 'fallback') rerenderMarkdownWhenReady(textWrap, rawSource, token);
+    return result;
   }
-
-  function renderMarkdown(rawText) {
-    if (mdLibsReady && window.marked && window.DOMPurify) {
-      try {
-        return window.DOMPurify.sanitize(window.marked.parse(rawText || ''));
-      } catch (e) { /* fall through to plain text */ }
-    }
-    return `<p>${_assistantEscapeHtml(rawText || '').replace(/\n/g, '<br>')}</p>`;
-  }
-
   /**
    * Wrap every <pre> block in a positioned container and attach a "Copy" button
    * (Slack/Notion-style: button sits in the top-right corner of the box, code
-   * itself is unchanged). Triggered after both the initial render and the
-   * post-lib-load re-render.
+   * itself is unchanged). Triggered after every canonical adapter render.
    *
    * The button reads `<pre><code>` text content (not the HTML), strips a
-   * trailing newline that marked.js leaves behind, and uses
+   * trailing newline left by the renderer, and uses
    * navigator.clipboard.writeText when available, falling back to a hidden
    * textarea + execCommand for older / insecure-context browsers.
    */
@@ -1061,7 +1098,7 @@ const AssistantWidget = (() => {
     const bubble = node.querySelector('.tcrt-assistant-bubble');
     if (text) {
       const textEl = el('<div class="tcrt-assistant-user-text"></div>');
-      textEl.textContent = text;
+      setMarkdownText(textEl, text);
       bubble.appendChild(textEl);
     }
     const attachmentPills = [];
@@ -1258,17 +1295,13 @@ const AssistantWidget = (() => {
     hideAgentThinking(assistantNode);
     const typing = bubble.querySelector('.tcrt-assistant-typing');
     if (typing) typing.remove();
-    const textWrap = el('<div class="tcrt-assistant-text"></div>');
-    textWrap.innerHTML = renderMarkdown(text);
-    decorateCodeBlocks(textWrap);
-    bubble.appendChild(textWrap);
+    let textWrap = bubble.querySelector('.tcrt-assistant-text');
+    if (!textWrap) {
+      textWrap = el('<div class="tcrt-assistant-text"></div>');
+      bubble.appendChild(textWrap);
+    }
+    setMarkdownText(textWrap, text);
     scrollToBottom();
-    void ensureMarkdownLibs().then(() => {
-      if (mdLibsReady && textWrap.isConnected) {
-        textWrap.innerHTML = renderMarkdown(text);
-        decorateCodeBlocks(textWrap);
-      }
-    });
   }
 
   function addErrorBubble(message, retryFn) {
@@ -2092,6 +2125,9 @@ const AssistantWidget = (() => {
           lastAssistantNode = node;
         }
       }
+      // Tool/external payloads remain status-only by design. If a future surface
+      // displays payload text, it must call setMarkdownText from the original
+      // source rather than inserting tool_result content directly.
       if (m.role === 'tool') {
         const outcome = m.tool_outcome || (m.tool_result && m.tool_result.status === 'error' ? 'failed' : null);
         if (!outcome) return;

@@ -30,20 +30,129 @@ function escapeHtml(text) {
 
 // Markdown 渲染輔助函數
 function renderMarkdown(content) {
-    if (!content) return '';
+    return getMarkdownRenderResult(content).html;
+}
 
-    if (typeof marked !== 'undefined') {
-        try {
-            return marked.parse(content);
-        } catch (error) {
-            console.error('Markdown parse error:', error);
-            // 如果 Markdown 渲染失敗，回退到純文字顯示
-            return `<pre style="white-space: pre-wrap; font-size: 0.9rem;">${escapeHtml(content)}</pre>`;
-        }
-    } else {
-        // 如果 marked 庫未載入，回退到純文字顯示
-        return `<pre style="white-space: pre-wrap; font-size: 0.9rem;">${escapeHtml(content)}</pre>`;
+function getMarkdownFallbackHtml(source) {
+    return `<pre>${escapeHtml(source)}</pre>`;
+}
+
+function getMarkdownRenderResult(content) {
+    const source = content === undefined || content === null ? '' : String(content);
+    if (!source) {
+        return { html: '', status: 'ok' };
     }
+
+    const adapter = window.TCRTMarkdown;
+    if (!adapter || typeof adapter.render !== 'function') {
+        return { html: getMarkdownFallbackHtml(source), status: 'fallback', reason: 'adapter-unavailable' };
+    }
+
+    try {
+        const result = adapter.render(source, { surface: 'test-run-execution' });
+        if (!result || typeof result.html !== 'string') {
+            return { html: getMarkdownFallbackHtml(source), status: 'fallback', reason: 'invalid-adapter-result' };
+        }
+        return {
+            html: result.html,
+            status: result.status === 'ok' ? 'ok' : 'fallback',
+            ...(result.reason ? { reason: String(result.reason) } : {})
+        };
+    } catch (_) {
+        return { html: getMarkdownFallbackHtml(source), status: 'fallback', reason: 'adapter-error' };
+    }
+}
+
+function invalidateMarkdownRerender(element) {
+    if (!element) return;
+    element._markdownRenderRetryVersion = (element._markdownRenderRetryVersion || 0) + 1;
+}
+
+function getMarkdownRenderAttributes(source, result) {
+    const normalizedSource = source === undefined || source === null ? '' : String(source);
+    const status = result && result.status === 'ok' ? 'ok' : 'fallback';
+    const encodedSource = encodeURIComponent(normalizedSource);
+    const reason = result && result.reason ? ` data-markdown-reason="${escapeHtml(String(result.reason))}"` : '';
+    return `data-markdown-source="${encodedSource}" data-markdown-status="${status}"${reason}`;
+}
+
+function applyMarkdownRenderState(element, result) {
+    if (!element) return;
+    const status = result && result.status === 'ok' ? 'ok' : 'fallback';
+    element.setAttribute('data-markdown-status', status);
+    if (result && result.reason) {
+        element.setAttribute('data-markdown-reason', String(result.reason));
+    } else {
+        element.removeAttribute('data-markdown-reason');
+    }
+    element.classList.toggle('markdown-render-fallback', status === 'fallback');
+
+    const existingIndicator = element.querySelector('[data-markdown-render-status]');
+    if (status === 'fallback') {
+        const indicator = existingIndicator || document.createElement('span');
+        const fallback = treTranslate('errors.markdownRendererUnavailable', 'Markdown preview unavailable; showing source text.');
+        indicator.setAttribute('data-markdown-render-status', 'fallback');
+        indicator.setAttribute('data-i18n', 'errors.markdownRendererUnavailable');
+        indicator.setAttribute('data-i18n-fallback', fallback);
+        indicator.setAttribute('role', 'status');
+        indicator.setAttribute('aria-live', 'polite');
+        indicator.className = 'markdown-render-status text-muted small d-block mt-1';
+        indicator.textContent = fallback;
+        if (!existingIndicator) element.appendChild(indicator);
+        if (window.i18n && typeof window.i18n.retranslate === 'function') {
+            window.i18n.retranslate(indicator);
+        }
+    } else if (existingIndicator) {
+        existingIndicator.remove();
+    }
+}
+
+function applyMarkdownRenderStates(root) {
+    if (!root) return;
+    root.querySelectorAll('.markdown-preview[data-markdown-source][data-markdown-status]')
+        .forEach((element) => {
+            applyMarkdownRenderState(element, {
+                status: element.getAttribute('data-markdown-status') === 'ok' ? 'ok' : 'fallback',
+                reason: element.getAttribute('data-markdown-reason') || undefined
+            });
+        });
+}
+
+function rerenderMarkdownElement(element) {
+    if (!element) return;
+    const encodedSource = element.getAttribute('data-markdown-source') || '';
+    let source = '';
+    try {
+        source = decodeURIComponent(encodedSource);
+    } catch (_) {
+        return;
+    }
+    const result = getMarkdownRenderResult(source);
+    element.innerHTML = result.html;
+    applyMarkdownRenderState(element, result);
+}
+
+function scheduleMarkdownRerender(root) {
+    const adapter = window.TCRTMarkdown;
+    if (!root || !adapter || !adapter.ready || typeof adapter.ready.then !== 'function') return;
+    const pendingElements = Array.from(root.querySelectorAll('[data-markdown-status="fallback"][data-markdown-source]'))
+        .map((element) => ({
+            element,
+            source: element.getAttribute('data-markdown-source') || '',
+            version: element._markdownRenderRetryVersion || 0
+        }));
+    if (!pendingElements.length) return;
+
+    Promise.resolve(adapter.ready).then((ready) => {
+        if (!ready || ready.status !== 'ok') return;
+        if (root.isConnected === false) return;
+        pendingElements.forEach(({ element, source, version }) => {
+            if (!element.isConnected || element._markdownRenderRetryVersion !== version) return;
+            if (element.getAttribute('data-markdown-source') !== source
+                || element.getAttribute('data-markdown-status') !== 'fallback') return;
+            rerenderMarkdownElement(element);
+        });
+    }).catch(() => {});
 }
 
 function getResultClass(result) {
@@ -127,6 +236,45 @@ function getFileIcon(fileName) {
 
     // Default
     return 'fas fa-file text-muted';
+}
+
+async function resolveTeamFromUrl_TRE(teamParam) {
+    const requestedTeamText = String(teamParam || '').trim();
+    if (!/^[1-9]\d*$/.test(requestedTeamText) || typeof AppUtils === 'undefined') {
+        return null;
+    }
+
+    const requestedTeamId = Number(requestedTeamText);
+    const currentTeam = typeof AppUtils.getCurrentTeam === 'function'
+        ? AppUtils.getCurrentTeam()
+        : null;
+    if (currentTeam && String(currentTeam.id) === requestedTeamText) {
+        return currentTeam;
+    }
+
+    if (!window.AuthClient || typeof window.AuthClient.fetch !== 'function'
+        || typeof AppUtils.setCurrentTeam !== 'function') {
+        return null;
+    }
+
+    try {
+        const response = await window.AuthClient.fetch('/api/teams/');
+        if (!response.ok) return null;
+
+        const teams = await response.json();
+        if (!Array.isArray(teams)) return null;
+
+        const targetTeam = teams.find((team) => Number(team?.id) === requestedTeamId);
+        if (!targetTeam) return null;
+
+        AppUtils.setCurrentTeam(targetTeam);
+        if (typeof AppUtils.updateTeamNameBadge === 'function') {
+            AppUtils.updateTeamNameBadge();
+        }
+        return targetTeam;
+    } catch (_) {
+        return null;
+    }
 }
 
 function getCurrentTeamId() {

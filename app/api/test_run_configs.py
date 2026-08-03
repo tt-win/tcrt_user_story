@@ -1065,6 +1065,7 @@ async def restart_test_run(
         "success": True,
         "mode": result["mode"],
         "new_config_id": result["new_config_id"],
+        "team_id": team_id,
         "created_count": result["created_count"],
         "set_id": result.get("set_id"),
     }

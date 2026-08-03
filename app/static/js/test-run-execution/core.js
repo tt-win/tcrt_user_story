@@ -236,7 +236,7 @@ async function applyTestRunExecutionPermissions() {
  * 為 textarea 中的選中文本添加 Markdown 格式
  *
  * @param {HTMLTextAreaElement} textarea - 目標 textarea 元素
- * @param {string} format - 格式類型: 'bold' | 'italic' | 'underline'
+ * @param {string} format - 格式類型: 'bold' | 'italic'
  */
 function applyMarkdownFormat(textarea, format) {
     if (!textarea) return;
@@ -261,10 +261,6 @@ function applyMarkdownFormat(textarea, format) {
                 formattedText = '_文字_';
                 newCursorPos = start + 1;
                 break;
-            case 'underline':
-                formattedText = '<u>文字</u>';
-                newCursorPos = start + 3;
-                break;
             default:
                 return;
         }
@@ -278,10 +274,6 @@ function applyMarkdownFormat(textarea, format) {
             case 'italic':
                 formattedText = `_${selectedText}_`;
                 newCursorPos = end + 2;
-                break;
-            case 'underline':
-                formattedText = `<u>${selectedText}</u>`;
-                newCursorPos = end + 7;
                 break;
             default:
                 return;
@@ -306,7 +298,6 @@ function applyMarkdownFormat(textarea, format) {
  * 為 textarea 添加 Markdown 快捷鍵監聽
  * Ctrl/Cmd + B -> Bold
  * Ctrl/Cmd + I -> Italic
- * Ctrl/Cmd + U -> Underline
  *
  * @param {HTMLTextAreaElement} textarea - 目標 textarea 元素
  */
@@ -328,20 +319,6 @@ function setupMarkdownHotkeys(textarea) {
                 e.preventDefault();
                 applyMarkdownFormat(textarea, 'italic');
                 break;
-            case 'u':
-                e.preventDefault();
-                applyMarkdownFormat(textarea, 'underline');
-                break;
         }
-    });
-}
-
-// Configure marked to treat single newlines as <br> so previews show line breaks
-if (window.marked && typeof window.marked.setOptions === 'function') {
-    window.marked.setOptions({
-        breaks: true,
-        gfm: true,
-        headerIds: false,
-        mangle: false
     });
 }

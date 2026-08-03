@@ -29,8 +29,8 @@ _LINK_RULES: dict[str, tuple[str, str, dict[str, str]]] = {
     ),
     "create_test_run_config": (
         "test_run",
-        "/test-run-execution?config_id={config_id}",
-        {"config_id": "id"},
+        "/test-run-execution?team_id={team_id}&config_id={config_id}",
+        {"team_id": "team_id", "config_id": "id"},
     ),
     "create_test_run_set": (
         "test_run_set",
@@ -39,8 +39,8 @@ _LINK_RULES: dict[str, tuple[str, str, dict[str, str]]] = {
     ),
     "restart_test_run": (
         "test_run",
-        "/test-run-execution?config_id={config_id}",
-        {"config_id": "new_config_id"},
+        "/test-run-execution?team_id={team_id}&config_id={config_id}",
+        {"team_id": "team_id", "config_id": "new_config_id"},
     ),
     # --- get (single-resource detail) ---
     "get_test_case": (
@@ -55,8 +55,8 @@ _LINK_RULES: dict[str, tuple[str, str, dict[str, str]]] = {
     ),
     "get_test_run": (
         "test_run",
-        "/test-run-execution?config_id={config_id}",
-        {"config_id": "id"},
+        "/test-run-execution?team_id={team_id}&config_id={config_id}",
+        {"team_id": "team_id", "config_id": "id"},
     ),
     "get_test_run_set": (
         "test_run_set",
@@ -118,8 +118,8 @@ _LIST_LINK_RULES: dict[str, tuple[str, str, dict[str, str]] | tuple[str, str, di
     ),
     "list_test_runs": (
         "test_run",
-        "/test-run-execution?config_id={config_id}",
-        {"config_id": "id"},
+        "/test-run-execution?team_id={team_id}&config_id={config_id}",
+        {"team_id": "team_id", "config_id": "id"},
     ),
     "list_my_test_run_assignments": (
         "test_run",
@@ -138,8 +138,8 @@ _LIST_LINK_RULES: dict[str, tuple[str, str, dict[str, str]] | tuple[str, str, di
     ),
     "list_test_run_items": (
         "test_run",
-        "/test-run-execution?config_id={config_id}",
-        {"config_id": "config_id"},
+        "/test-run-execution?team_id={team_id}&config_id={config_id}",
+        {"team_id": "team_id", "config_id": "config_id"},
     ),
     "search_test_cases_global": (
         "test_case",

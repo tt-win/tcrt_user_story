@@ -363,7 +363,7 @@
 
     /**
      * Knowledge Graph 分頁（openspec: add-knowledge-graph-integration）。
-     * 顯示 Qdrant / Neo4j 連線狀態、collection 列表、backfill 進度。
+     * 顯示 Qdrant / Neo4j 連線狀態與 collection 列表。
      * 純資料導向：所有顯示文字走 i18n，DOM 落地用 textContent / createTextNode。
      */
     class KnowledgeGraphPanel {
@@ -393,7 +393,6 @@
                 neo4jStatus: byId('kgNeo4jStatus'),
                 neo4jUri: byId('kgNeo4jUri'),
                 neo4jDatabase: byId('kgNeo4jDatabase'),
-                backfillRows: byId('kgBackfillRows'),
             };
             this.refreshController = Core.createKnowledgeGraphRefreshController({
                 refreshSnapshot: (options) => this.load(options),
@@ -491,8 +490,6 @@
             this.elements.neo4jDatabase.textContent = neo4j.database || (
                 neo4j.status === 'not_configured' ? dash : ''
             );
-
-            this.renderBackfillRows(data.backfill || {});
         }
 
         renderStatusBadge(el, status) {
@@ -549,65 +546,6 @@
                 fragment.appendChild(note);
             }
             el.appendChild(fragment);
-        }
-
-        renderBackfillRows(backfill) {
-            const tbody = this.elements.backfillRows;
-            tbody.textContent = '';
-            const entities = ['test_cases', 'usm_nodes'];
-            const dash = '—';
-            for (const entity of entities) {
-                const row = document.createElement('tr');
-                const entityCell = document.createElement('td');
-                entityCell.appendChild(document.createTextNode(entity));
-                row.appendChild(entityCell);
-
-                const progress = backfill[entity];
-                if (!progress) {
-                    for (let i = 0; i < 4; i += 1) {
-                        const td = document.createElement('td');
-                        td.className = 'text-muted';
-                        td.textContent = dash;
-                        row.appendChild(td);
-                    }
-                } else {
-                    const processed = document.createElement('td');
-                    const total = progress.total_count;
-                    processed.textContent = total
-                        ? `${progress.processed_count} / ${total}`
-                        : `${progress.processed_count}`;
-                    row.appendChild(processed);
-
-                    const lastId = document.createElement('td');
-                    lastId.textContent = progress.last_processed_id !== null
-                        && progress.last_processed_id !== undefined
-                        ? String(progress.last_processed_id)
-                        : dash;
-                    row.appendChild(lastId);
-
-                    const statusCell = document.createElement('td');
-                    const badge = document.createElement('span');
-                    badge.className = `badge ${this.backfillStatusClass(progress.status)}`;
-                    badge.textContent = progress.status;
-                    statusCell.appendChild(badge);
-                    row.appendChild(statusCell);
-
-                    const updatedAt = document.createElement('td');
-                    updatedAt.textContent = progress.updated_at || dash;
-                    row.appendChild(updatedAt);
-                }
-                tbody.appendChild(row);
-            }
-        }
-
-        backfillStatusClass(status) {
-            return {
-                pending: 'bg-secondary',
-                running: 'bg-primary',
-                in_progress: 'bg-primary',
-                completed: 'bg-success',
-                failed: 'bg-danger',
-            }[status] || 'bg-secondary';
         }
     }
 

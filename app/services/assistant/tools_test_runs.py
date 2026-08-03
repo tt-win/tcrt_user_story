@@ -14,12 +14,12 @@ from app.services.assistant.tool_registry import (
 )
 
 _TRC_PROJECTION = (
-    "id", "name", "description", "set_id", "set_name", "test_case_set_ids", "test_version",
+    "id", "team_id", "name", "description", "set_id", "set_name", "test_case_set_ids", "test_version",
     "test_environment", "build_number", "related_tp_tickets", "status", "start_date", "end_date",
     "total_test_cases", "executed_cases", "passed_cases", "failed_cases", "created_at", "updated_at",
 )
 _ITEM_PROJECTION = (
-    "id", "config_id", "test_case_number", "title", "priority", "test_result", "assignee_name",
+    "id", "team_id", "config_id", "test_case_number", "title", "priority", "test_result", "assignee_name",
     "executed_at", "execution_duration", "attachment_count", "execution_result_count", "comment",
     "created_at", "updated_at",
 )
@@ -210,7 +210,7 @@ TOOLS = [
         ),
         team_check="resolve",
         resource_team_resolver="test_run_config",
-        projection=("success", "mode", "new_config_id", "created_count", "set_id", "_deep_links"),
+        projection=("success", "mode", "new_config_id", "team_id", "created_count", "set_id", "_deep_links"),
         confirmation_action_key="assistant.action.restart_test_run",
         warning_key="assistant.warning.high_impact",
         target_resolver="single",

@@ -269,6 +269,30 @@ def test_ticket_snapshot_raw_markdown_preserves_original_ticket_blocks(qa_ai_hel
     assert "### Scenario 1: Open details" in markdown
 
 
+def test_reparse_preserves_submitted_raw_ticket_markdown(qa_ai_helper_db):
+    client = TestClient(app)
+    team_id = qa_ai_helper_db["team_id"]
+    payload = _create_session(client, team_id)
+    session_id = payload["session"]["id"]
+    raw_markdown = (
+        "# TCG-130078 View audience details\n\n"
+        "## Acceptance Criteria\n\n"
+        "| Name | Value |\n"
+        "| --- | --- |\n"
+        "| First | **enabled** |\n"
+        "{custom-token:keep}unrecognised{custom-token}\n"
+    )
+
+    reparsed = client.post(
+        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/ticket/reparse",
+        json={"raw_ticket_markdown": raw_markdown},
+    )
+
+    assert reparsed.status_code == 200, reparsed.text
+    assert reparsed.json()["ticket_snapshot"]["raw_ticket_markdown"] == raw_markdown
+
+
+
 def test_restart_deletes_unfinished_session_and_snapshot(qa_ai_helper_db):
     client = TestClient(app)
     team_id = qa_ai_helper_db["team_id"]

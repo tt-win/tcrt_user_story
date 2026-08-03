@@ -291,8 +291,54 @@ def _jira_wiki_inline_to_md(text: str) -> str:
     return text
 
 
+def _split_jira_table_cells(text: str, separator: str) -> List[str]:
+    """Split Jira table cells without breaking inline links, code, or escapes."""
+    cells: List[str] = []
+    start = 0
+    index = 0
+    link_depth = 0
+    code_depth = 0
+    escaped = False
+
+    while index < len(text):
+        character = text[index]
+        if escaped:
+            escaped = False
+            index += 1
+            continue
+        if character == "\\":
+            escaped = True
+            index += 1
+            continue
+        if text.startswith("{{", index) and link_depth == 0:
+            code_depth += 1
+            index += 2
+            continue
+        if text.startswith("}}", index) and code_depth:
+            code_depth -= 1
+            index += 2
+            continue
+        if character == "[" and code_depth == 0:
+            link_depth += 1
+            index += 1
+            continue
+        if character == "]" and link_depth:
+            link_depth -= 1
+            index += 1
+            continue
+        if not link_depth and not code_depth and text.startswith(separator, index):
+            cells.append(text[start:index])
+            index += len(separator)
+            start = index
+            continue
+        index += 1
+
+    cells.append(text[start:])
+    return cells
+
+
 def _jira_wiki_to_markdown(text: str) -> str:
-    """Convert Jira wiki markup to Markdown."""
+    """Convert Jira wiki markup to canonical Markdown for browser display."""
     if not text or not text.strip():
         return text or ""
     lines = text.split("\n")
@@ -300,6 +346,7 @@ def _jira_wiki_to_markdown(text: str) -> str:
     in_code = False
     in_noformat = False
     in_quote = False
+    in_table = False
 
     for line in lines:
         stripped = line.strip()
@@ -341,12 +388,14 @@ def _jira_wiki_to_markdown(text: str) -> str:
 
         # --- horizontal rule ---
         if stripped == "----":
+            in_table = False
             result.append("---")
             continue
 
         # --- headings h1. … h6. ---
         hm = re.match(r"^h([1-6])\.\s+(.*)", stripped)
         if hm:
+            in_table = False
             lvl, title = int(hm.group(1)), hm.group(2)
             result.append(f"{'#' * lvl} {_jira_wiki_inline_to_md(title)}")
             continue
@@ -354,6 +403,7 @@ def _jira_wiki_to_markdown(text: str) -> str:
         # --- unordered list (* / ** / ***) ---
         ul = re.match(r"^(\*+)\s+(.*)", stripped)
         if ul:
+            in_table = False
             depth = len(ul.group(1))
             content = _jira_wiki_inline_to_md(ul.group(2))
             result.append(f"{'  ' * (depth - 1)}- {content}")
@@ -362,11 +412,35 @@ def _jira_wiki_to_markdown(text: str) -> str:
         # --- ordered list (# / ## / ###) ---
         ol = re.match(r"^(#+)\s+(.*)", stripped)
         if ol:
+            in_table = False
             depth = len(ol.group(1))
             content = _jira_wiki_inline_to_md(ol.group(2))
             result.append(f"{'  ' * (depth - 1)}1. {content}")
             continue
 
+        # --- table header row: ||col1||col2||...|| ---
+        th_match = re.match(r"^\|\|(.+)\|\|$", stripped)
+        if th_match:
+            in_table = True
+            columns = [
+                _jira_wiki_inline_to_md(column.strip())
+                for column in _split_jira_table_cells(th_match.group(1), "||")
+            ]
+            result.append("| " + " | ".join(columns) + " |")
+            result.append("| " + " | ".join("---" for _ in columns) + " |")
+            continue
+
+        # --- table data row: |col1|col2|...| ---
+        td_match = re.match(r"^\|(.+)\|$", stripped)
+        if td_match and in_table:
+            columns = [
+                _jira_wiki_inline_to_md(column.strip())
+                for column in _split_jira_table_cells(td_match.group(1), "|")
+            ]
+            result.append("| " + " | ".join(columns) + " |")
+            continue
+
+        in_table = False
         # --- regular line ---
         converted = _jira_wiki_inline_to_md(stripped)
         if in_quote:
@@ -378,61 +452,152 @@ def _jira_wiki_to_markdown(text: str) -> str:
 
 
 def _md_inline_to_jira_wiki(text: str) -> str:
-    """Reverse of ``_jira_wiki_inline_to_md``: convert Markdown inline
-    formatting back to JIRA wiki markup so that the deterministic parser's
-    ``clean_inline`` (which only strips JIRA-wiki inline tokens) can process
-    it correctly.
-
-    Order matters – bold (``**``) must be converted before italic (``*``)
-    to avoid ambiguity.
-    """
+    """Reverse of ``_jira_wiki_inline_to_md`` for deterministic reparsing."""
     if not text:
         return text or ""
-    # Bold: **text** → *text*
-    text = re.sub(r"\*\*(.+?)\*\*", r"*\1*", text)
-    # Italic: *text* → _text_  (after bold conversion, remaining single-star = italic)
-    # Use word-boundary-like guards to avoid matching bullet prefixes
+
+    # Stash bold spans while converting remaining single-star italic spans;
+    # otherwise the newly emitted Jira bold markers would be converted again.
+    bold_tokens: List[str] = []
+
+    def _stash_bold(match: Any) -> str:
+        bold_tokens.append(match.group(1))
+        return f"\x00BOLD{len(bold_tokens) - 1}\x00"
+
+    text = re.sub(r"\*\*(.+?)\*\*", _stash_bold, text)
     text = re.sub(r"(?<![*\w])\*([^\s*][^*]*[^\s*])\*(?![*\w])", r"_\1_", text)
-    # Also handle single-word italic: *word*
     text = re.sub(r"(?<![*\w])\*([^\s*]+)\*(?![*\w])", r"_\1_", text)
-    # Strikethrough: ~~text~~ → -text-
     text = re.sub(r"~~(.+?)~~", r"-\1-", text)
-    # Monospace: `text` → {{text}}
     text = re.sub(r"`([^`]+)`", r"{{\1}}", text)
-    # Links: [text](url) → [text|url]
     text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"[\1|\2]", text)
-    # Simple links: <url> → [url]
     text = re.sub(r"<(https?://[^>]+)>", r"[\1]", text)
-    return text
+
+    def _restore_bold(match: Any) -> str:
+        return f"*{bold_tokens[int(match.group(1))]}*"
+
+    return re.sub(r"\x00BOLD(\d+)\x00", _restore_bold, text)
+
+
+def _split_markdown_table_cells(text: str) -> List[str]:
+    """Split Markdown table cells without breaking links, code, or escapes."""
+    cells: List[str] = []
+    start = 0
+    index = 0
+    link_depth = 0
+    destination_depth = 0
+    code_ticks = 0
+    escaped = False
+
+    while index < len(text):
+        character = text[index]
+        if escaped:
+            escaped = False
+            index += 1
+            continue
+        if character == "\\":
+            escaped = True
+            index += 1
+            continue
+        if character == "`":
+            tick_count = 1
+            while index + tick_count < len(text) and text[index + tick_count] == "`":
+                tick_count += 1
+            if code_ticks == 0:
+                code_ticks = tick_count
+            elif tick_count == code_ticks:
+                code_ticks = 0
+            index += tick_count
+            continue
+        if code_ticks:
+            index += 1
+            continue
+        if character == "[":
+            link_depth += 1
+            index += 1
+            continue
+        if character == "]" and link_depth:
+            link_depth -= 1
+            index += 1
+            continue
+        if character == "(" and index > 0 and text[index - 1] == "]":
+            destination_depth += 1
+            index += 1
+            continue
+        if character == ")" and destination_depth:
+            destination_depth -= 1
+            index += 1
+            continue
+        if not link_depth and not destination_depth and character == "|":
+            cells.append(text[start:index])
+            start = index + 1
+        index += 1
+
+    cells.append(text[start:])
+    return cells
 
 
 def _markdown_to_jira_wiki(text: str) -> str:
-    """Best-effort reverse of ``_jira_wiki_to_markdown`` so that content
-    edited in the Markdown-based textarea can be fed back to the JIRA-wiki
-    based deterministic parser (``split_sections`` / ``parse_bullet_tree``).
-
-    Converts both structural tokens (headings, lists, horizontal rules) and
-    inline formatting (bold, italic, strikethrough, monospace, links) back to
-    JIRA wiki markup so that ``clean_inline`` in the parser can strip them
-    correctly.
-    """
+    """Convert edited Markdown back to Jira wiki for deterministic reparsing."""
     if not text or not text.strip():
         return text or ""
     lines = text.split("\n")
     result: List[str] = []
     in_code = False
+    table_active = False
 
-    for line in lines:
+    for index, line in enumerate(lines):
         stripped = line.strip()
 
         # --- code fences (pass through) ---
         if stripped.startswith("```"):
             in_code = not in_code
+            table_active = False
             result.append(line)
             continue
         if in_code:
             result.append(line)
             continue
+
+        # --- Convert only contiguous GFM tables with a header separator. ---
+        table_match = re.match(r"^\|(.+)\|$", stripped)
+        if table_match:
+            columns = [
+                column.strip()
+                for column in _split_markdown_table_cells(table_match.group(1))
+            ]
+            is_separator_row = all(re.fullmatch(r":?-{3,}:?", column) for column in columns)
+            if table_active and is_separator_row:
+                continue
+
+            next_line = lines[index + 1].strip() if index + 1 < len(lines) else ""
+            next_match = re.match(r"^\|(.+)\|$", next_line)
+            next_columns = (
+                [
+                    column.strip()
+                    for column in _split_markdown_table_cells(next_match.group(1))
+                ]
+                if next_match
+                else []
+            )
+            is_header = bool(
+                next_columns
+                and len(next_columns) == len(columns)
+                and all(re.fullmatch(r":?-{3,}:?", column) for column in next_columns)
+            )
+            if is_header:
+                converted_columns = [_md_inline_to_jira_wiki(column) for column in columns]
+                result.append("||" + "||".join(converted_columns) + "||")
+                table_active = True
+                continue
+            if table_active:
+                converted_columns = [_md_inline_to_jira_wiki(column) for column in columns]
+                result.append("|" + "|".join(converted_columns) + "|")
+                continue
+            table_active = False
+            result.append(line)
+            continue
+
+        table_active = False
 
         # --- headings:  ## Title  →  h2. Title ---
         hm = re.match(r"^(#{1,6})\s+(.*)", stripped)

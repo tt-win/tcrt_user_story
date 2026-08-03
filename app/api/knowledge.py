@@ -25,7 +25,6 @@ from app.services.knowledge import (
     get_knowledge_graph_config,
     get_hybrid_search,
     get_query_log_service,
-    get_write_service,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -257,30 +256,6 @@ async def backfill(
     )
 
 
-@router.get("/backfill/progress")
-async def backfill_progress(
-    entity: str = Query(..., pattern="^(test_cases|usm_nodes)$"),
-    _admin: Any = Depends(_require_admin_dep),
-) -> dict[str, Any]:
-    """Get current backfill progress."""
-    write_svc = get_write_service()
-    progress = write_svc._load_progress(entity)
-    if progress is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No backfill progress for {entity}",
-        )
-    return {
-        "entity_type": progress.entity_type,
-        "processed_count": progress.processed_count,
-        "total_count": progress.total_count,
-        "last_processed_id": progress.last_processed_id,
-        "status": progress.status,
-        "started_at": progress.started_at,
-        "updated_at": progress.updated_at,
-    }
-
-
 @router.get("/health")
 async def health(
     _admin: Any = Depends(_require_admin_dep),
@@ -288,8 +263,7 @@ async def health(
     """Knowledge graph health check (admin only).
 
     Returns overall status plus per-component health and the Qdrant / Neo4j
-    connection details, plus the current backfill progress for both entity
-    types so the Super Admin tab can render a single GET.
+    connection details so the Super Admin tab can render a single GET.
 
     Opt-in contract: when the feature is disabled via
     ``KNOWLEDGE_GRAPH_ENABLED=false`` (or any other gate in
@@ -327,7 +301,6 @@ async def health(
                 "dimensions": kg_config.embedding.dimensions,
             },
         },
-        "backfill": {"test_cases": None, "usm_nodes": None},
     }
     if not enabled:
         return response
@@ -375,24 +348,6 @@ async def health(
         else "not_configured"
     )
 
-    # Backfill progress (read-only file read — safe regardless of upstream).
-    write_svc = get_write_service()
-    backfill_progress: dict[str, Any] = {}
-    for entity in ("test_cases", "usm_nodes"):
-        progress = write_svc._load_progress(entity)
-        if progress is not None:
-            backfill_progress[entity] = {
-                "entity_type": progress.entity_type,
-                "processed_count": progress.processed_count,
-                "total_count": progress.total_count,
-                "last_processed_id": progress.last_processed_id,
-                "status": progress.status,
-                "started_at": progress.started_at,
-                "updated_at": progress.updated_at,
-            }
-        else:
-            backfill_progress[entity] = None
-    response["backfill"] = backfill_progress
     return response
 
 

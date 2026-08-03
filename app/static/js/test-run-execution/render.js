@@ -1480,6 +1480,8 @@ function displayTestCaseDetail(testCase) {
     const { fixedHtml, scrollableHtml } = createTestCaseDetailHtml(testCase);
     fixedDiv.innerHTML = fixedHtml;
     scrollDiv.innerHTML = scrollableHtml;
+    applyMarkdownRenderStates(scrollDiv);
+    scheduleMarkdownRerender(scrollDiv);
     
     // 顯示內容和開啟按鈕
     const bodyRow = document.getElementById('testCaseDetailBodyRow');
@@ -1714,6 +1716,9 @@ function generateBasicInfoHtml(testCase) {
 function generateScrollableContentHtml(testCase) {
     const attachments = Array.isArray(testCase.attachments) ? testCase.attachments : [];
     const attachmentCount = attachments.length;
+    const preconditionMarkdown = getMarkdownRenderResult(testCase.precondition);
+    const stepsMarkdown = getMarkdownRenderResult(testCase.steps);
+    const expectedResultMarkdown = getMarkdownRenderResult(testCase.expected_result);
 
     return `
         <div class="card scrollable-content-card">
@@ -1722,7 +1727,7 @@ function generateScrollableContentHtml(testCase) {
                 <div class="mb-3">
                     <h6 class="mb-2" data-i18n="testRun.precondition">前置條件</h6>
                     <div class="section-block section-precondition">
-                        <div class="markdown-preview mb-0 content-markdown">${renderMarkdown(testCase.precondition)}</div>
+                        <div class="markdown-preview mb-0 content-markdown" ${getMarkdownRenderAttributes(testCase.precondition, preconditionMarkdown)}>${preconditionMarkdown.html}</div>
                     </div>
                 </div>
                 ` : ''}
@@ -1730,7 +1735,7 @@ function generateScrollableContentHtml(testCase) {
                 <div class="mb-3">
                     <h6 class="mb-2" data-i18n="testRun.steps">測試步驟</h6>
                     <div class="section-block section-steps">
-                        <div class="markdown-preview mb-0 content-markdown">${renderMarkdown(testCase.steps)}</div>
+                        <div class="markdown-preview mb-0 content-markdown" ${getMarkdownRenderAttributes(testCase.steps, stepsMarkdown)}>${stepsMarkdown.html}</div>
                     </div>
                 </div>
                 ` : ''}
@@ -1746,7 +1751,7 @@ function generateScrollableContentHtml(testCase) {
                 <div class="mb-3">
                     <h6 class="mb-2" data-i18n="testRun.expectedResult">預期結果</h6>
                     <div class="section-block section-expected">
-                        <div class="markdown-preview mb-0 content-markdown">${renderMarkdown(testCase.expected_result)}</div>
+                        <div class="markdown-preview mb-0 content-markdown" ${getMarkdownRenderAttributes(testCase.expected_result, expectedResultMarkdown)}>${expectedResultMarkdown.html}</div>
                     </div>
                 </div>
                 ` : ''}

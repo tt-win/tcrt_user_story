@@ -44,6 +44,7 @@
     sessionManagerSearchTimer: null,
     deleteSectionsModalInstance: null,
     ticketMarkdownDirty: false,
+    markdownRenderVersion: 0,
   };
 
   const PHASE_ORDER = ['fetch', 'canonical', 'plan', 'draft'];
@@ -82,6 +83,7 @@
     const clearTicketKey = !!((options || {}).clearTicketKey);
     clearRequirementPlanAutosave();
     state.workspace = null;
+    state.markdownRenderVersion += 1;
     state.sessionId = null;
     state.selectedDraftKey = null;
     state.selectedPlanSectionKey = null;
@@ -929,89 +931,83 @@
     `;
   }
 
-  function jiraWikiToMarkdown(text) {
-    if (!text) return text || '';
-    // Detect Jira wiki: heading (h1. …) or table (||…||) syntax
-    if (!/^h[1-6]\.\s/m.test(text) && !/^\|\|.+\|\|/m.test(text)) return text;
-    const lines = text.split('\n');
-    const result = [];
-    let inCode = false, inNoformat = false, inQuote = false;
-    for (const line of lines) {
-      const s = line.trim();
-      // {code} blocks
-      if (!inNoformat) {
-        if (/^\{code(:\w+)?\}$/.test(s) && !inCode) {
-          const lm = s.match(/^\{code:(\w+)\}$/);
-          result.push('```' + (lm ? lm[1] : ''));
-          inCode = true; continue;
-        }
-        if (s === '{code}' && inCode) { result.push('```'); inCode = false; continue; }
-      }
-      // {noformat} blocks
-      if (!inCode) {
-        if (s === '{noformat}' && !inNoformat) { result.push('```'); inNoformat = true; continue; }
-        if (s === '{noformat}' && inNoformat) { result.push('```'); inNoformat = false; continue; }
-      }
-      if (inCode || inNoformat) { result.push(line); continue; }
-      // {quote}
-      if (s === '{quote}') { inQuote = !inQuote; continue; }
-      // horizontal rule
-      if (s === '----') { result.push('---'); continue; }
-      // headings
-      const hm = s.match(/^h([1-6])\.\s+(.*)/);
-      if (hm) { result.push('#'.repeat(+hm[1]) + ' ' + jiraInline(hm[2])); continue; }
-      // unordered list
-      const ul = s.match(/^(\*+)\s+(.*)/);
-      if (ul) { result.push('  '.repeat(ul[1].length - 1) + '- ' + jiraInline(ul[2])); continue; }
-      // ordered list
-      const ol = s.match(/^(#+)\s+(.*)/);
-      if (ol) { result.push('  '.repeat(ol[1].length - 1) + '1. ' + jiraInline(ol[2])); continue; }
-      // table header row: ||col1||col2||...||
-      const thMatch = s.match(/^\|\|(.+)\|\|$/);
-      if (thMatch) {
-        const cols = thMatch[1].split('||').map(c => jiraInline(c.trim()));
-        result.push('| ' + cols.join(' | ') + ' |');
-        result.push('| ' + cols.map(() => '---').join(' | ') + ' |');
-        continue;
-      }
-      // table data row: |col1|col2|...|
-      const tdMatch = s.match(/^\|(.+)\|$/);
-      if (tdMatch && !/^\|.*\|\|/.test(s)) {
-        const cols = tdMatch[1].split('|').map(c => jiraInline(c.trim()));
-        result.push('| ' + cols.join(' | ') + ' |');
-        continue;
-      }
-      // regular line
-      const converted = jiraInline(s);
-      result.push(inQuote ? '> ' + converted : converted);
-    }
-    return result.join('\n');
-  }
+  function renderMarkdownHtml(rawContent, target, options) {
+    if (!target) return;
+    const source = rawContent == null ? '' : String(rawContent);
+    const retryWhenReady = !((options || {}).skipReadyRetry);
+    const renderVersion = (state.markdownRenderVersion || 0) + 1;
+    state.markdownRenderVersion = renderVersion;
 
-  function jiraInline(text) {
-    return text
-      .replace(/\{\*\}(.*?)\{\*\}/g, '**$1**')                                    // {*}bold{*}
-      .replace(/(?<![*\w])\*([^\s*](?:[^*]*[^\s*])?)\*(?![*\w])/g, '**$1**')   // bold
-      .replace(/\{_\}(.*?)\{_\}/g, '*$1*')                                        // {_}italic{_}
-      .replace(/(?<![_\w])_([^\s_](?:[^_]*[^\s_])?)_(?![_\w])/g, '*$1*')        // italic
-      .replace(/\{\{(.+?)\}\}/g, '`$1`')                                         // monospace
-      .replace(/\[([^|\]]+)\|([^\]]+)\]/g, '[$1]($2)')                           // links
-      .replace(/\[(https?:\/\/[^\]]+)\]/g, '<$1>');                               // bare links
-  }
-
-  function renderMarkdownHtml(rawContent) {
-    const content = jiraWikiToMarkdown(String(rawContent || '').trim());
-    if (!content) {
-      return `<p class="text-muted mb-0">${escapeHtml(t('qaAiHelper.ticketMarkdownEmpty', {}, '尚未載入需求單內容'))}</p>`;
-    }
-    if (window.marked && typeof window.marked.parse === 'function') {
-      try {
-        return window.marked.parse(content);
-      } catch (_) {
-        // fallback below
+    const renderFallback = (fallbackHtml) => {
+      target.replaceChildren();
+      if (typeof fallbackHtml === 'string' && fallbackHtml) {
+        // Adapter fallback HTML is already escaped Safe Display output.
+        target.innerHTML = fallbackHtml;
+      } else {
+        const sourceElement = document.createElement('pre');
+        sourceElement.className = 'mb-0 qa-helper-pre';
+        sourceElement.textContent = source;
+        target.appendChild(sourceElement);
       }
+      const status = document.createElement('div');
+      status.className = 'qa-helper-markdown-status small text-muted mt-2';
+      status.setAttribute('role', 'status');
+      status.setAttribute('aria-live', 'polite');
+      status.setAttribute('data-i18n', 'assistant.markdownUnavailable');
+      status.textContent = t(
+        'assistant.markdownUnavailable',
+        {},
+        'Markdown renderer unavailable; showing source text.'
+      );
+      target.appendChild(status);
+      if (window.i18n && typeof window.i18n.retranslate === 'function') window.i18n.retranslate(status);
+    };
+
+    const adapter = window.TCRTMarkdown;
+    const retryAfterReady = () => {
+      if (
+        !retryWhenReady
+        || !adapter
+        || !adapter.ready
+        || typeof adapter.ready.then !== 'function'
+      ) return;
+      Promise.resolve(adapter.ready).then((ready) => {
+        if (!ready || ready.status !== 'ok') return;
+        if (state.markdownRenderVersion !== renderVersion || target.isConnected === false) return;
+        renderMarkdownHtml(source, target, { skipReadyRetry: true });
+      }).catch(() => {});
+    };
+
+    if (!adapter || typeof adapter.render !== 'function') {
+      renderFallback('');
+      return;
     }
-    return `<pre class="mb-0 qa-helper-pre">${escapeHtml(content)}</pre>`;
+
+    let rendered;
+    try {
+      rendered = adapter.render(source, { surface: 'qa-ai-helper' });
+    } catch (_) {
+      rendered = null;
+    }
+    if (
+      !rendered
+      || typeof rendered.html !== 'string'
+      || (rendered.status !== 'ok' && rendered.status !== 'fallback')
+    ) {
+      renderFallback('');
+      retryAfterReady();
+      return;
+    }
+
+    if (rendered.status === 'ok') {
+      target.replaceChildren();
+      // Only canonical adapter HTML may be assigned as Markdown preview HTML.
+      target.innerHTML = rendered.html;
+      return;
+    }
+
+    renderFallback(rendered.html);
+    retryAfterReady();
   }
 
   function renderTicketValidationSummary() {
@@ -1188,7 +1184,7 @@
         <div><span class="qa-helper-ticket-meta-label">${escapeHtml(t('qaAiHelper.outputLocale', {}, '產出語系'))}</span><span class="qa-helper-ticket-meta-value">${escapeHtml(session.output_locale || '-')}</span></div>
       </div>
     `;
-    markdown.innerHTML = renderMarkdownHtml(ticketSnapshot.raw_ticket_markdown);
+    renderMarkdownHtml(ticketSnapshot.raw_ticket_markdown, markdown);
     // 若 editArea 不在編輯模式，確保 preview 可見
     if (editArea && !editArea.classList.contains('d-none')) {
       // 仍在編輯中，不強制切換
@@ -3800,9 +3796,6 @@
   async function initializePage() {
     if (state.bootstrapped) return;
     state.bootstrapped = true;
-    if (window.marked && typeof window.marked.setOptions === 'function') {
-      window.marked.setOptions({ breaks: true, gfm: true });
-    }
     const root = pageRoot();
     if (!root) return;
     state.setId = Number(root.dataset.setId || 0) || null;

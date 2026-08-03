@@ -65,7 +65,6 @@ async def test_health_does_not_connect_when_disabled(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr(kg_module, "get_qdrant_client", _fail)
     monkeypatch.setattr(kg_module, "get_neo4j_client", _fail)
-    monkeypatch.setattr(knowledge_api, "get_write_service", _fail)
 
     response = await knowledge_api.health(_admin=SimpleNamespace(id=1))
     assert response["enabled"] is False
@@ -74,8 +73,7 @@ async def test_health_does_not_connect_when_disabled(monkeypatch: pytest.MonkeyP
     assert response["components"]["qdrant"]["status"] == "disabled"
     assert response["components"]["neo4j"]["status"] == "disabled"
     assert response["components"]["embedding"]["status"] == "disabled"
-    # backfill must be present but all None
-    assert response["backfill"] == {"test_cases": None, "usm_nodes": None}
+    assert "backfill" not in response
 
 
 @pytest.mark.asyncio
@@ -89,14 +87,11 @@ async def test_health_connects_when_enabled(monkeypatch: pytest.MonkeyPatch) -> 
     qdrant_mock.list_collections = AsyncMock(return_value=["test_cases"])
     neo4j_mock = AsyncMock()
     neo4j_mock.health_check = AsyncMock(return_value=True)
-    write_mock = AsyncMock()
-    write_mock._load_progress = lambda entity_type: None  # type: ignore[assignment]
 
     import app.services.knowledge as kg_module
 
     monkeypatch.setattr(kg_module, "get_qdrant_client", lambda: qdrant_mock)
     monkeypatch.setattr(kg_module, "get_neo4j_client", lambda: neo4j_mock)
-    monkeypatch.setattr(knowledge_api, "get_write_service", lambda: write_mock)
 
     response = await knowledge_api.health(_admin=SimpleNamespace(id=1))
     assert response["enabled"] is True
@@ -106,6 +101,7 @@ async def test_health_connects_when_enabled(monkeypatch: pytest.MonkeyPatch) -> 
     assert response["components"]["neo4j"]["status"] == "healthy"
     # Embedding is "configured" (not "healthy" — we have no live ping)
     assert response["components"]["embedding"]["status"] == "configured"
+    assert "backfill" not in response
 
 
 # ---- BUG-35 ----

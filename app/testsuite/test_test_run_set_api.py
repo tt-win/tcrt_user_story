@@ -264,6 +264,7 @@ def test_restart_attaches_new_run_to_same_set_and_copies_failed_items(temp_db):
     assert body["mode"] == "failed"
     assert body["created_count"] == 1
     assert body["set_id"] == set_id
+    assert body["team_id"] == team_id
     new_id = body["new_config_id"]
     assert new_id != config1_id
 

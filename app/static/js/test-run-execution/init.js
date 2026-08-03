@@ -35,14 +35,13 @@ document.addEventListener('DOMContentLoaded', async function() {
         return;
     }
 
-    // 若 URL 有 team_id 且目前尚未設定 current team，先寫入
-    try {
-        const cur = AppUtils.getCurrentTeam && AppUtils.getCurrentTeam();
-        if (teamParam && (!cur || !cur.id) && AppUtils.setCurrentTeam) {
-            const parsedTeam = parseInt(teamParam);
-            if (!isNaN(parsedTeam)) AppUtils.setCurrentTeam({ id: parsedTeam });
-        }
-    } catch (_) {}
+    if (teamParam && !await resolveTeamFromUrl_TRE(teamParam)) {
+        AppUtils.showError(treTranslate(
+            'testRun.teamUnavailable',
+            'Unable to open this Test Run because its team is unavailable.'
+        ));
+        return;
+    }
 
     initializePage();
     bindEventListeners();
