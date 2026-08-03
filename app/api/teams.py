@@ -12,7 +12,7 @@ from app.auth.dependencies import (
 )
 from app.auth.models import PermissionType, UserRole
 from app.auth.permission_service import permission_service
-from app.models.database_models import User, UserTeamPermission
+from app.models.database_models import User
 from app.models.team import TeamCreate, TeamStatus, TeamUpdate
 from app.models.lark_types import Priority
 from app.models.database_models import (
@@ -118,6 +118,14 @@ async def get_teams(
         if not allowed_team_ids:
             return []
 
+        app_token_permission = await permission_service.check_team_permission(
+            current_user.id,
+            allowed_team_ids[0],
+            PermissionType.ADMIN,
+            current_user.role,
+        )
+        can_manage_app_tokens = app_token_permission.has_permission
+
         async def _load_teams(session):
             result = await session.execute(
                 select(TeamDB).where(
@@ -133,31 +141,13 @@ async def get_teams(
                 .group_by(TestCaseLocalDB.team_id)
             )
             case_counts = {team_id: int(count or 0) for team_id, count in count_rows.all()}
-            role = (
-                current_user.role.value
-                if isinstance(current_user.role, UserRole)
-                else str(current_user.role)
-            )
-            if role == UserRole.SUPER_ADMIN.value:
-                manageable_team_ids = {team.id for team in teams_db}
-            else:
-                permission_rows = await session.execute(
-                    select(UserTeamPermission.team_id).where(
-                        UserTeamPermission.user_id == current_user.id,
-                        UserTeamPermission.permission == PermissionType.ADMIN,
-                        UserTeamPermission.team_id.in_(team.id for team in teams_db),
-                    )
-                )
-                manageable_team_ids = {
-                    team_id for team_id, in permission_rows.all()
-                }
             teams = []
             for team in teams_db:
                 payload = team_db_to_model(
                     team,
                     test_case_count=case_counts.get(team.id, 0),
                 )
-                payload["can_manage_app_tokens"] = team.id in manageable_team_ids
+                payload["can_manage_app_tokens"] = can_manage_app_tokens
                 teams.append(payload)
             return teams
 
