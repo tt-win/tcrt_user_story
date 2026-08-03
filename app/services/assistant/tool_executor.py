@@ -1230,7 +1230,7 @@ class ToolExecutor:
             run_status = cast(TestRunConfig.status, String)
             stmt = (
                 select(
-                    TestRunItem.team_id,
+                    TestRunConfig.team_id,
                     Team.name.label("team_name"),
                     TestRunItem.config_id,
                     TestRunConfig.name.label("run_name"),
@@ -1240,18 +1240,18 @@ class ToolExecutor:
                 )
                 .select_from(TestRunItem)
                 .join(TestRunConfig, TestRunConfig.id == TestRunItem.config_id)
-                .join(Team, Team.id == TestRunItem.team_id)
+                .join(Team, Team.id == TestRunConfig.team_id)
             )
             if join_assignee_user:
                 stmt = stmt.outerjoin(User, User.id == TestRunItem.assignee_user_id)
             rows = sync_db.execute(
                 stmt.where(
-                    TestRunItem.team_id.in_(allowed_team_ids),
+                    TestRunConfig.team_id.in_(allowed_team_ids),
                     assignment_condition,
                     run_status.in_(("active", "draft", "completed")),
                 )
                 .group_by(
-                    TestRunItem.team_id,
+                    TestRunConfig.team_id,
                     Team.name,
                     TestRunItem.config_id,
                     TestRunConfig.name,

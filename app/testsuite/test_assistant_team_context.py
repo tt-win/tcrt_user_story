@@ -312,8 +312,10 @@ def test_global_assignment_lookups_use_signed_in_user_across_teams(team_ctx_db):
                     assignee_user_id=1,
                     assignee_name="Mandy",
                 ),
+                # Item rows can retain a legacy source team after their config moves.
+                # Navigation must still target the config's owning team.
                 TestRunItem(
-                    team_id=2,
+                    team_id=1,
                     config_id=cid_run.id,
                     test_case_number="CID-LEGACY",
                     assignee_id="target-lark",
@@ -356,6 +358,7 @@ def test_global_assignment_lookups_use_signed_in_user_across_teams(team_ctx_db):
     assert set(runs) == {"ART active", "CID draft", "Completed historical run"}
     assert runs["ART active"]["assigned_item_count"] == 1
     assert runs["CID draft"]["team_name"] == "CID"
+    assert runs["CID draft"]["team_id"] == 2
     assert runs["CID draft"]["_deep_links"]["test_run"].startswith(
         "/test-run-execution?team_id=2&config_id="
     )
