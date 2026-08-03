@@ -131,7 +131,12 @@ async def test_direct_confirmed_batch_write_does_not_treat_partial_200_as_succes
     result = await executor.execute_confirmed_write(
         tool,
         team_id=1,
-        execution_payload={"path_params": {}, "query_params": {}, "body_params": {"record_ids": [1, 2]}},
+        execution_payload={
+            "path_params": {},
+            "query_params": {},
+            "body_params": {"record_ids": [1, 2]},
+            "target_team_id": 1,
+        },
         jwt="jwt",
         conversation_key="c",
     )
@@ -153,7 +158,12 @@ async def test_direct_confirmed_batch_write_reports_zero_mutation_business_failu
     result = await executor.execute_confirmed_write(
         tool,
         team_id=1,
-        execution_payload={"path_params": {}, "query_params": {}, "body_params": {"items": []}},
+        execution_payload={
+            "path_params": {},
+            "query_params": {},
+            "body_params": {"items": []},
+            "target_team_id": 1,
+        },
         jwt="jwt",
         conversation_key="c",
     )

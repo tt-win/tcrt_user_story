@@ -1,0 +1,35 @@
+# TCRT repository pre-commit checks.
+# Full pytest is intentionally kept out of the commit hook; run it explicitly
+# with: uv run pytest app/testsuite -q
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+
+  - repo: local
+    hooks:
+      - id: ruff
+        name: Ruff (Python)
+        entry: uv run ruff check
+        language: system
+        types: [python]
+        exclude: ^tools/skills/tcrt-automation-(init|pomify)/templates/
+
+      - id: frontend-lint
+        name: Frontend lint (CSS and templates)
+        entry: npm run lint
+        language: system
+        files: ^(app/static/css/|app/templates/|package(-lock)?\.json$|\.stylelintrc\.json$|scripts/check-inline-styles\.mjs$)
+        pass_filenames: false
+
+      - id: i18n-coverage
+        name: i18n coverage
+        entry: node scripts/check-i18n-coverage.mjs
+        language: system
+        files: ^(app/templates/|app/static/js/|app/static/locales/|scripts/check-i18n-coverage\.mjs$)
+        pass_filenames: false

@@ -69,6 +69,11 @@ def temp_db(tmp_path, monkeypatch):
 
     monkeypatch.setattr(permission_service, "check_user_role", _allow_role)
 
+    async def _allow_teams(*args, **kwargs):
+        return [1]
+
+    monkeypatch.setattr(permission_service, "get_user_accessible_teams", _allow_teams)
+
     app.dependency_overrides[get_current_user] = lambda: FAKE_ADMIN
 
     yield TestingSessionLocal
