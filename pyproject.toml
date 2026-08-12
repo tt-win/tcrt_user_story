@@ -20,6 +20,8 @@ dependencies = [
     "asyncpg==0.31.0",
     "psycopg[binary]==3.3.3",
     "greenlet==3.3.1",
+    "qdrant-client==1.18.0",
+    "neo4j==6.2.0",
     "requests==2.32.5",
     "aiohttp==3.13.3",
     "pyyaml==6.0.3",
@@ -34,12 +36,6 @@ dependencies = [
     "httpx==0.28.1",
     "orjson==3.11.9",
     "portalocker==3.2.0",
-]
-
-[project.optional-dependencies]
-knowledge = [
-    "qdrant-client>=1.9",
-    "neo4j>=5.20",
 ]
 
 [build-system]
